@@ -1,0 +1,34 @@
+{
+  "name": "ankal-contacts",
+  "productName": "אנק\"ל",
+  "version": "2.0.0",
+  "description": "אנק\"ל - ניהול אנשי קשר והמרת קבצי VCF/אקסל/CSV",
+  "main": "main.js",
+  "author": "You",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/run-tests.js",
+    "build": "npm test && electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "43.4.1",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "com.local.ankal",
+    "productName": "אנק\"ל",
+    "files": [
+      "main.js",
+      "preload.js",
+      "app-config.json",
+      "src/**/*"
+    ],
+    "win": {
+      "target": ["portable"]
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>אנק״ל — ניהול, ניקוי והמרת אנשי קשר</title>
+  <meta name="description" content="אנק״ל מאפשר לייבא, לערוך, לנקות, לאתר כפולים ולהמיר אנשי קשר בין VCF, Excel ו-CSV.">
+  <meta name="theme-color" content="#101827">
+  <link rel="canonical" href="https://aivr-anshak.netlify.app/">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="he_IL">
+  <meta property="og:site_name" content="אנק״ל">
+  <meta property="og:title" content="אנק״ל — אנשי קשר מסודרים, בלי כאב ראש">
+  <meta property="og:description" content="ייבוא, עריכה, ניקוי, איתור כפולים והמרה בין VCF, Excel ו-CSV.">
+  <meta property="og:url" content="https://aivr-anshak.netlify.app/">
+  <meta property="og:image" content="https://aivr-anshak.netlify.app/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="style.css">
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-KCV2HQTC');</script>
+</head>
+<body>
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KCV2HQTC" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+  <section id="landing" class="landing">
+    <header class="landing-nav">
+      <a class="logo" href="#" aria-label="אנק״ל — דף הבית"><img src="favicon.svg" alt=""><span>אנק״ל</span></a>
+      <div class="landing-actions"><button class="icon-btn" data-action="toggle-theme" aria-label="החלפת מצב תצוגה"><span data-theme-icon>☾</span></button><button class="btn btn-quiet" data-action="open-help">איך משתמשים?</button><button class="btn btn-primary" data-action="enter-app">התחילו לעבוד</button></div>
+    </header>
+    <main class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">VCF · Excel · CSV</span>
+        <h1>אנשי קשר מסודרים.<br><span>בכמה לחיצות.</span></h1>
+        <p>מייבאים קובץ, מתקנים שמות ומספרים, בודקים כפולים ומייצאים לפורמט שהטלפון צריך.</p>
+        <div class="hero-actions"><button class="btn btn-primary btn-large" data-action="enter-app">פתחו את אנק״ל</button><button class="btn btn-glass btn-large" data-action="quick-import">ייבוא קובץ</button></div>
+        <div class="hero-points"><span>✓ שבעה שדות קבועים</span><span>✓ תצוגה מקדימה לפני שינוי</span><span>✓ עובד גם כתוכנת Windows</span></div>
+      </div>
+      <div class="hero-visual" aria-hidden="true"><div class="glow"></div><div class="mock-window"><div class="mock-top"><i></i><i></i><i></i><b>אנשי קשר</b></div><div class="mock-grid"><article><strong>דוד כהן</strong><span>050-1234567</span><em>נשמר</em></article><article><strong>משה לוי</strong><span>02-5551234</span><em>נשמר</em></article><article class="mock-active"><strong>שרה ישראלי</strong><span>052-7654321</span><em>בודק כפולים…</em></article><article><strong>חיים אברהם</strong><span>03-5558877</span><em>נשמר</em></article></div></div></div>
+    </main>
+    <section class="feature-strip" aria-label="יכולות מרכזיות"><article><span>01</span><h2>מייבאים</h2><p>VCF, Excel או CSV עם בחירת גיליון ושורת כותרות.</p></article><article><span>02</span><h2>מסדרים</h2><p>עריכה מהירה, החלפה מרובה ותיקון מספרים ישראליים.</p></article><article><span>03</span><h2>בודקים</h2><p>איתור כפולים עם החלטה ברורה בכל מקרה שאינו ודאי.</p></article><article><span>04</span><h2>מייצאים</h2><p>קובץ נקי ומוכן לטלפון, ל־Excel או ל־CSV.</p></article></section><footer style="text-align:center;padding:20px 20px 36px;color:#8fa0b8"><a href="terms.html" style="color:inherit">תנאי שימוש</a> · <a href="privacy.html" style="color:inherit">מדיניות פרטיות</a></footer>
+  </section>
+
+  <div id="app-shell" class="app-shell hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-head"><a class="logo" href="#" data-action="show-landing"><img src="favicon.svg" alt=""><span>אנק״ל</span></a><button class="icon-btn side-collapse" data-action="toggle-sidebar" aria-label="כיווץ התפריט">‹</button></div>
+      <nav class="side-nav" aria-label="תפריט ראשי">
+        <button class="nav-item active" data-page="lists"><span class="nav-icon">▦</span><span class="nav-label">הרשימות שלי</span></button>
+        <button class="nav-item" data-page="contacts"><span class="nav-icon">◫</span><span class="nav-label">אנשי קשר</span><span class="nav-count" id="nav-contact-count">0</span></button>
+        <button class="nav-item" data-page="clean"><span class="nav-icon">✦</span><span class="nav-label">ניקוי והחלפה</span></button>
+        <button class="nav-item" data-page="duplicates"><span class="nav-icon">◇</span><span class="nav-label">בדיקת כפולים</span><span class="nav-count warning" id="nav-dupe-count">0</span></button>
+        <button class="nav-item" data-page="transfer"><span class="nav-icon">⇅</span><span class="nav-label">ייבוא וייצוא</span></button>
+        <button class="nav-item" data-page="help"><span class="nav-icon">?</span><span class="nav-label">עזרה והסברים</span></button>
+        <button class="nav-item admin-only hidden" data-page="admin"><span class="nav-icon">⚙</span><span class="nav-label">ניהול מערכת</span></button>
+      </nav>
+      <div class="side-bottom"><button class="theme-row" data-action="toggle-theme"><span data-theme-icon>☾</span><span class="nav-label">מצב תצוגה</span></button><div class="account-card" id="account-card"><div class="avatar" id="account-avatar">א</div><div class="account-copy"><strong id="account-name">מצב מקומי</strong><span id="account-email">לא מחובר</span></div><button class="icon-btn" data-action="account-menu" aria-label="אפשרויות חשבון">⋮</button></div></div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar"><button class="icon-btn mobile-menu" data-action="toggle-sidebar" aria-label="פתיחת תפריט">☰</button><div class="page-heading"><span id="page-kicker">מרכז העבודה</span><h1 id="page-title">הרשימות שלי</h1></div><div class="sync-state" id="sync-state"><i></i><span>נשמר במחשב</span></div><div class="top-actions"><button class="btn btn-quiet" id="undo-btn" data-action="undo" disabled>↶ בטל</button><button class="btn btn-quiet" id="redo-btn" data-action="redo" disabled>↷ בצע שוב</button><button class="btn btn-primary" data-action="quick-import">＋ ייבוא קובץ</button></div></header>
+
+      <div class="page-wrap">
+        <section class="app-page active" data-page-panel="lists">
+          <div class="page-intro"><div><h2>הרשימות שלכם</h2><p>פתחו רשימה קיימת או התחילו רשימה חדשה.</p></div><div class="intro-actions"><button class="btn btn-secondary" data-action="new-list">＋ רשימה חדשה</button><button class="btn btn-primary" data-action="quick-import">⇧ ייבוא קובץ</button></div></div>
+          <div class="dashboard-row"><label class="search-field"><span>⌕</span><input id="list-search" type="search" placeholder="חיפוש רשימה…"></label><button class="btn btn-quiet" data-action="refresh-lists">רענון</button></div>
+          <div id="list-grid" class="list-grid"></div><div id="lists-empty" class="empty-box hidden"><div class="empty-icon">▦</div><h3>עדיין אין רשימות</h3><p>צרו רשימה חדשה או ייבאו קובץ כדי להתחיל.</p><button class="btn btn-primary" data-action="new-list">יצירת רשימה</button></div>
+        </section>
+
+        <section class="app-page" data-page-panel="contacts">
+          <div class="list-title-row"><div><span class="mini-label">רשימה פתוחה</span><h2 id="active-list-name">ללא רשימה</h2></div><button class="icon-btn" data-action="rename-list" aria-label="שינוי שם הרשימה">✎</button><div class="spacer"></div><button class="btn btn-secondary" data-action="add-contact">＋ איש קשר</button></div>
+          <div class="contact-toolbar"><label class="search-field grow"><span>⌕</span><input id="contact-search" type="search" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn btn-quiet" data-action="select-all">בחר הכול</button><button class="btn btn-quiet" data-action="clear-selection">בטל בחירה</button><button class="btn btn-danger" id="delete-selected-btn" data-action="delete-selected" disabled>מחיקת נבחרים <span id="selected-count">0</span></button><button class="icon-btn" data-action="toggle-density" aria-label="שינוי צפיפות הכרטיסים">▦</button></div>
+          <div id="contact-grid" class="contact-grid"></div><div id="contacts-empty" class="empty-box hidden"><div class="empty-icon">◫</div><h3>הרשימה עדיין ריקה</h3><p>הוסיפו איש קשר או ייבאו קובץ.</p><button class="btn btn-primary" data-action="quick-import">ייבוא קובץ</button></div><div id="load-more-wrap" class="load-more hidden"><button class="btn btn-secondary" data-action="load-more">הצגת 100 נוספים</button></div>
+        </section>
+
+        <section class="app-page" data-page-panel="clean">
+          <div class="page-intro"><div><h2>ניקוי והחלפה</h2><p>כל שינוי מוצג לבדיקה לפני הביצוע.</p></div></div>
+          <div class="tool-grid">
+            <article class="tool-card"><div class="tool-icon">＋</div><h3>הוספת טקסט לשמות</h3><p>הוסיפו תווית קבועה בתחילת השם או בסופו.</p><div class="form-grid"><label>מיקום<select id="add-position"><option value="prefix">בתחילת השם</option><option value="suffix">בסוף השם</option></select></label><label>טקסט<input id="add-text" type="text" placeholder="לדוגמה: עבודה - "></label></div><button class="btn btn-secondary" data-action="preview-add-text">הצגת שינויים</button></article>
+            <article class="tool-card"><div class="tool-icon">↔</div><h3>חיפוש והחלפה</h3><p>החליפו טקסט בשדה אחד או בכל השדות.</p><div class="form-grid"><label>שדה<select id="replace-scope"><option value="name">שם</option><option value="phone">טלפונים</option><option value="email">מייל</option><option value="all">כל השדות</option></select></label><label>חיפוש<input id="replace-find" type="text"></label><label>החלפה<input id="replace-with" type="text"></label></div><label class="check-line"><input id="replace-regex" type="checkbox"> חיפוש מתקדם (Regex)</label><button class="btn btn-secondary" data-action="preview-replace">בדיקת התאמות</button></article>
+          </div><div id="clean-preview" class="result-panel hidden"></div>
+        </section>
+
+        <section class="app-page" data-page-panel="duplicates">
+          <div class="page-intro"><div><h2>בדיקת כפולים</h2><p>ממזגים אוטומטית רק התאמות שאין בהן סתירה.</p></div><button class="btn btn-primary" data-action="scan-duplicates">⌕ התחלת בדיקה</button></div>
+          <div id="scan-progress" class="scan-box hidden"><div class="scanner"><span></span></div><strong>בודק אנשי קשר כפולים…</strong><p id="scan-message">מסדר מספרים, מיילים ושמות</p></div><div id="dupe-summary" class="stats-row"></div><div id="dupe-list" class="dupe-list"></div><div id="dupe-empty" class="empty-box"><div class="empty-icon">◇</div><h3>מוכנים לבדיקה</h3><p>לחצו על “התחלת בדיקה” כדי לחפש אנשי קשר דומים.</p></div>
+        </section>
+
+        <section class="app-page" data-page-panel="transfer">
+          <div class="page-intro"><div><h2>ייבוא וייצוא</h2><p>בחרו קובץ או גררו אותו לאזור הייבוא.</p></div></div>
+          <div class="transfer-grid"><article class="drop-card" id="drop-zone"><div class="drop-icon">⇧</div><h3>ייבוא אנשי קשר</h3><p>VCF, XLSX, XLS או CSV</p><button class="btn btn-primary" data-action="quick-import">בחירת קובץ</button><small>או גררו קובץ לכאן</small></article><article class="export-card"><div class="drop-icon">⇩</div><h3>ייצוא הרשימה</h3><p>בחרו את הפורמט המתאים.</p><div class="export-buttons"><button class="btn btn-secondary" data-export="xlsx">Excel</button><button class="btn btn-secondary" data-export="csv">CSV</button><button class="btn btn-secondary" data-export="vcf">VCF</button></div><button class="text-btn" data-action="download-template">הורדת תבנית Excel</button></article></div><div id="import-report" class="result-panel hidden"></div>
+        </section>
+
+        <section class="app-page" data-page-panel="help"><div class="page-intro"><div><h2>עזרה והסברים</h2><p>כל מה שצריך כדי לעבוד עם אנק״ל.</p></div></div><div class="help-layout"><nav class="help-nav"><button data-help="start" class="active">התחלה מהירה</button><button data-help="import">ייבוא</button><button data-help="duplicates">כפולים</button><button data-help="sync">שמירה וסנכרון</button><button data-help="export">ייצוא</button></nav><article id="help-content" class="help-content"></article></div></section>
+
+        <section class="app-page" data-page-panel="admin"><div class="page-intro"><div><h2>ניהול מערכת</h2><p>משתמשים, רשימות, נפח אחסון ותקלות.</p></div><button class="btn btn-secondary" data-action="admin-refresh">רענון נתונים</button></div><div id="admin-stats" class="stats-row"></div><div class="admin-tabs"><button class="active" data-admin-tab="users">משתמשים</button><button data-admin-tab="logs">יומן פעולות</button><button data-admin-tab="errors">תקלות</button><button data-admin-tab="trash">סל מחזור</button></div><div id="admin-content" class="admin-content"></div></section>
+      </div>
+    </main>
+  </div>
+
+  <aside id="contact-drawer" class="drawer" aria-hidden="true"><div class="drawer-head"><div><span>פרטי איש קשר</span><h2 id="drawer-title">איש קשר חדש</h2></div><button class="icon-btn" data-action="close-drawer" aria-label="סגירה">×</button></div><form id="contact-form" class="drawer-body"><input type="hidden" id="contact-id"><label>שם<input id="contact-name" name="name" type="text" required></label><label>נייד<input id="contact-mobile" name="mobile" type="text" dir="ltr"></label><label>בית<input id="contact-home" name="home" type="text" dir="ltr"></label><label>עבודה<input id="contact-work" name="work" type="text" dir="ltr"></label><label>פקס<input id="contact-fax" name="fax" type="text" dir="ltr"></label><label>מייל<input id="contact-email" name="email" type="text" dir="ltr"></label><label>הערה<textarea id="contact-note" name="note" rows="4"></textarea></label></form><div class="drawer-foot"><button class="btn btn-danger hidden" id="drawer-delete" data-action="drawer-delete">מחיקה</button><div class="spacer"></div><span id="drawer-save-state">השינויים נשמרים אוטומטית</span><button class="btn btn-primary" data-action="save-contact">שמירה וסגירה</button></div></aside><div id="drawer-shade" class="drawer-shade" data-action="close-drawer"></div>
+
+  <div id="modal-backdrop" class="modal-backdrop" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><header><div><span id="modal-kicker"></span><h2 id="modal-title"></h2></div></header><div id="modal-body" class="modal-body"></div><footer id="modal-footer"></footer></section></div>
+  <div id="account-menu" class="popover hidden"><button data-action="google-login">כניסה באמצעות Google</button><button data-action="logout" class="signed-in-only hidden">יציאה מהחשבון</button><button data-action="account-settings">הגדרות</button></div>
+  <input id="file-picker" class="hidden" type="file" accept=".xlsx,.xls,.csv,.vcf"><div id="toast-zone" class="toast-zone" aria-live="polite"></div>
+  <script src="config.js"></script><script src="vcard.js"></script><script src="app.js"></script>
+</body>
+</html>

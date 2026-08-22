@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://aivr-anshak.netlify.app/sitemap.xml
