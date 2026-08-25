@@ -149,13 +149,24 @@
       kicker: "ברוכים הבאים לאנק״ל",
       title: "איך תרצו לעבוד?",
       dismissible: false,
+      /* שתי האפשרויות הן הכפתורים עצמם. data-modal-choice הוא אותו מנגנון
+         שמפעיל את כפתורי התחתית, ולכן אין צורך בשורת כפתורים נוספת שחוזרת
+         על אותה בחירה פעמיים. */
       html: `<div class="entry-choices">
-          <div class="entry-choice"><span class="entry-icon">☁</span><div><strong>עם חשבון Google</strong>
-            <p>הרשימות נשמרות בענן, זמינות מכל מחשב, ולא הולכות לאיבוד אם משהו קורה למחשב.</p></div></div>
-          <div class="entry-choice"><span class="entry-icon">▣</span><div><strong>במצב אופליין</strong>
-            <p>הכול נשאר במחשב הזה בלבד, בלי חשבון ובלי אינטרנט. אפשר להתחבר מאוחר יותר ולהעלות את הרשימות.</p></div></div>
+          <button class="entry-choice primary" data-modal-choice="google">
+            <span class="entry-icon">☁</span>
+            <span class="entry-copy"><strong>כניסה עם חשבון Google</strong>
+              <span>הרשימות נשמרות בענן, זמינות מכל מחשב, ולא הולכות לאיבוד אם משהו קורה למחשב.</span></span>
+            <span class="entry-go">←</span>
+          </button>
+          <button class="entry-choice" data-modal-choice="offline">
+            <span class="entry-icon">▣</span>
+            <span class="entry-copy"><strong>עבודה במצב אופליין</strong>
+              <span>הכול נשאר במחשב הזה בלבד, בלי חשבון ובלי אינטרנט. אפשר להתחבר מאוחר יותר ולהעלות את הרשימות.</span></span>
+            <span class="entry-go">←</span>
+          </button>
         </div>`,
-      buttons: [{ id: "google", label: "כניסה עם Google", primary: true }, { id: "offline", label: "עבוד במצב אופליין" }]
+      buttons: []
     });
     if (choice === "google") { localStorage.setItem(ENTRY_CHOICE_KEY, "google"); googleLogin(); return; }
     // חלון אחר שנפתח באותו רגע דוחק את זה החוצה. זו לא בחירה, אז נשאל שוב בפעם הבאה.

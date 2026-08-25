@@ -315,3 +315,28 @@ html[data-theme="light"] .account-card{border-top-color:var(--line)}
 html[data-theme="light"] .account-copy strong{color:#172033}
 html[data-theme="light"] .account-copy span{color:var(--muted)}
 html[data-theme="light"] .side-collapse{color:#5b6a83}
+/* -- Default page hue --
+   Modals and toasts live outside .app-shell, so --page is unset there. An
+   unset value makes every hsl() using it invalid, which silently dropped the
+   primary button's background and left white text on a white button. */
+:root{--page:172}
+/* -- Entry choice: the two options are the buttons -- */
+.entry-choices{display:grid;gap:13px}
+.entry-choice{display:flex;align-items:center;gap:14px;width:100%;text-align:right;cursor:pointer;
+  padding:18px 18px;border:2px solid var(--line);border-radius:16px;background:var(--card);
+  color:var(--text);font:inherit;transition:.16s}
+.entry-choice:hover{transform:translateY(-2px);border-color:hsl(var(--page) 60% 55%);
+  box-shadow:0 14px 30px hsl(var(--page) 55% 45% / .18)}
+.entry-choice.primary{border-color:hsl(var(--page) 60% 55%);
+  background:linear-gradient(140deg,hsl(var(--page) 62% 52% / .1),var(--card) 62%)}
+.entry-choice.primary:hover{box-shadow:0 16px 34px hsl(var(--page) 55% 45% / .26)}
+.entry-icon{flex:none;width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:22px;
+  background:hsl(var(--page) 60% 52% / .15);color:hsl(var(--page) 60% 42%)}
+.entry-choice.primary .entry-icon{background:hsl(var(--page) 62% 50%);color:#fff}
+.entry-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.entry-copy strong{font:700 16px var(--display)}
+.entry-copy>span{font-size:12.5px;color:var(--muted);line-height:1.65;font-weight:400}
+.entry-go{flex:none;margin-right:auto;font-size:19px;color:hsl(var(--page) 60% 52%);transition:.16s}
+.entry-choice:hover .entry-go{transform:translateX(-4px)}
+/* בלי כפתורי תחתית אין צורך בקו המפריד מעליהם */
+.modal>footer:empty{display:none}
