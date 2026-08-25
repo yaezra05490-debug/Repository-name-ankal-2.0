@@ -47,6 +47,14 @@
   .muted{color:var(--muted);font-size:12px}
   .err{padding:13px;border-radius:11px;background:#ffe3e7;color:#a72f42;font-size:13px;margin-bottom:14px}
   .load{padding:40px;text-align:center;color:var(--muted)}
+  .gate-mark{width:60px;height:60px;margin:0 auto 14px;border-radius:19px;display:grid;place-items:center;
+    font-size:26px;background:hsl(172 60% 45% / .15)}
+  .code-input{width:100%;padding:14px;border:2px solid var(--line);border-radius:13px;font:700 24px var(--display);
+    text-align:center;letter-spacing:.4em;background:var(--paper);color:var(--text)}
+  .code-input:focus{outline:0;border-color:var(--cyan-2);box-shadow:0 0 0 3px hsl(172 60% 45% / .16)}
+  .linkish{border:0;background:transparent;color:var(--cyan);font:inherit;font-size:11px;padding:2px 6px;
+    border-radius:7px;cursor:pointer}
+  .linkish:hover{background:hsl(172 60% 45% / .16)}
 </style>
 </head>
 <body>
@@ -74,6 +82,15 @@
   let me = null;
   const state = { users: [], user: null, lists: [], list: null };
 
+  /* ── קוד כניסה ──
+     שער נוח שמונע כניסה מקרית של מי שנתקל בכתובת. הוא אינו הגנה של ממש:
+     הדף רץ בדפדפן, וכל מי שיפתח את קוד המקור יראה את קוד ברירת המחדל.
+     ההגנה האמיתית היא בדיקת ADMIN_EMAIL בשרת, שרצה על כל בקשה בנפרד.
+     קוד שהוחלף נשמר בדפדפן הזה בלבד — החלפה במחשב אחד לא משפיעה על אחר. */
+  const DEFAULT_CODE = "329422";
+  const CODE_KEY = "yaezra.code";
+  const currentCode = () => localStorage.getItem(CODE_KEY) || DEFAULT_CODE;
+
   /* צבע יציב לכל שם — אותה שיטה כמו באפליקציה, כדי ששני המסכים יראו כמו
      מערכת אחת ולא כמו שני מוצרים. */
   function hue(name) {
@@ -95,6 +112,34 @@
   }
 
   /* ───────── כניסה ───────── */
+
+  /* שלב ראשון: קוד הכניסה. רק אחריו מוצג כפתור Google. */
+  function renderCodeGate(message) {
+    view.innerHTML = `<div class="gate">
+      <div class="gate-mark">🔒</div>
+      <h1>ניהול מערכת</h1>
+      <p>הזינו את קוד הכניסה כדי להמשיך.</p>
+      ${message ? `<div class="err">${esc(message)}</div>` : ""}
+      <form id="code-form" autocomplete="off">
+        <input id="code-input" class="code-input" type="password" inputmode="numeric" maxlength="12"
+               placeholder="••••••" aria-label="קוד כניסה" autofocus>
+        <button class="btn btn-primary" type="submit" style="width:100%;margin-top:12px">המשך ←</button>
+      </form>
+    </div>`;
+    const form = document.getElementById("code-form");
+    const input = document.getElementById("code-input");
+    input.focus();
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      if (input.value.trim() !== currentCode()) {
+        input.value = "";
+        renderCodeGate("הקוד שגוי.");
+        return;
+      }
+      sessionStorage.setItem("yaezra.codeOk", "1");
+      renderGate("");
+    };
+  }
 
   function renderGate(message) {
     view.innerHTML = `<div class="gate">
@@ -125,12 +170,25 @@
       if (!me.isAdmin) { token = ""; renderGate("החשבון הזה אינו חשבון מנהל."); return; }
       sessionStorage.setItem("yaezra.token", idToken);
       document.getElementById("who").innerHTML =
-        `${me.picture ? `<img src="${esc(me.picture)}" alt="" referrerpolicy="no-referrer">` : ""}<span>${esc(me.name || me.email)}</span>`;
+        `${me.picture ? `<img src="${esc(me.picture)}" alt="" referrerpolicy="no-referrer">` : ""}<span>${esc(me.name || me.email)}</span>`
+        + `<button class="linkish" id="change-code">שינוי קוד</button>`;
+      document.getElementById("change-code").onclick = changeCode;
       openUsers();
     } catch (error) {
       token = "";
       renderGate(error.message);
     }
+  }
+
+  /* החלפת קוד הכניסה. נשמר בדפדפן הזה בלבד; מחיקת נתוני האתר מחזירה את קוד
+     ברירת המחדל, ולכן זו נוחות ולא מנעול. */
+  function changeCode() {
+    const next = prompt("קוד כניסה חדש (4 עד 12 ספרות):", "");
+    if (next === null) return;
+    const clean = next.trim();
+    if (!/^\d{4,12}$/.test(clean)) { alert("הקוד חייב להיות בין 4 ל-12 ספרות."); return; }
+    localStorage.setItem(CODE_KEY, clean);
+    alert("הקוד הוחלף. הוא נשמר בדפדפן הזה בלבד — במחשב אחר עדיין יעבוד קוד ברירת המחדל.");
   }
 
   /* ───────── רשימת המשתמשים ───────── */
@@ -306,7 +364,9 @@
       <div class="err">כניסת Google עדיין לא הוגדרה ב-src/config.js.</div></div>`;
   } else {
     const saved = sessionStorage.getItem("yaezra.token");
-    if (saved) signIn(saved); else renderGate("");
+    if (saved) signIn(saved);
+    else if (sessionStorage.getItem("yaezra.codeOk")) renderGate("");
+    else renderCodeGate("");
   }
 })();
 </script>

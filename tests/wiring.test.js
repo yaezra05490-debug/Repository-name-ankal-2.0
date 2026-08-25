@@ -73,29 +73,22 @@ test("הנתיב הגלוי של אתר הניהול חסום", () => {
   assert.ok(/force\s*=\s*true/.test(netlify), "החסימה חייבת force=true כדי לגבור על הקובץ הסטטי");
 });
 
-test("כתובת אתר הניהול אינה שמורה בקוד", () => {
-  // המאגר ציבורי. כתובת בתוך netlify.toml הייתה גלויה לכל אחד, והסודיות
-  // חסרת ערך. היא מגיעה ממשתנה סביבה ונכתבת ל-_redirects בזמן הבנייה.
-  assert.ok(!/to\s*=\s*"\/YAEZRA\/index\.html"/.test(netlify), "הכתובת חזרה לקובץ שנכנס ל-git");
-  assert.ok(netlify.includes("build-redirects.js"), "חסרה פקודת הבנייה שיוצרת את ההפניה");
-  const ignore = fs.readFileSync(path.join(__dirname, "..", ".gitignore"), "utf8");
-  assert.ok(ignore.includes("/src/_redirects"), "_redirects חייב להישאר מחוץ ל-git");
+test("קיימת כתובת ייעודית שמובילה לאתר הניהול", () => {
+  assert.ok(/to\s*=\s*"\/YAEZRA\/index\.html"/.test(netlify), "אין הפניה לדף הניהול");
+  const route = netlify.match(/from\s*=\s*"\/([0-9a-f]{12,})"/);
+  assert.ok(route, "הכתובת חייבת להיות מחרוזת אקראית ארוכה, לא מילה שאפשר לנחש");
 });
 
-test("סקריפט הבנייה מייצר הפניה תקינה, ולא מייצר כלום בלי הגדרה", () => {
-  const script = path.join(__dirname, "..", "scripts", "build-redirects.js");
-  const out = path.join(root, "_redirects");
-  const run = (adminPath) =>
-    cp.execFileSync(process.execPath, [script], { env: { ...process.env, ADMIN_PATH: adminPath }, encoding: "utf8" });
-
-  run("abc123def456");
-  assert.ok(fs.readFileSync(out, "utf8").includes("/abc123def456  /YAEZRA/index.html  200"));
-
-  run("");
-  assert.ok(!/YAEZRA/.test(fs.readFileSync(out, "utf8")), "בלי ADMIN_PATH אסור שתיווצר הפניה");
-
-  // תו לא חוקי חייב להפיל את הבנייה, לא לייצר הפניה שבורה בשקט.
-  assert.throws(() => run("bad path/../etc"), /Command failed|status/);
+test("קוד הכניסה קיים, ניתן להחלפה, ואינו מוצג כהגנה אמיתית", () => {
+  assert.ok(/DEFAULT_CODE\s*=\s*"\d{4,12}"/.test(admin), "חסר קוד ברירת מחדל");
+  assert.ok(admin.includes("function changeCode"), "חסרה אפשרות להחליף את הקוד");
+  assert.ok(admin.includes("renderCodeGate"), "חסר מסך הקוד");
+  // מסך הקוד חייב לחסום את מסך ה-Google, אחרת הוא קישוט בלבד.
+  assert.ok(/codeOk[\s\S]{0,80}renderGate[\s\S]{0,40}renderCodeGate/.test(admin),
+    "הכניסה חייבת להתחיל במסך הקוד כשעדיין לא הוזן");
+  // התיעוד חייב לומר במפורש שזו נוחות ולא אבטחה, כדי שאיש לא יסתמך על זה.
+  assert.ok(/אינו הגנה|אינה הגנה|ולא אבטחה|אינם הגנה/.test(admin + netlify),
+    "חסרה הבהרה שהקוד והכתובת אינם הגנה אמיתית");
 });
 
 test("אתר הניהול אינו מוגש לאינדוקס", () => {
