@@ -10,6 +10,11 @@
 4. הוסיפו Authorized JavaScript origin: `https://aivr-anshak.netlify.app`.
 5. הדביקו את ה־Web Client ID ב־`src/config.js` במקום `PASTE_GOOGLE_WEB_CLIENT_ID_HERE`.
 6. צרו OAuth Client נוסף מסוג Desktop app והדביקו אותו ב־`app-config.json` במקום `PASTE_GOOGLE_DESKTOP_CLIENT_ID_HERE`.
+7. **גם את ה־Client secret של אותו לקוח Desktop.** גוגל דורשת אותו בהחלפת הקוד לטוקן, גם עם PKCE — בלעדיו הכניסה מהתוכנה נכשלת עם `client_secret is missing`. מדביקים ב־`googleDesktopClientSecret`.
+
+`app-config.json` אינו נכנס ל־git, כי הוא מכיל את הסוד הזה והמאגר ציבורי. התבנית למילוי היא `app-config.example.json` — מעתיקים אותה, משנים את השם ל־`app-config.json` וממלאים.
+
+הסוד ארוז בתוך קובץ ה־EXE, וכל מי שמוריד אותו יכול לחלץ אותו. זו אינה תקלה: גוגל עצמה מציינת שבאפליקציות מותקנות הסוד אינו חסוי. הוא אינו מאפשר גישה לנתונים — רק לזהות כאפליקציה מול מסך ההסכמה של גוגל.
 
 אין צורך ב־Client Secret באתר או בתוכנת Windows.
 

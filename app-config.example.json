@@ -1,0 +1,12 @@
+{
+  "_הסבר": "תבנית. העתיקו לקובץ בשם app-config.json באותה תיקייה ומלאו את הערכים.",
+  "_למה_שני_קבצים": "app-config.json מכיל את סוד הלקוח של גוגל ואינו נכנס ל-git, כי המאגר ציבורי. הקובץ הזה כן נכנס, כדי שיהיה ברור מה צריך למלא.",
+
+  "siteUrl": "https://aivr-anshak.netlify.app",
+
+  "_googleDesktopClientId": "Google Cloud → APIs & Services → Credentials → הלקוח מסוג 'שולחן עבודה'",
+  "googleDesktopClientId": "149781710735-jmvkdivfn320fpcf5inteft1tj5issc1.apps.googleusercontent.com",
+
+  "_googleDesktopClientSecret": "באותו מסך, אחרי לחיצה על שם הלקוח. מתחיל ב-GOCSPX-",
+  "googleDesktopClientSecret": "PASTE_GOOGLE_DESKTOP_CLIENT_SECRET_HERE"
+}
