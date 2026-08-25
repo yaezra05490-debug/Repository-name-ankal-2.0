@@ -96,7 +96,33 @@
 
         <section class="app-page" data-page-panel="transfer">
           <div class="page-intro"><div><h2>ייבוא וייצוא</h2><p>בחרו קובץ או גררו אותו לאזור הייבוא.</p></div></div>
-          <div class="transfer-grid"><article class="drop-card" id="drop-zone"><div class="drop-icon">⇧</div><h3>ייבוא אנשי קשר</h3><p>VCF, XLSX, XLS או CSV</p><button class="btn btn-primary" data-action="quick-import">בחירת קובץ</button><small>או גררו קובץ לכאן</small></article><article class="export-card"><div class="drop-icon">⇩</div><h3>ייצוא הרשימה</h3><p>בחרו את הפורמט המתאים.</p><div class="export-buttons"><button class="btn btn-secondary" data-export="xlsx">Excel</button><button class="btn btn-secondary" data-export="csv">CSV</button><button class="btn btn-secondary" data-export="vcf">VCF</button></div><button class="text-btn" data-action="download-template">הורדת תבנית Excel</button></article></div><div id="import-report" class="result-panel hidden"></div>
+          <div class="transfer-grid">
+            <article class="drop-card" id="drop-zone">
+              <div class="drop-icon">⇧</div>
+              <h3>ייבוא אנשי קשר</h3>
+              <p>VCF, XLSX, XLS או CSV</p>
+              <button class="btn btn-primary" data-action="quick-import">בחירת קובץ</button>
+              <small>או גררו קובץ לכאן</small>
+              <div class="card-foot">
+                <span>אין לכם קובץ מוכן?</span>
+                <button class="text-btn" data-action="download-template">⤓ הורדת תבנית Excel</button>
+                <small>קובץ ריק עם העמודות הנכונות — ממלאים ומייבאים.</small>
+              </div>
+            </article>
+            <article class="export-card">
+              <div class="drop-icon">⇩</div>
+              <h3>ייצוא הרשימה</h3>
+              <p>בחרו את הפורמט המתאים.</p>
+              <div class="export-buttons">
+                <button class="btn btn-secondary" data-export="vcf">VCF</button>
+                <button class="btn btn-secondary" data-export="xlsx">Excel</button>
+                <button class="btn btn-secondary" data-export="csv">CSV</button>
+              </div>
+              <div class="card-foot">
+                <small><b>VCF</b> לטלפון · <b>Excel</b> לעריכה במחשב · <b>CSV</b> למערכות אחרות</small>
+              </div>
+            </article>
+          </div><div id="import-report" class="result-panel hidden"></div>
         </section>
 
         <section class="app-page" data-page-panel="help"><div class="page-intro"><div><h2>עזרה והסברים</h2><p>כל מה שצריך כדי לעבוד עם אנק״ל.</p></div></div><div class="help-layout"><nav class="help-nav"><button data-help="start" class="active">התחלה מהירה</button><button data-help="import">ייבוא</button><button data-help="duplicates">כפולים</button><button data-help="sync">שמירה וסנכרון</button><button data-help="export">ייצוא</button></nav><article id="help-content" class="help-content"></article></div></section>

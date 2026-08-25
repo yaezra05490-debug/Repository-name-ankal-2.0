@@ -340,3 +340,12 @@ html[data-theme="light"] .side-collapse{color:#5b6a83}
 .entry-choice:hover .entry-go{transform:translateX(-4px)}
 /* בלי כפתורי תחתית אין צורך בקו המפריד מעליהם */
 .modal>footer:empty{display:none}
+/* -- Transfer page: a foot section that separates the extras from the main action -- */
+.card-foot{margin-top:18px;padding-top:15px;border-top:1px solid var(--line);display:flex;
+  flex-direction:column;align-items:center;gap:5px;width:100%}
+.card-foot>span{font-size:12px;color:var(--muted)}
+.card-foot small{font-size:11px;color:var(--muted);line-height:1.6;text-align:center}
+.card-foot b{color:var(--text)}
+.text-btn{border:0;background:transparent;color:hsl(var(--page) 62% 45%);font:inherit;font-weight:700;
+  font-size:13px;padding:4px 6px;border-radius:8px}
+.text-btn:hover{background:hsl(var(--page) 62% 52% / .12)}

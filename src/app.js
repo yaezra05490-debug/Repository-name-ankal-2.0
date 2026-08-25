@@ -245,9 +245,12 @@
 
   function renderContacts() {
     const grid = document.getElementById("contact-grid"); if (!grid) return;
-    const shown = filteredContacts(); const existing = new Set(currentList()?.contacts.map(c => c.id) || []);
+    const all = filteredContacts(); const existing = new Set(currentList()?.contacts.map(c => c.id) || []);
     state.selected = new Set([...state.selected].filter(x => existing.has(x)));
     grid.classList.toggle("compact", state.dense);
+    /* מציירים רק עמוד אחד. הדפדוף היה מחווט אבל הרינדור התעלם ממנו וצייר את
+       כל הרשימה, כך שרשימה של אלפי אנשי קשר בנתה אלפי כרטיסים בכל שינוי. */
+    const shown = all.slice(0, state.visibleLimit);
     grid.innerHTML = shown.map(c => {
       const phones = PHONE_FIELDS.filter(f => c[f]).map(f => `<div class="contact-line ${f}"><b>${LABELS[f]}</b><span dir="ltr">${esc(c[f])}</span></div>`).join("");
       const name = c.name || "ללא שם";
@@ -261,11 +264,29 @@
         + `<div class="card-actions"><button class="icon-btn" data-open-contact="${c.id}" aria-label="עריכה">✎</button></div></article>`;
     }).join("");
     document.getElementById("contacts-empty").classList.toggle("hidden", !!shown.length || !currentList());
-    document.getElementById("load-more-wrap").classList.add("hidden");
-    document.getElementById("selected-count").textContent = state.selected.size;
-    document.getElementById("delete-selected-btn").disabled = !state.selected.size;
-    // העברה דורשת גם בחירה וגם רשימה אחרת שאפשר להעביר אליה.
-    document.getElementById("move-selected-btn").disabled = !state.selected.size;
+    const remaining = all.length - shown.length;
+    document.getElementById("load-more-wrap").classList.toggle("hidden", remaining <= 0);
+    if (remaining > 0) {
+      const step = Math.min(remaining, CFG.CONTACTS_PAGE_SIZE || 100);
+      document.querySelector('[data-action="load-more"]').textContent = `הצגת ${step} נוספים · נשארו ${remaining}`;
+    }
+    updateSelectionUi();
+  }
+
+  function updateSelectionUi() {
+    const count = state.selected.size;
+    document.getElementById("selected-count").textContent = count;
+    document.getElementById("delete-selected-btn").disabled = !count;
+    document.getElementById("move-selected-btn").disabled = !count;
+  }
+
+  /* סימון כרטיס נוגע רק בכרטיס שנלחץ ובמונה. קודם כל לחיצה בנתה מחדש את כל
+     הרשת, וזו הייתה ההשהיה בין הלחיצה לבין הופעת הסימון. */
+  function setSelected(id, on, checkbox) {
+    if (on) state.selected.add(id); else state.selected.delete(id);
+    (checkbox || document.querySelector(`[data-select-contact="${CSS.escape(id)}"]`))
+      ?.closest(".contact-card")?.classList.toggle("selected", on);
+    updateSelectionUi();
   }
 
   function createList() { modal({ kicker: "רשימה חדשה", title: "איך לקרוא לרשימה?", html: `<label class="modal-field">שם הרשימה<input id="modal-list-name" value="רשימה חדשה" maxlength="80"></label>`, buttons: [{ id: "create", label: "יצירת רשימה", primary: true }, { id: "cancel", label: "ביטול" }] }).then(choice => { if (choice !== "create") return; const name = document.getElementById("modal-list-name")?.value.trim() || "רשימה חדשה"; const list = blankList(name); state.lists.push(list); state.activeListId = list.id; persistLocal(); markChanged(list, "create_list"); setPage("contacts"); logAction("create_list", list.id); }); }
@@ -1048,8 +1069,24 @@
     logAction(choice === "move" ? "move_contacts" : "copy_contacts", target.id);
   }
 
-  function selectAll() { filteredContacts().forEach(c => state.selected.add(c.id)); renderContacts(); }
-  function clearSelection() { state.selected.clear(); renderContacts(); }
+  /* בחירה גורפת חלה על כל התוצאות המסוננות, גם על אלה שעדיין לא צוירו —
+     אבל מסמנת בפועל רק את הכרטיסים שעל המסך, בלי לבנות את הרשת מחדש. */
+  function selectAll() {
+    for (const contact of filteredContacts()) state.selected.add(contact.id);
+    document.querySelectorAll("[data-select-contact]").forEach(box => {
+      box.checked = true;
+      box.closest(".contact-card")?.classList.add("selected");
+    });
+    updateSelectionUi();
+  }
+  function clearSelection() {
+    state.selected.clear();
+    document.querySelectorAll("[data-select-contact]").forEach(box => {
+      box.checked = false;
+      box.closest(".contact-card")?.classList.remove("selected");
+    });
+    updateSelectionUi();
+  }
   async function deleteSelected() { const list = currentList(); if (!list || !state.selected.size) return; const ok = await confirmBox("מחיקת אנשי קשר", `למחוק ${state.selected.size} אנשי קשר שנבחרו?`, "מחיקה"); if (!ok) return; const removed = list.contacts.filter(c => state.selected.has(c.id)); list.contacts = list.contacts.filter(c => !state.selected.has(c.id)); recordChange(list, "מחיקת אנשי קשר", removed.map(clone), removed.map(() => null)); state.selected.clear(); markChanged(list, "bulk_delete"); renderAll(); }
 
   function showHelp(topic) { document.querySelectorAll("[data-help]").forEach(x => x.classList.toggle("active", x.dataset.help === topic)); document.getElementById("help-content").innerHTML = HELP[topic] || HELP.start; }
@@ -1150,7 +1187,7 @@
       const open = event.target.closest("[data-open-list]")?.dataset.openList; if (open) return openList(open);
       const menu = event.target.closest("[data-list-menu]")?.dataset.listMenu; if (menu) return listMenu(menu);
       const contact = event.target.closest("[data-open-contact]")?.dataset.openContact; if (contact) return openDrawer(contact);
-      const select = event.target.closest("[data-select-contact]"); if (select) { select.checked ? state.selected.add(select.dataset.selectContact) : state.selected.delete(select.dataset.selectContact); return renderContacts(); }
+      const select = event.target.closest("[data-select-contact]"); if (select) return setSelected(select.dataset.selectContact, select.checked, select);
       const format = event.target.closest("[data-export]")?.dataset.export; if (format) return exportList(format);
       const help = event.target.closest("[data-help]")?.dataset.help; if (help) return showHelp(help);
       const tab = event.target.closest("[data-admin-tab]")?.dataset.adminTab; if (tab) { state.adminTab = tab; document.querySelectorAll("[data-admin-tab]").forEach(x => x.classList.toggle("active", x.dataset.adminTab === tab)); return loadAdmin(); }
