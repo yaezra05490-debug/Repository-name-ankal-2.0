@@ -4,6 +4,7 @@
  * זהות המשתמש נבדקת מול Google בכל בקשה באמצעות ID Token.
  */
 var ROOT_FOLDER_NAME = "ANKAL_DATA";
+var SHEET_ID = "1suwQ5CDWFdjXhime_muEWgASDDE8R_h93monRv944-4";
 var USERS_SHEET = "משתמשים";
 var LOGS_SHEET = "פעולות";
 var ERRORS_SHEET = "תקלות";
@@ -372,12 +373,15 @@ function listFile_(sub, id) {
 }
 
 function sheet_(name, headers) {
-  var driveApp = getAppService(["D", "r", "i", "v", "e", "A", "p", "p"]);
   var spreadsheetApp = getAppService(["S", "p", "r", "e", "a", "d", "s", "h", "e", "e", "t", "A", "p", "p"]);
-  var file;
-  var files = driveApp.getFilesByName("ANKAL_DATABASE");
-  if (files.hasNext()) file = files.next();
-  var book = file ? spreadsheetApp.open(file) : spreadsheetApp.create("ANKAL_DATABASE");
+
+  var book;
+  try {
+    book = spreadsheetApp.openById(SHEET_ID);
+  } catch (error) {
+    throw new Error("לא ניתן לפתוח את גליון Google Sheets. בדוק שה-ID נכון ושהסקריפט מחובר לחשבון עם הרשאת גישה.\nID: " + SHEET_ID);
+  }
+
   var sheet = book.getSheetByName(name);
   if (!sheet) {
     sheet = book.insertSheet(name);
@@ -389,6 +393,17 @@ function sheet_(name, headers) {
 
 function append_(name, headers, row) {
   sheet_(name, headers).appendRow(row);
+}
+
+function testSheetConnection() {
+  var sheet = sheet_(USERS_SHEET, ["sub", "email", "name", "picture", "createdAt", "lastSeen", "blocked", "deletedAt", "termsVersion", "privacyVersion"]);
+  Logger.log("Sheet name: " + sheet.getName());
+  Logger.log("Sheet URL: " + sheet.getParent().getUrl());
+  return {
+    ok: true,
+    sheetName: sheet.getName(),
+    spreadsheetUrl: sheet.getParent().getUrl()
+  };
 }
 
 function findUserRow_(sub) {

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="he" dir="rtl" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>אנק״ל — ניהול מערכת</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="/style.css">
+<style>
+  /* הדף יושב על גיליון העיצוב של האתר, ומוסיף רק את מה שייחודי לו. */
+  body{background:var(--bg);color:var(--text);font-family:var(--font)}
+  .adm{max-width:1180px;margin:auto;padding:26px 22px 60px}
+  .adm-top{display:flex;align-items:center;gap:14px;margin-bottom:22px;color:#edf6ff}
+  .adm-top .logo{color:#edf6ff}
+  .adm-top .spacer{flex:1}
+  .adm-who{display:flex;align-items:center;gap:9px;font-size:12px;color:#9badc3}
+  .adm-who img{width:30px;height:30px;border-radius:9px;object-fit:cover}
+  .gate{max-width:430px;margin:14vh auto;padding:30px;background:var(--card);border-radius:var(--radius);text-align:center}
+  .gate h1{font:700 24px var(--display);margin:0 0 6px}
+  .gate p{color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 20px}
+  .crumbs{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:16px;font-size:13px;color:#9badc3}
+  .crumbs button{border:0;background:transparent;color:var(--cyan);font:inherit;padding:0}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .panel h2{font:600 19px var(--display);margin:0 0 4px}
+  .panel>p{color:var(--muted);font-size:13px;margin:0 0 16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:11px;align-items:start}
+  .u{display:flex;align-items:center;gap:11px;padding:13px;border:1px solid var(--line);border-right:3px solid hsl(var(--tint) 62% 55%);
+     border-radius:13px;background:var(--card);text-align:right;width:100%;transition:.15s}
+  .u:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(25,42,70,.1);border-right-color:hsl(var(--tint) 62% 48%)}
+  .u-pic{flex:none;width:40px;height:40px;border-radius:12px;object-fit:cover;display:grid;place-items:center;
+     font:700 16px var(--display);color:hsl(var(--tint) 58% 32%);background:hsl(var(--tint) 68% 92%)}
+  .u-copy{min-width:0}
+  .u-copy strong{display:block;font:600 14px var(--display);overflow-wrap:anywhere}
+  .u-copy span{display:block;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+  .u-tag{margin-right:auto;flex:none;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:800;background:#ffe3e7;color:#a72f42}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px;margin-bottom:20px}
+  .stat{padding:15px;background:var(--card);border:1px solid var(--line);border-radius:13px}
+  .stat b{display:block;font:700 23px var(--display)}
+  .stat span{font-size:11px;color:var(--muted)}
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:right;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:var(--paper);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+  tr:last-child td{border-bottom:0}
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+  .muted{color:var(--muted);font-size:12px}
+  .err{padding:13px;border-radius:11px;background:#ffe3e7;color:#a72f42;font-size:13px;margin-bottom:14px}
+  .load{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="adm">
+  <header class="adm-top">
+    <span class="logo"><img src="/favicon.svg" alt="" width="32" height="32"><span>אנק״ל · ניהול</span></span>
+    <span class="spacer"></span>
+    <span class="adm-who" id="who"></span>
+  </header>
+  <main id="view"><div class="load">טוען…</div></main>
+</div>
+
+<script src="/config.js"></script>
+<script src="/vcard.js"></script>
+<script>
+(() => {
+  "use strict";
+  const CFG = window.ANKAL_CONFIG || {};
+  const view = document.getElementById("view");
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const FIELDS = ["name", "mobile", "home", "work", "fax", "email", "note"];
+  const LABELS = { name: "שם", mobile: "נייד", home: "בית", work: "עבודה", fax: "פקס", email: "מייל", note: "הערה" };
+
+  let token = "";
+  let me = null;
+  const state = { users: [], user: null, lists: [], list: null };
+
+  /* צבע יציב לכל שם — אותה שיטה כמו באפליקציה, כדי ששני המסכים יראו כמו
+     מערכת אחת ולא כמו שני מוצרים. */
+  function hue(name) {
+    let h = 0;
+    for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) % 360;
+    return h;
+  }
+  function initial(name) { return [...String(name).trim().replace(/^["'׳״]+/, "")][0] || "?"; }
+
+  async function api(action, payload = {}) {
+    const res = await fetch(CFG.API_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, idToken: token, payload })
+    });
+    const body = await res.json().catch(() => ({ ok: false, message: "תשובה לא תקינה מהשרת" }));
+    if (!body.ok) throw new Error(body.message || body.error || "הפעולה נכשלה");
+    return body.data;
+  }
+
+  /* ───────── כניסה ───────── */
+
+  function renderGate(message) {
+    view.innerHTML = `<div class="gate">
+      <h1>ניהול מערכת</h1>
+      <p>הכניסה מוגבלת לחשבון המנהל בלבד. גם מי שהגיע לכתובת הזו לא יראה נתונים בלי הרשאה.</p>
+      ${message ? `<div class="err">${esc(message)}</div>` : ""}
+      <div id="gbtn" style="display:flex;justify-content:center"></div>
+    </div>`;
+    const mount = () => {
+      google.accounts.id.initialize({ client_id: CFG.GOOGLE_WEB_CLIENT_ID, callback: (r) => signIn(r.credential) });
+      google.accounts.id.renderButton(document.getElementById("gbtn"), { theme: "filled_black", size: "large", text: "signin_with", locale: "he", width: 280 });
+    };
+    if (window.google?.accounts?.id) mount();
+    else {
+      const s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client";
+      s.async = true; s.onload = mount;
+      document.head.appendChild(s);
+    }
+  }
+
+  async function signIn(idToken) {
+    token = idToken;
+    view.innerHTML = `<div class="load">בודק הרשאה…</div>`;
+    try {
+      const session = await api("session", { termsVersion: CFG.TERMS_VERSION, privacyVersion: CFG.PRIVACY_VERSION });
+      me = session.user;
+      if (!me.isAdmin) { token = ""; renderGate("החשבון הזה אינו חשבון מנהל."); return; }
+      sessionStorage.setItem("yaezra.token", idToken);
+      document.getElementById("who").innerHTML =
+        `${me.picture ? `<img src="${esc(me.picture)}" alt="" referrerpolicy="no-referrer">` : ""}<span>${esc(me.name || me.email)}</span>`;
+      openUsers();
+    } catch (error) {
+      token = "";
+      renderGate(error.message);
+    }
+  }
+
+  /* ───────── רשימת המשתמשים ───────── */
+
+  async function openUsers() {
+    state.user = null; state.list = null;
+    view.innerHTML = `<div class="load">טוען משתמשים…</div>`;
+    try {
+      const data = await api("adminOverview", { tab: "users" });
+      state.users = data.items || [];
+      const s = data.stats || {};
+      view.innerHTML = `
+        <div class="stats">
+          <div class="stat"><b>${s.users ?? state.users.length}</b><span>משתמשים</span></div>
+          <div class="stat"><b>${s.lists ?? "—"}</b><span>רשימות</span></div>
+          <div class="stat"><b>${s.contacts ?? "—"}</b><span>אנשי קשר</span></div>
+          <div class="stat"><b dir="ltr">${esc(s.storage ?? "—")}</b><span>נפח אחסון</span></div>
+        </div>
+        <div class="panel">
+          <h2>משתמשים</h2>
+          <p>לחצו על משתמש כדי לראות את הרשימות שלו.</p>
+          <div class="grid">${state.users.map(userCard).join("") || '<p class="muted">אין עדיין משתמשים.</p>'}</div>
+        </div>`;
+      view.querySelectorAll("[data-sub]").forEach((el) => el.onclick = () => openLists(el.dataset.sub));
+    } catch (error) {
+      view.innerHTML = `<div class="panel"><div class="err">${esc(error.message)}</div>
+        <button class="btn btn-secondary" onclick="location.reload()">נסה שוב</button></div>`;
+    }
+  }
+
+  function userCard(user) {
+    const name = user.name || user.email || "ללא שם";
+    const pic = user.picture
+      ? `<img class="u-pic" src="${esc(user.picture)}" alt="" referrerpolicy="no-referrer">`
+      : `<span class="u-pic">${esc(initial(name))}</span>`;
+    return `<button class="u" style="--tint:${hue(name)}" data-sub="${esc(user.sub)}">
+      ${pic}
+      <span class="u-copy"><strong>${esc(name)}</strong><span dir="ltr">${esc(user.email || "")}</span></span>
+      ${user.blocked ? '<span class="u-tag">חסום</span>' : ""}
+    </button>`;
+  }
+
+  /* ───────── הרשימות של משתמש ───────── */
+
+  async function openLists(sub) {
+    state.user = state.users.find((u) => String(u.sub) === String(sub)) || { sub };
+    state.list = null;
+    view.innerHTML = `<div class="load">טוען רשימות…</div>`;
+    try {
+      const data = await api("adminUserLists", { sub });
+      state.lists = data.lists || [];
+      const name = state.user.name || state.user.email || "משתמש";
+      view.innerHTML = `
+        ${crumbs([{ label: "משתמשים", go: "users" }, { label: name }])}
+        <div class="panel">
+          <h2>${esc(name)}</h2>
+          <p>${esc(state.user.email || "")} · ${state.lists.length} רשימות</p>
+          <div class="grid">${state.lists.map((list) => `
+            <button class="u" style="--tint:${hue(list.name)}" data-list="${esc(list.id)}">
+              <span class="u-pic">${esc(initial(list.name || "רשימה"))}</span>
+              <span class="u-copy"><strong>${esc(list.name || "ללא שם")}</strong>
+                <span>${(list.contacts || []).length} אנשי קשר</span></span>
+            </button>`).join("") || '<p class="muted">למשתמש הזה אין רשימות.</p>'}
+          </div>
+        </div>`;
+      bindCrumbs();
+      view.querySelectorAll("[data-list]").forEach((el) => el.onclick = () => openList(el.dataset.list));
+    } catch (error) {
+      view.innerHTML = `${crumbs([{ label: "משתמשים", go: "users" }])}<div class="panel"><div class="err">${esc(error.message)}</div></div>`;
+      bindCrumbs();
+    }
+  }
+
+  /* ───────── אנשי הקשר ברשימה ───────── */
+
+  function openList(listId) {
+    state.list = state.lists.find((l) => l.id === listId);
+    if (!state.list) return;
+    const contacts = state.list.contacts || [];
+    const userName = state.user.name || state.user.email || "משתמש";
+    const columns = FIELDS.filter((f) => contacts.some((c) => c[f]));
+    view.innerHTML = `
+      ${crumbs([{ label: "משתמשים", go: "users" }, { label: userName, go: "lists" }, { label: state.list.name }])}
+      <div class="panel">
+        <h2>${esc(state.list.name || "ללא שם")}</h2>
+        <p>${contacts.length} אנשי קשר · של ${esc(userName)}</p>
+        <div class="row-actions">
+          <button class="btn btn-primary" data-x="vcf">⤓ ייצוא VCF</button>
+          <button class="btn btn-secondary" data-x="csv">⤓ ייצוא CSV</button>
+          <button class="btn btn-secondary" data-x="xlsx">⤓ ייצוא Excel</button>
+        </div>
+        <div class="tbl-wrap" style="margin-top:15px">
+          <table>
+            <thead><tr>${columns.map((f) => `<th>${esc(LABELS[f])}</th>`).join("")}</tr></thead>
+            <tbody>${contacts.map((c) => `<tr>${columns.map((f) => `<td>${esc(c[f] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
+          </table>
+        </div>
+        ${contacts.length ? "" : '<p class="muted" style="margin-top:12px">הרשימה ריקה.</p>'}
+      </div>`;
+    bindCrumbs();
+    view.querySelectorAll("[data-x]").forEach((el) => el.onclick = () => exportList(el.dataset.x));
+  }
+
+  /* ───────── ניווט ───────── */
+
+  function crumbs(parts) {
+    return `<div class="crumbs">${parts.map((p, i) => (i ? "<span>›</span>" : "") +
+      (p.go ? `<button data-go="${p.go}">${esc(p.label)}</button>` : `<span>${esc(p.label)}</span>`)).join("")}</div>`;
+  }
+  function bindCrumbs() {
+    view.querySelectorAll("[data-go]").forEach((el) => el.onclick = () => {
+      if (el.dataset.go === "users") openUsers();
+      if (el.dataset.go === "lists") openLists(state.user.sub);
+    });
+  }
+
+  /* ───────── ייצוא ───────── */
+
+  function download(content, type, filename) {
+    const blob = content instanceof Blob ? content : new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.download = filename;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+  // תא שמתחיל ב-=,+,-,@ מתפרש באקסל כנוסחה. הגרש מנטרל את זה.
+  function csvCell(value) {
+    let text = String(value ?? "");
+    if (/^[\s\t\r\n]*[=+\-@]/.test(text)) text = "'" + text;
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  function safeName(value) { return String(value || "אנשי קשר").replace(/[\\/:*?"<>|]/g, "-").slice(0, 80); }
+
+  function loadXlsx() {
+    if (window.XLSX) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "/xlsx.full.min.js";
+      s.onload = resolve; s.onerror = () => reject(new Error("רכיב Excel לא נטען"));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function exportList(format) {
+    const contacts = state.list?.contacts || [];
+    if (!contacts.length) return alert("אין אנשי קשר לייצוא");
+    const base = safeName(`${state.user.name || state.user.email} - ${state.list.name}`);
+    try {
+      if (format === "vcf") {
+        download(window.buildVcf(contacts), "text/vcard;charset=utf-8", base + ".vcf");
+      } else if (format === "csv") {
+        const lines = [FIELDS.map((f) => csvCell(LABELS[f])).join(","),
+          ...contacts.map((c) => FIELDS.map((f) => csvCell(c[f])).join(","))];
+        // BOM כדי שאקסל יזהה עברית ב-UTF-8.
+        download("﻿" + lines.join("\r\n"), "text/csv;charset=utf-8", base + ".csv");
+      } else {
+        await loadXlsx();
+        const rows = contacts.map((c) => Object.fromEntries(FIELDS.map((f) => [LABELS[f], c[f] || ""])));
+        const book = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), "אנשי קשר");
+        XLSX.writeFile(book, base + ".xlsx");
+      }
+    } catch (error) {
+      alert("הייצוא נכשל: " + error.message);
+    }
+  }
+
+  /* ───────── התחלה ───────── */
+
+  if (!CFG.GOOGLE_WEB_CLIENT_ID || String(CFG.GOOGLE_WEB_CLIENT_ID).includes("PASTE_")) {
+    view.innerHTML = `<div class="gate"><h1>ניהול מערכת</h1>
+      <div class="err">כניסת Google עדיין לא הוגדרה ב-src/config.js.</div></div>`;
+  } else {
+    const saved = sessionStorage.getItem("yaezra.token");
+    if (saved) signIn(saved); else renderGate("");
+  }
+})();
+</script>
+</body>
+</html>

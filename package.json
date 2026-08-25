@@ -1,14 +1,15 @@
 {
   "name": "ankal-contacts",
-  "productName": "אנק\"ל",
+  "productName": "Ankal",
   "version": "2.0.0",
-  "description": "אנק\"ל - ניהול אנשי קשר והמרת קבצי VCF/אקסל/CSV",
+  "description": "Ankal - contacts manager and VCF/Excel/CSV converter",
   "main": "main.js",
   "author": "You",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
     "test": "node tests/run-tests.js",
+    "smoke": "node tests/smoke.js",
     "build": "npm test && electron-builder --win portable"
   },
   "devDependencies": {
@@ -17,15 +18,22 @@
   },
   "build": {
     "appId": "com.local.ankal",
-    "productName": "אנק\"ל",
+    "productName": "Ankal",
     "files": [
       "main.js",
       "preload.js",
       "app-config.json",
-      "src/**/*"
+      "src/**/*",
+      "!src/YAEZRA/**"
     ],
     "win": {
-      "target": ["portable"]
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "ankal-windows.exe"
     },
     "directories": {
       "output": "dist"

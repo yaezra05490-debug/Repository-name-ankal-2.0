@@ -1,0 +1,12 @@
+Assistant
+https://fonts.google.com/specimen/Assistant
+
+Copyright (c) Ben Nathan
+Licensed under the SIL Open Font License, Version 1.1.
+https://openfontlicense.org
+
+הקבצים assistant-he.woff2 ו-assistant-lat.woff2 הם תת-קבוצות (subsets) של הפונט
+המשתנה, שנוצרו על ידי Google Fonts. קובץ אחד מכסה את כל טווח העוביים 200–800.
+
+רישיון ה-OFL מתיר שימוש מסחרי, שינוי והפצה מחדש, כולל הטמעה בתוכנה ובאתר,
+בתנאי שהפונט עצמו אינו נמכר בנפרד ושהודעת הרישיון הזו נשמרת.

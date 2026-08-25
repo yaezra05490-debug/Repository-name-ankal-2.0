@@ -10,5 +10,9 @@ test("ייצוא וייבוא שבעה שדות", () => { const c={name:"דוד"
 test("אין הבטחות פרטיות ישנות", () => { const h=fs.readFileSync(path.join(__dirname,"../src/index.html"),"utf8"); assert.ok(!/לא נשלח לשום מקום|נשמר רק במכשיר|איננו שומרים/.test(h)); });
 test("SEO מכיל דומיין אמיתי", () => { const s=["index.html","robots.txt","sitemap.xml"].map(x=>fs.readFileSync(path.join(__dirname,"../src",x),"utf8")).join("\n"); assert.ok(!s.includes("YOUR-DOMAIN-HERE")); assert.ok(s.includes("https://aivr-anshak.netlify.app")); });
 test("מקום ברור לכתובת הסקריפט", () => { const p=fs.readFileSync(path.join(__dirname,"../netlify/functions/ankal-api.mjs"),"utf8"); assert.ok(p.includes("PASTE_APPS_SCRIPT_URL_HERE")); });
-test("תחביר JavaScript תקין", () => ["src/app.js","src/vcard.js","main.js","preload.js","netlify/functions/ankal-api.mjs"].forEach(f=>cp.execFileSync(process.execPath,["--check",path.join(__dirname,"..",f)])));
+test("תחביר JavaScript תקין", () => ["src/app.js","src/vcard.js","src/dedupe.js","main.js","preload.js","netlify/functions/ankal-api.mjs"].forEach(f=>cp.execFileSync(process.execPath,["--check",path.join(__dirname,"..",f)])));
+test("כל הסקריפטים נטענים ב-index.html", () => { const h=fs.readFileSync(path.join(__dirname,"../src/index.html"),"utf8"); ["config.js","vcard.js","dedupe.js","app.js"].forEach(s=>assert.ok(h.includes(`src="${s}"`),s)); });
+// מנוע הכפולים נבדק בקובץ נפרד, בתהליך משלו, כדי ששקיפות הפלט תישמר.
+test("מנוע הכפולים", () => cp.execFileSync(process.execPath,[path.join(__dirname,"dedupe.test.js")],{stdio:"pipe"}));
+test("חיווט הממשק", () => cp.execFileSync(process.execPath,[path.join(__dirname,"wiring.test.js")],{stdio:"pipe"}));
 console.log(`\n${passed} בדיקות עברו בהצלחה.`);

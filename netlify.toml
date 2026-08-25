@@ -1,6 +1,9 @@
 [build]
   publish = "src"
   functions = "netlify/functions"
+  # יוצר את src/_redirects עם הכתובת של אתר הניהול, מתוך משתנה הסביבה
+  # ADMIN_PATH. הכתובת אינה נשמרת בקוד כי המאגר ציבורי.
+  command = "node scripts/build-redirects.js"
 
 [functions]
   node_bundler = "esbuild"
@@ -16,4 +19,20 @@
   from = "/app"
   to = "/?app=1"
   status = 200
+
+# ── אתר הניהול ──────────────────────────────────────────────────────────
+# הכתובת שדרכה נכנסים אינה נמצאת כאן בכוונה: המאגר ציבורי, וכל מי שיפתח בו
+# את הקובץ היה רואה אותה. היא מגיעה ממשתנה הסביבה ADMIN_PATH ב-Netlify,
+# ונכתבת ל-src/_redirects בזמן הבנייה (ראו scripts/build-redirects.js).
+#
+# הסודיות היא שכבה נוספת בלבד. ההגנה האמיתית היא בדיקת ADMIN_EMAIL בשרת
+# Apps Script, שרצה על כל בקשה גם למי שהגיע לכתובת הנכונה.
+
+# הנתיב הגלוי חסום, כדי שהכתובת מ-ADMIN_PATH תהיה הדרך היחידה להגיע לדף.
+# force = true גובר על הקובץ הסטטי שיושב שם.
+[[redirects]]
+  from = "/YAEZRA/*"
+  to = "/404.html"
+  status = 404
+  force = true
 

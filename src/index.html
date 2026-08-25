@@ -32,8 +32,8 @@
         <span class="eyebrow">VCF · Excel · CSV</span>
         <h1>אנשי קשר מסודרים.<br><span>בכמה לחיצות.</span></h1>
         <p>מייבאים קובץ, מתקנים שמות ומספרים, בודקים כפולים ומייצאים לפורמט שהטלפון צריך.</p>
-        <div class="hero-actions"><button class="btn btn-primary btn-large" data-action="enter-app">פתחו את אנק״ל</button><button class="btn btn-glass btn-large" data-action="quick-import">ייבוא קובץ</button></div>
-        <div class="hero-points"><span>✓ שבעה שדות קבועים</span><span>✓ תצוגה מקדימה לפני שינוי</span><span>✓ עובד גם כתוכנת Windows</span></div>
+        <div class="hero-actions"><button class="btn btn-primary btn-large" data-action="enter-app">פתחו את אנק״ל</button><button class="btn btn-glass btn-large" data-action="download-app">⤓ הורדת התוכנה למחשב</button></div>
+        <div class="hero-points"><span>✓ שבעה שדות קבועים</span><span>✓ תצוגה מקדימה לפני שינוי</span><span>✓ עובדת גם בלי אינטרנט</span></div>
       </div>
       <div class="hero-visual" aria-hidden="true"><div class="glow"></div><div class="mock-window"><div class="mock-top"><i></i><i></i><i></i><b>אנשי קשר</b></div><div class="mock-grid"><article><strong>דוד כהן</strong><span>050-1234567</span><em>נשמר</em></article><article><strong>משה לוי</strong><span>02-5551234</span><em>נשמר</em></article><article class="mock-active"><strong>שרה ישראלי</strong><span>052-7654321</span><em>בודק כפולים…</em></article><article><strong>חיים אברהם</strong><span>03-5558877</span><em>נשמר</em></article></div></div></div>
     </main>
@@ -46,6 +46,7 @@
       <nav class="side-nav" aria-label="תפריט ראשי">
         <button class="nav-item active" data-page="lists"><span class="nav-icon">▦</span><span class="nav-label">הרשימות שלי</span></button>
         <button class="nav-item" data-page="contacts"><span class="nav-icon">◫</span><span class="nav-label">אנשי קשר</span><span class="nav-count" id="nav-contact-count">0</span></button>
+        <button class="nav-item nav-featured" data-page="smart"><span class="nav-icon">✧</span><span class="nav-label">ניהול חכם</span><span class="nav-badge">מומלץ</span></button>
         <button class="nav-item" data-page="clean"><span class="nav-icon">✦</span><span class="nav-label">ניקוי והחלפה</span></button>
         <button class="nav-item" data-page="duplicates"><span class="nav-icon">◇</span><span class="nav-label">בדיקת כפולים</span><span class="nav-count warning" id="nav-dupe-count">0</span></button>
         <button class="nav-item" data-page="transfer"><span class="nav-icon">⇅</span><span class="nav-label">ייבוא וייצוא</span></button>
@@ -67,21 +68,30 @@
 
         <section class="app-page" data-page-panel="contacts">
           <div class="list-title-row"><div><span class="mini-label">רשימה פתוחה</span><h2 id="active-list-name">ללא רשימה</h2></div><button class="icon-btn" data-action="rename-list" aria-label="שינוי שם הרשימה">✎</button><div class="spacer"></div><button class="btn btn-secondary" data-action="add-contact">＋ איש קשר</button></div>
-          <div class="contact-toolbar"><label class="search-field grow"><span>⌕</span><input id="contact-search" type="search" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn btn-quiet" data-action="select-all">בחר הכול</button><button class="btn btn-quiet" data-action="clear-selection">בטל בחירה</button><button class="btn btn-danger" id="delete-selected-btn" data-action="delete-selected" disabled>מחיקת נבחרים <span id="selected-count">0</span></button><button class="icon-btn" data-action="toggle-density" aria-label="שינוי צפיפות הכרטיסים">▦</button></div>
+          <div class="contact-toolbar"><label class="search-field grow"><span>⌕</span><input id="contact-search" type="search" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn btn-quiet" data-action="select-all">בחר הכול</button><button class="btn btn-quiet" data-action="clear-selection">בטל בחירה</button><button class="btn btn-secondary" id="move-selected-btn" data-action="move-selected" disabled>⇄ העברה לרשימה</button><button class="btn btn-danger" id="delete-selected-btn" data-action="delete-selected" disabled>מחיקת נבחרים <span id="selected-count">0</span></button><button class="icon-btn" data-action="toggle-density" aria-label="שינוי צפיפות הכרטיסים">▦</button></div>
           <div id="contact-grid" class="contact-grid"></div><div id="contacts-empty" class="empty-box hidden"><div class="empty-icon">◫</div><h3>הרשימה עדיין ריקה</h3><p>הוסיפו איש קשר או ייבאו קובץ.</p><button class="btn btn-primary" data-action="quick-import">ייבוא קובץ</button></div><div id="load-more-wrap" class="load-more hidden"><button class="btn btn-secondary" data-action="load-more">הצגת 100 נוספים</button></div>
         </section>
 
         <section class="app-page" data-page-panel="clean">
           <div class="page-intro"><div><h2>ניקוי והחלפה</h2><p>כל שינוי מוצג לבדיקה לפני הביצוע.</p></div></div>
+          <div class="suggest-bar"><span class="suggest-icon">✧</span><div><strong>לא בטוחים מה צריך לתקן?</strong><p>ה<b>ניהול החכם</b> סורק את הרשימה לבד, מראה כמה אנשי קשר יש בכל בעיה, ונותן לתקן הכל בלחיצה או לעבור אחד אחד.</p></div><button class="btn btn-primary" data-page="smart">לניהול חכם ←</button></div>
           <div class="tool-grid">
             <article class="tool-card"><div class="tool-icon">＋</div><h3>הוספת טקסט לשמות</h3><p>הוסיפו תווית קבועה בתחילת השם או בסופו.</p><div class="form-grid"><label>מיקום<select id="add-position"><option value="prefix">בתחילת השם</option><option value="suffix">בסוף השם</option></select></label><label>טקסט<input id="add-text" type="text" placeholder="לדוגמה: עבודה - "></label></div><button class="btn btn-secondary" data-action="preview-add-text">הצגת שינויים</button></article>
-            <article class="tool-card"><div class="tool-icon">↔</div><h3>חיפוש והחלפה</h3><p>החליפו טקסט בשדה אחד או בכל השדות.</p><div class="form-grid"><label>שדה<select id="replace-scope"><option value="name">שם</option><option value="phone">טלפונים</option><option value="email">מייל</option><option value="all">כל השדות</option></select></label><label>חיפוש<input id="replace-find" type="text"></label><label>החלפה<input id="replace-with" type="text"></label></div><label class="check-line"><input id="replace-regex" type="checkbox"> חיפוש מתקדם (Regex)</label><button class="btn btn-secondary" data-action="preview-replace">בדיקת התאמות</button></article>
+            <article class="tool-card"><div class="tool-icon">↔</div><h3>חיפוש והחלפה</h3><p>החליפו טקסט בשדה אחד או בכל השדות.</p><div class="form-grid"><label>שדה<select id="replace-scope"><option value="name">שם</option><option value="phone">טלפונים</option><option value="email">מייל</option><option value="all">כל השדות</option></select></label><label>חיפוש<input id="replace-find" type="text"></label><label>החלפה<input id="replace-with" type="text"></label></div><label class="check-line"><input id="replace-regex" type="checkbox"> חיפוש מתקדם (Regex)</label><div class="preset-row"><small style="color:var(--muted)">פעולות מהירות:</small><button class="btn btn-quiet" style="font-size:12px" data-preset="strip_suffix_num">הסר _1 _2…</button><button class="btn btn-quiet" style="font-size:12px" data-preset="underscore_space">_ לרווח</button><button class="btn btn-quiet" style="font-size:12px" data-preset="trim_spaces">כפל רווחים</button><button class="btn btn-quiet" style="font-size:12px" data-preset="strip_digits_name">הסר ספרות מהשם</button><button class="btn btn-quiet" style="font-size:12px" data-preset="clean_phones">נקה טלפונים</button></div><button class="btn btn-secondary" data-action="preview-replace">בדיקת התאמות</button></article>
           </div><div id="clean-preview" class="result-panel hidden"></div>
         </section>
 
         <section class="app-page" data-page-panel="duplicates">
-          <div class="page-intro"><div><h2>בדיקת כפולים</h2><p>ממזגים אוטומטית רק התאמות שאין בהן סתירה.</p></div><button class="btn btn-primary" data-action="scan-duplicates">⌕ התחלת בדיקה</button></div>
-          <div id="scan-progress" class="scan-box hidden"><div class="scanner"><span></span></div><strong>בודק אנשי קשר כפולים…</strong><p id="scan-message">מסדר מספרים, מיילים ושמות</p></div><div id="dupe-summary" class="stats-row"></div><div id="dupe-list" class="dupe-list"></div><div id="dupe-empty" class="empty-box"><div class="empty-icon">◇</div><h3>מוכנים לבדיקה</h3><p>לחצו על “התחלת בדיקה” כדי לחפש אנשי קשר דומים.</p></div>
+          <div class="page-intro"><div><h2>בדיקת כפולים</h2><p>עוברים סוג-סוג. לכל סוג אפשר לאשר הכל בבת אחת, או לעבור אחד אחד.</p></div><button class="btn btn-primary" data-action="scan-duplicates">⌕ התחלת בדיקה</button></div>
+          <div class="suggest-bar"><span class="suggest-icon">✧</span><div><strong>הדף הזה בודק רק כפולים.</strong><p>ה<b>ניהול החכם</b> עושה בדיקה מלאה — קודם מנקה סימונים חריגים מהשמות, ורק אחר כך מחפש כפולים. כך נמצאות גם כפילויות שהסימונים הסתירו.</p></div><button class="btn btn-primary" data-page="smart">לבדיקה מלאה ←</button></div>
+          <div id="dupe-progress" class="scan-box hidden"><div class="scanner"><span></span></div><strong>בודק אנשי קשר כפולים…</strong><p>מסדר מספרים, מיילים ושמות</p></div>
+          <div id="dupe-review"><div class="empty-box"><div class="empty-icon">◇</div><h3>מוכנים לבדיקה</h3><p>לחצו על “התחלת בדיקה” כדי לחפש אנשי קשר דומים.</p></div></div>
+        </section>
+
+        <section class="app-page" data-page-panel="smart">
+          <div class="page-intro"><div><h2>ניהול חכם</h2><p>בדיקה מלאה: קודם הסימונים בשמות, אחר כך הכפולים. בכל שלב אפשר לטפל בהכל בבת אחת או לעבור אחד אחד.</p></div><button class="btn btn-primary" data-action="scan-symbols">⌕ בדיקה מלאה</button></div>
+          <div id="smart-progress" class="scan-box hidden"><div class="scanner"><span></span></div><strong>סורק את הרשימה…</strong><p>שמות, סימונים, מספרים ומיילים</p></div>
+          <div id="smart-review"><div class="empty-box"><div class="empty-icon">✧</div><h3>מוכנים לבדיקה</h3><p>לחצו על “בדיקה מלאה” כדי לאתר סימונים חריגים בשמות ואנשי קשר כפולים.</p></div></div>
         </section>
 
         <section class="app-page" data-page-panel="transfer">
@@ -101,6 +111,6 @@
   <div id="modal-backdrop" class="modal-backdrop" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><header><div><span id="modal-kicker"></span><h2 id="modal-title"></h2></div></header><div id="modal-body" class="modal-body"></div><footer id="modal-footer"></footer></section></div>
   <div id="account-menu" class="popover hidden"><button data-action="google-login">כניסה באמצעות Google</button><button data-action="logout" class="signed-in-only hidden">יציאה מהחשבון</button><button data-action="account-settings">הגדרות</button></div>
   <input id="file-picker" class="hidden" type="file" accept=".xlsx,.xls,.csv,.vcf"><div id="toast-zone" class="toast-zone" aria-live="polite"></div>
-  <script src="config.js"></script><script src="vcard.js"></script><script src="app.js"></script>
+  <script src="config.js"></script><script src="vcard.js"></script><script src="dedupe.js"></script><script src="app.js"></script>
 </body>
 </html>

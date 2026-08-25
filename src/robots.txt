@@ -1,4 +1,8 @@
 User-agent: *
 Allow: /
 
+# אתר הניהול אינו מיועד לאינדוקס. החסימה כאן היא בקשה מנומסת לזחלנים בלבד —
+# ההגנה האמיתית היא הכתובת הסודית ב-netlify.toml ובדיקת ADMIN_EMAIL בשרת.
+Disallow: /YAEZRA/
+
 Sitemap: https://aivr-anshak.netlify.app/sitemap.xml

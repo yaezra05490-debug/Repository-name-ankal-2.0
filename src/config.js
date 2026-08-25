@@ -16,6 +16,15 @@ window.ANKAL_CONFIG = Object.freeze({
   // ב-Netlify הפנייה עוברת דרך פונקציה מאובטחת אל Apps Script.
   API_PATH: "/.netlify/functions/ankal-api",
 
+  /* כתובת קובץ ההתקנה של תוכנת Windows, לכפתור "הורדת התוכנה למחשב" בדף הנחיתה.
+
+     הקובץ מתארח ב-GitHub Releases ולא באתר, כי הוא שוקל כ-92MB — נפח כזה בתוך
+     המאגר היה מנפח כל שכפול ומאט כל דיפלוי. הכתובת "releases/latest" יציבה:
+     היא מפנה תמיד למהדורה האחרונה, ולכן אין צורך לעדכן כאן דבר בשחרור גרסה.
+
+     להעלאת גרסה חדשה: npm run build ואז scripts/release.ps1 */
+  DOWNLOAD_URL: "https://github.com/yaezra05490-debug/Repository-name-ankal-2.0/releases/latest/download/ankal-windows.exe",
+
   // גרסת מבנה הנתונים. אין לשנות ידנית.
   DATA_VERSION: 2,
   APP_VERSION: "2.0.0",

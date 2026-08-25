@@ -1,0 +1,9 @@
+# Node נייד — מגיע עם התיקייה, לא נכנס ל-git (95MB)
+/node/
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# נוצר בזמן הבנייה מ-ADMIN_PATH. מכיל את כתובת אתר הניהול ואסור לו להיכנס ל-git.
+/src/_redirects
