@@ -248,14 +248,17 @@
     const all = filteredContacts(); const existing = new Set(currentList()?.contacts.map(c => c.id) || []);
     state.selected = new Set([...state.selected].filter(x => existing.has(x)));
     grid.classList.toggle("compact", state.dense);
-    /* מציירים רק עמוד אחד. הדפדוף היה מחווט אבל הרינדור התעלם ממנו וצייר את
-       כל הרשימה, כך שרשימה של אלפי אנשי קשר בנתה אלפי כרטיסים בכל שינוי. */
-    const shown = all.slice(0, state.visibleLimit);
+    /* מציירים את כל הרשימה בבת אחת. מה שהיה איטי זו לא הכמות אלא בנייה מחדש
+       בכל לחיצה, וזה כבר לא קורה. כרטיסים מחוץ למסך מקבלים content-visibility
+       ב-CSS, ולכן הדפדפן מדלג על הפריסה והציור שלהם. */
+    const shown = all;
     grid.innerHTML = shown.map(c => {
       const phones = PHONE_FIELDS.filter(f => c[f]).map(f => `<div class="contact-line ${f}"><b>${LABELS[f]}</b><span dir="ltr">${esc(c[f])}</span></div>`).join("");
       const name = c.name || "ללא שם";
+      // לחיצה על הכרטיס מסמנת; העיפרון פותח עריכה. שתי הפעולות הנפוצות,
+      // כל אחת עם היעד הברור שלה.
       return `<article class="contact-card ${state.selected.has(c.id) ? "selected" : ""}" style="--tint:${avatarHue(name)}">`
-        + `<button class="contact-open" data-open-contact="${c.id}" aria-label="עריכת ${esc(name)}"></button>`
+        + `<button class="contact-open" data-pick-contact="${c.id}" aria-label="בחירת ${esc(name)}"></button>`
         + `<input class="contact-select" data-select-contact="${c.id}" type="checkbox" ${state.selected.has(c.id) ? "checked" : ""} aria-label="בחירת ${esc(name)}">`
         + `<div class="contact-head"><span class="contact-avatar">${esc(initialOf(name))}</span><h3>${esc(name)}</h3></div>`
         + phones
@@ -264,12 +267,7 @@
         + `<div class="card-actions"><button class="icon-btn" data-open-contact="${c.id}" aria-label="עריכה">✎</button></div></article>`;
     }).join("");
     document.getElementById("contacts-empty").classList.toggle("hidden", !!shown.length || !currentList());
-    const remaining = all.length - shown.length;
-    document.getElementById("load-more-wrap").classList.toggle("hidden", remaining <= 0);
-    if (remaining > 0) {
-      const step = Math.min(remaining, CFG.CONTACTS_PAGE_SIZE || 100);
-      document.querySelector('[data-action="load-more"]').textContent = `הצגת ${step} נוספים · נשארו ${remaining}`;
-    }
+    document.getElementById("load-more-wrap").classList.add("hidden");
     updateSelectionUi();
   }
 
@@ -940,16 +938,25 @@
     return `"${text.replace(/"/g, '""')}"`;
   }
   function rowsForExport(list = currentList()) { return (list?.contacts || []).map(c => Object.fromEntries(FIELDS.map(f => [LABELS[f], c[f] || ""]))); }
-  async function exportList(format) {
-    const list = currentList(); if (!list?.contacts.length) return toast("אין אנשי קשר לייצוא", "warning");
-    const base = safeFilename(list.name);
+  function exportList(format) {
+    const list = currentList();
+    return exportContacts(list?.contacts || [], list?.name, format);
+  }
+
+  /* ייצוא של אוסף אנשי קשר כלשהו — הרשימה הפתוחה, או רשימה של משתמש אחר
+     מתוך מסך הניהול. שני המקומות חולקים את אותו קוד ואת אותם פורמטים. */
+  async function exportContacts(contacts, listName, format) {
+    if (!contacts.length) return toast("אין אנשי קשר לייצוא", "warning");
+    const base = safeFilename(listName);
     try {
-      if (format === "vcf") downloadBlob(buildVcf(list.contacts), "text/vcard;charset=utf-8", base + ".vcf");
+      if (format === "vcf") downloadBlob(buildVcf(contacts), "text/vcard;charset=utf-8", base + ".vcf");
       else if (format === "csv") {
-        const lines = [FIELDS.map(f => csvSafe(LABELS[f])).join(","), ...list.contacts.map(c => FIELDS.map(f => csvSafe(c[f])).join(","))];
+        const lines = [FIELDS.map(f => csvSafe(LABELS[f])).join(","), ...contacts.map(c => FIELDS.map(f => csvSafe(c[f])).join(","))];
         downloadBlob("\ufeff" + lines.join("\r\n"), "text/csv;charset=utf-8", base + ".csv");
       } else {
-        await ensureXlsx(); const sheet = XLSX.utils.json_to_sheet(rowsForExport(list), { header: FIELDS.map(f => LABELS[f]) });
+        await ensureXlsx();
+        const rows = contacts.map(c => Object.fromEntries(FIELDS.map(f => [LABELS[f], c[f] || ""])));
+        const sheet = XLSX.utils.json_to_sheet(rows, { header: FIELDS.map(f => LABELS[f]) });
         const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, "אנשי קשר"); XLSX.writeFile(book, base + ".xlsx", { compression: true });
       }
       toast("הקובץ מוכן להורדה"); logAction("export_" + format);
@@ -1103,7 +1110,56 @@
     content.innerHTML = `<div class="modal-list">${items.map(item => `<div class="modal-list-row"><span><b>${esc(item.name || item.email || item.action || item.area || item.listName || "פריט")}</b><small>${esc(item.email || item.at || item.updatedAt || "")}</small></span><span>${item.blocked !== undefined ? `<button class="btn btn-quiet" data-admin-lists="${esc(item.sub)}">רשימות</button> <button class="btn btn-quiet" data-admin-block="${esc(item.sub)}">${item.blocked ? "ביטול חסימה" : "חסימה"}</button>` : esc(item.message || item.status || "")}</span></div>`).join("")}</div>`;
   }
   async function adminBlock(sub) { try { await api("adminToggleBlock", { sub }); toast("מצב המשתמש עודכן"); loadAdmin(); } catch (error) { toast(error.message, "error"); } }
-  async function adminUserLists(sub) { try { const data = await api("adminUserLists", { sub }); await modal({ kicker: "תוכן משתמש", title: "רשימות ואנשי קשר", html: (data.lists || []).map(list => `<h3>${esc(list.name)}</h3><p>${list.contacts.length} אנשי קשר</p><div class="modal-list">${list.contacts.map(c => `<div class="modal-list-row"><b>${esc(c.name || "ללא שם")}</b><span dir="ltr">${esc(c.mobile || c.home || c.work || c.email || "")}</span></div>`).join("")}</div>`).join("") || "<p>אין רשימות.</p>", buttons: [{ id: "close", label: "סגירה", primary: true }] }); } catch (error) { toast(error.message, "error"); } }
+  /* קודם בוחרים רשימה, ורק אז רואים את אנשי הקשר שבה. הגרסה הקודמת שפכה את
+     כל הרשימות ואת כל אנשי הקשר למסך אחד — אצל משתמש עם 1500 אנשי קשר זה
+     היה אלפי שורות שאיש לא ביקש לראות. */
+  async function adminUserLists(sub) {
+    let lists;
+    try { lists = (await api("adminUserLists", { sub })).lists || []; }
+    catch (error) { return toast(error.message, "error"); }
+    if (!lists.length) return modal({ kicker: "תוכן משתמש", title: "אין רשימות", html: "<p>למשתמש הזה אין רשימות שמורות.</p>", buttons: [{ id: "close", label: "סגירה", primary: true }] });
+    adminPickList(lists);
+  }
+
+  async function adminPickList(lists) {
+    const rows = lists.map((list, index) =>
+      `<button class="admin-pick" data-admin-list="${index}">
+         <span class="admin-pick-name">${esc(list.name || "ללא שם")}</span>
+         <span class="admin-pick-count">${list.contacts.length} אנשי קשר</span>
+         <span class="admin-pick-go">←</span>
+       </button>`).join("");
+    const closing = modal({
+      kicker: "תוכן משתמש", title: "בחרו רשימה",
+      html: `<div class="admin-picks">${rows}</div>`,
+      buttons: [{ id: "close", label: "סגירה" }]
+    });
+    // מאזין נקשר אחרי הציור ולפני ההמתנה, אחרת החלון כבר סגור.
+    document.querySelectorAll("[data-admin-list]").forEach(el => {
+      el.onclick = () => { closeModal("open"); adminShowList(lists[Number(el.dataset.adminList)], lists); };
+    });
+    await closing;
+  }
+
+  function adminShowList(list, lists) {
+    const contacts = list.contacts || [];
+    const columns = FIELDS.filter(field => contacts.some(c => c[field]));
+    const table = `<div class="admin-table-wrap"><table class="data-table">
+        <thead><tr>${columns.map(f => `<th>${esc(LABELS[f])}</th>`).join("")}</tr></thead>
+        <tbody>${contacts.map(c => `<tr>${columns.map(f => `<td>${esc(c[f] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table></div>`;
+    const closing = modal({
+      kicker: `${contacts.length} אנשי קשר`, title: list.name || "ללא שם",
+      html: contacts.length ? table : "<p>הרשימה ריקה.</p>",
+      buttons: [
+        { id: "vcf", label: "⤓ VCF" }, { id: "xlsx", label: "⤓ Excel" }, { id: "csv", label: "⤓ CSV" },
+        { id: "back", label: "← לרשימות" }, { id: "close", label: "סגירה", primary: true }
+      ]
+    });
+    closing.then(choice => {
+      if (choice === "back") return adminPickList(lists);
+      if (["vcf", "xlsx", "csv"].includes(choice)) exportContacts(contacts, list.name, choice);
+    });
+  }
 
   async function googleLogin() {
     if (String(CFG.GOOGLE_WEB_CLIENT_ID || "").includes("PASTE_")) return toast("המנהל עדיין לא הגדיר כניסה באמצעות Google", "warning");
@@ -1188,6 +1244,8 @@
       const menu = event.target.closest("[data-list-menu]")?.dataset.listMenu; if (menu) return listMenu(menu);
       const contact = event.target.closest("[data-open-contact]")?.dataset.openContact; if (contact) return openDrawer(contact);
       const select = event.target.closest("[data-select-contact]"); if (select) return setSelected(select.dataset.selectContact, select.checked, select);
+      const pick = event.target.closest("[data-pick-contact]")?.dataset.pickContact;
+      if (pick) { const box = document.querySelector(`[data-select-contact="${CSS.escape(pick)}"]`); const on = !state.selected.has(pick); if (box) box.checked = on; return setSelected(pick, on, box); }
       const format = event.target.closest("[data-export]")?.dataset.export; if (format) return exportList(format);
       const help = event.target.closest("[data-help]")?.dataset.help; if (help) return showHelp(help);
       const tab = event.target.closest("[data-admin-tab]")?.dataset.adminTab; if (tab) { state.adminTab = tab; document.querySelectorAll("[data-admin-tab]").forEach(x => x.classList.toggle("active", x.dataset.adminTab === tab)); return loadAdmin(); }

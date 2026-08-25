@@ -349,3 +349,33 @@ html[data-theme="light"] .side-collapse{color:#5b6a83}
 .text-btn{border:0;background:transparent;color:hsl(var(--page) 62% 45%);font:inherit;font-weight:700;
   font-size:13px;padding:4px 6px;border-radius:8px}
 .text-btn:hover{background:hsl(var(--page) 62% 52% / .12)}
+/* -- Contact editor: centred dialog instead of a side drawer --
+   Editing is the focus of the moment, so it belongs in the middle of the
+   screen rather than pinned to an edge where the eye has to travel. */
+.drawer{position:fixed;top:50%;left:50%;right:auto;transform:translate(-50%,-46%) scale(.97);
+  width:min(560px,calc(100vw - 32px));height:auto;max-height:88vh;border-radius:22px;
+  opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:80}
+.drawer.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+.drawer-body{grid-template-columns:1fr 1fr;max-height:60vh}
+.drawer-body label:first-of-type,.drawer-body label:last-of-type{grid-column:1 / -1}
+.drawer-shade{background:rgba(2,8,23,.62)}
+
+/* -- Contact grid: skip layout and paint for cards that are off screen.
+   This is what lets the whole list render at once and still scroll smoothly. */
+.contact-card{content-visibility:auto;contain-intrinsic-size:auto 118px}
+
+@media(max-width:760px){
+  .drawer{width:calc(100vw - 20px);max-height:92vh}
+  .drawer-body{grid-template-columns:1fr}
+}
+/* -- Admin: pick a list before showing its contacts -- */
+.admin-picks{display:grid;gap:9px}
+.admin-pick{display:flex;align-items:center;gap:12px;width:100%;text-align:right;padding:14px 16px;
+  border:1px solid var(--line);border-right:3px solid var(--cyan-2);border-radius:13px;background:var(--card);
+  color:var(--text);font:inherit;cursor:pointer;transition:.15s}
+.admin-pick:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(25,42,70,.1);border-right-color:var(--violet)}
+.admin-pick-name{font:600 15px var(--display)}
+.admin-pick-count{font-size:12px;color:var(--muted)}
+.admin-pick-go{margin-right:auto;color:var(--cyan-2);font-size:17px}
+.admin-table-wrap{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:12px}
+.admin-table-wrap .data-table th{position:sticky;top:0;background:var(--paper);z-index:1}
