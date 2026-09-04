@@ -60,6 +60,26 @@ html[data-theme="light"]{--bg:#eaf0f7;--shell:#f5f7fb;--side:#fff;--panel:#fff;-
 .qphone select{padding:7px 10px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:12px;min-width:110px}
 .qpreview{margin-top:14px;padding:13px;border-radius:12px;background:var(--paper);font-size:12px;line-height:1.9}
 .qlabel{display:block;font-size:10px;color:var(--muted);margin-bottom:3px}
+.qdetails{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--muted);margin:10px 0 14px}
+.qdetails b{color:var(--text);font-weight:600;margin-left:4px}
+.qdetails>span{display:inline-flex;align-items:center;gap:5px}
+.qtable-actions{width:38px;text-align:center !important}
+.qdel:hover{color:#a72f42}
+/* ✕ למחיקת פרט בודד — שם, מספר או מייל — מכרטיס אחד בתוך מסכי הבדיקה. */
+.qcell{display:inline-flex;align-items:center;gap:6px}
+.qclear{border:0;background:transparent;color:var(--muted);font-size:10px;line-height:1;padding:3px 5px;border-radius:6px;cursor:pointer;opacity:.55}
+.qcell:hover .qclear,.qdetails span:hover .qclear{opacity:1}
+.qclear:hover{color:#fff;background:var(--danger);opacity:1}
+.qedit:hover{color:#fff;background:var(--cyan-2);opacity:1}
+.qname .qedit{font-size:13px;margin-right:7px;vertical-align:2px}
+/* סיכום הבדיקה: הכפתורים למעלה ליד הכותרת, והקוביות ברשת אחידה. */
+.qsummary-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.qsummary-head>div:first-child{flex:1;min-width:260px}
+.qsummary-head .qlead{margin:0}
+.qsummary-head .qactions{margin:4px 0 0;flex:none}
+.qnote-top{margin:12px 0 20px}
+.qcard{min-height:128px;align-content:start}
+.qgroup:last-child{margin-bottom:0}
 .qrename{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:16px 0 4px}
 .qname{font:600 19px var(--display)}
 .qname-new{color:var(--cyan-2)}

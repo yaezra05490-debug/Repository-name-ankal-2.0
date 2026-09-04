@@ -221,6 +221,23 @@ server.listen(PORT, async () => {
   await step("שאלות שהוצגו", `[...document.querySelectorAll("#smart-review .qq-title")].map(e=>e.textContent).join(" | ") || "אין שאלות (מיזוג בטוח)"`);
   await step("שיוך מספרים שהוצע", `[...document.querySelectorAll("#smart-review .qphone")].map(r=>r.querySelector(".qphone-num").textContent+"→"+r.querySelector("select").selectedOptions[0].textContent).join(" | ") || "—"`);
 
+  // עריכת פרט עם ✎ ואישור עם Enter — בודק את שני המנגנונים יחד.
+  await step("יש כפתורי עריכה ומחיקה בטבלה", `document.querySelectorAll("#smart-review .qtable .qedit").length + " עריכה, " + document.querySelectorAll("#smart-review .qtable [data-review-clear-contact]").length + " מחיקה"`);
+  await step("פתיחת עריכת מספר", `(() => {
+    const b = document.querySelector('#smart-review .qtable [data-review-edit-contact][data-edit-field="mobile"]');
+    if (!b) return "אין כפתור"; b.click(); return "clicked";
+  })()`);
+  await new Promise((r) => setTimeout(r, 300));
+  await step("חלון העריכה נפתח עם הערך", `document.getElementById("modal-title").textContent + ": " + document.getElementById("edit-field-input").value`);
+  await step("שינוי הערך ואישור עם Enter", `(() => {
+    document.getElementById("edit-field-input").value = "03-1119999";
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    return "enter";
+  })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  const editOk = await evaluate(`document.querySelector("#smart-review .qtable")?.textContent.includes("03-1119999") && !document.getElementById("modal-backdrop").classList.contains("open")`);
+  steps.push({ label: "Enter שמר את העריכה והחלון נסגר", ok: editOk === true, value: String(editOk) });
+
   // המונה בסרגל משקף את הזיכרון מיד; ה-localStorage נכתב בהשהיה.
   const before = Number(await evaluate(`document.getElementById("nav-contact-count").textContent`));
   await step("מיזוג הקבוצה", `document.querySelector('[data-action="review-apply"]').click(), 'clicked'`);

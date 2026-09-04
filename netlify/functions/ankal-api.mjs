@@ -1,9 +1,9 @@
 /* ==================================================================
-   המקום היחיד שבו מדביקים את כתובת Google Apps Script
+   כתובת Google Apps Script — המקום היחיד שבו היא מוגדרת.
 
-   אפשרות מומלצת: ב-Netlify הגדירו משתנה סביבה בשם APPS_SCRIPT_URL.
-   אפשרות פשוטה: החליפו את PASTE_APPS_SCRIPT_URL_HERE בכתובת שקיבלתם.
-   אין להדביק כאן קוד, סיסמה או Client Secret.
+   מומלץ: ב-Netlify הגדירו משתנה סביבה בשם APPS_SCRIPT_URL, והוא גובר.
+   הכתובת שאחרי ה-|| היא גיבוי לפריסה הנוכחית; בהחלפת שרת מעדכנים את
+   משתנה הסביבה (או את הכתובת כאן). אין להדביק כאן סיסמה או Client Secret.
    ================================================================== */
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbxPc9F_6BUF593fe4qUtCTI-o2qXue_lt6MV6BtV5ujob3ouLa6uYJUYcBK2bN-wL1ahQ/exec";
 

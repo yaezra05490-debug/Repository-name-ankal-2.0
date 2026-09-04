@@ -17,9 +17,9 @@
   };
 
   const state = {
-    lists: [], activeListId: null, page: "lists", selected: new Set(), visibleLimit: CFG.CONTACTS_PAGE_SIZE || 100,
+    lists: [], activeListId: null, page: "lists", selected: new Set(),
     dense: false, search: "", listSearch: "", user: null, token: "", syncQueue: [], syncRunning: false,
-    modal: null, drawerTimer: null, saveTimer: null, importHash: null, adminTab: "users",
+    modal: null, drawerTimer: null, saveTimer: null, retryTimer: null, importHash: null, adminTab: "users",
     review: null // מצב אשף בקרת האיכות (סימונים + כפולים), null כשלא רצה בדיקה
   };
 
@@ -50,12 +50,23 @@
 
   function persistLocal() {
     const payload = { dataVersion: CFG.DATA_VERSION || 2, activeListId: state.activeListId, dense: state.dense, lists: state.lists };
+    const json = JSON.stringify(payload);
+    if (window.electronAPI?.saveWorkspace) window.electronAPI.saveWorkspace(json).catch(() => {});
     try {
       localStorage.setItem(STORAGE_KEY + ".previous", localStorage.getItem(STORAGE_KEY) || "");
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(STORAGE_KEY, json);
       localStorage.setItem(QUEUE_KEY, JSON.stringify(state.syncQueue));
-      if (window.electronAPI?.saveWorkspace) window.electronAPI.saveWorkspace(JSON.stringify(payload)).catch(() => {});
-    } catch (error) { toast("לא הצלחנו לשמור במחשב. מומלץ לייצא את הרשימה כעת.", "error"); reportError("local_save", error); }
+    } catch (error) {
+      // המכסה אזלה. עותק הביטחון תופס מחצית מהמקום — מוותרים עליו ומנסים שוב,
+      // כי שמירת העבודה עצמה חשובה ממנו.
+      try {
+        localStorage.removeItem(STORAGE_KEY + ".previous");
+        localStorage.setItem(STORAGE_KEY, json);
+        localStorage.setItem(QUEUE_KEY, JSON.stringify(state.syncQueue));
+        return;
+      } catch (_) {}
+      toast("לא הצלחנו לשמור במחשב. מומלץ לייצא את הרשימה כעת.", "error"); reportError("local_save", error);
+    }
   }
 
   function markChanged(list = currentList(), reason = "save") {
@@ -91,6 +102,7 @@
   }
   async function processQueue() {
     if (state.syncRunning || !state.user || !state.syncQueue.length || !navigator.onLine) return;
+    clearTimeout(state.retryTimer);
     state.syncRunning = true; setSyncState("pending", "מסנכרן");
     while (state.syncQueue.length && state.user && navigator.onLine) {
       const job = state.syncQueue[0];
@@ -100,7 +112,15 @@
         state.syncQueue.shift(); persistLocal();
       } catch (error) {
         if (error.code === "VERSION_CONFLICT") { state.syncQueue.shift(); await handleSyncConflict(job.payload.list, error.details?.data); persistLocal(); }
-        else { job.attempts++; job.lastError = error.message; persistLocal(); setSyncState("error", "לא הצלחנו לסנכרן — ננסה שוב"); break; }
+        else {
+          job.attempts++; job.lastError = error.message; persistLocal();
+          setSyncState("error", "לא הצלחנו לסנכרן — ננסה שוב");
+          // ניסיון חוזר אמיתי, לא רק הבטחה: המתנה גדלה עם הכישלונות (5ש׳ עד 5דק׳),
+          // כי בלעדיו התור נשאר תקוע עד שהמשתמש במקרה עושה שינוי נוסף.
+          const delay = Math.min(5000 * 2 ** Math.min(job.attempts - 1, 6), 300000);
+          state.retryTimer = setTimeout(processQueue, delay);
+          break;
+        }
       }
     }
     state.syncRunning = false;
@@ -109,7 +129,9 @@
   async function handleSyncConflict(localList, remote) {
     const choice = await modal({ kicker: "התנגשות שמירה", title: "הרשימה שונתה במכשיר אחר", html: `<p>לא דרסנו אף שינוי. אפשר לשמור את העבודה המקומית כעותק חדש או להשתמש בגרסה מהענן.</p>`, buttons: [{ id: "copy", label: "שמור עותק חדש", primary: true }, { id: "remote", label: "פתח את גרסת הענן" }, { id: "later", label: "החלט אחר כך" }], dismissible: false });
     if (choice === "copy") { const copy = { ...clone(localList), id: id("list"), name: localList.name + " — עותק", version: 1, remoteVersion: 0, updatedAt: now() }; state.lists.push(copy); enqueue("saveList", { list: cloudList(copy), expectedVersion: 0 }, `save:${copy.id}`); }
-    if (choice === "remote" && remote?.list) { const index = state.lists.findIndex(x => x.id === localList.id); if (index >= 0) state.lists[index] = { ...remote.list, undo: [], redo: [], dirty: false }; }
+    // remoteVersion חייב להישמר, אחרת השמירה הבאה תשלח expectedVersion:0
+    // והשרת יזרוק VERSION_CONFLICT שוב — לולאה בלי מוצא.
+    if (choice === "remote" && remote?.list) { const index = state.lists.findIndex(x => x.id === localList.id); if (index >= 0) state.lists[index] = { ...remote.list, undo: [], redo: [], dirty: false, remoteVersion: remote.list.version || 0 }; }
     renderAll();
   }
 
@@ -258,16 +280,15 @@
       // לחיצה על הכרטיס מסמנת; העיפרון פותח עריכה. שתי הפעולות הנפוצות,
       // כל אחת עם היעד הברור שלה.
       return `<article class="contact-card ${state.selected.has(c.id) ? "selected" : ""}" style="--tint:${avatarHue(name)}">`
-        + `<button class="contact-open" data-pick-contact="${c.id}" aria-label="בחירת ${esc(name)}"></button>`
-        + `<input class="contact-select" data-select-contact="${c.id}" type="checkbox" ${state.selected.has(c.id) ? "checked" : ""} aria-label="בחירת ${esc(name)}">`
+        + `<button class="contact-open" data-pick-contact="${esc(c.id)}" aria-label="בחירת ${esc(name)}"></button>`
+        + `<input class="contact-select" data-select-contact="${esc(c.id)}" type="checkbox" ${state.selected.has(c.id) ? "checked" : ""} aria-label="בחירת ${esc(name)}">`
         + `<div class="contact-head"><span class="contact-avatar">${esc(initialOf(name))}</span><h3>${esc(name)}</h3></div>`
         + phones
         + (c.email ? `<div class="contact-line email-line"><b>מייל</b><span dir="ltr">${esc(c.email)}</span></div>` : "")
         + (c.note ? `<div class="contact-line note-line"><b>הערה</b><span class="contact-note">${esc(c.note)}</span></div>` : "")
-        + `<div class="card-actions"><button class="icon-btn" data-open-contact="${c.id}" aria-label="עריכה">✎</button></div></article>`;
+        + `<div class="card-actions"><button class="icon-btn" data-open-contact="${esc(c.id)}" aria-label="עריכה">✎</button></div></article>`;
     }).join("");
     document.getElementById("contacts-empty").classList.toggle("hidden", !!shown.length || !currentList());
-    document.getElementById("load-more-wrap").classList.add("hidden");
     updateSelectionUi();
   }
 
@@ -288,10 +309,21 @@
   }
 
   function createList() { modal({ kicker: "רשימה חדשה", title: "איך לקרוא לרשימה?", html: `<label class="modal-field">שם הרשימה<input id="modal-list-name" value="רשימה חדשה" maxlength="80"></label>`, buttons: [{ id: "create", label: "יצירת רשימה", primary: true }, { id: "cancel", label: "ביטול" }] }).then(choice => { if (choice !== "create") return; const name = document.getElementById("modal-list-name")?.value.trim() || "רשימה חדשה"; const list = blankList(name); state.lists.push(list); state.activeListId = list.id; persistLocal(); markChanged(list, "create_list"); setPage("contacts"); logAction("create_list", list.id); }); }
-  function openList(listId) { if (!state.lists.some(x => x.id === listId)) return; state.activeListId = listId; state.search = ""; state.selected.clear(); state.visibleLimit = CFG.CONTACTS_PAGE_SIZE || 100; document.getElementById("contact-search").value = ""; persistLocal(); setPage("contacts"); }
+  function openList(listId) { if (!state.lists.some(x => x.id === listId)) return; state.activeListId = listId; state.search = ""; state.selected.clear(); resetReview(); document.getElementById("contact-search").value = ""; persistLocal(); setPage("contacts"); }
+  /* תוצאות בדיקה שייכות לרשימה שנסרקה. מעבר רשימה מוחק אותן ומחזיר את שני
+     דפי הבדיקה למסך הפתיחה — אחרת שלבים שחושבו לרשימה א׳ היו מוצגים מול ב׳. */
+  function resetReview() {
+    if (!state.review) return;
+    state.review = null;
+    invalidateDupeCache();
+    for (const scope of Object.values(REVIEW_SCOPES)) {
+      const panel = document.getElementById(scope.panel);
+      if (panel) panel.innerHTML = `<div class="empty-box"><div class="empty-icon">${scope.symbols ? "✧" : "◇"}</div><h3>מוכנים לבדיקה</h3><p>לחצו על הכפתור למעלה כדי לסרוק את הרשימה הפתוחה.</p></div>`;
+    }
+  }
   function renameList() { const list = currentList(); if (!list) return; modal({ kicker: "שם הרשימה", title: "שינוי שם", html: `<label class="modal-field">שם חדש<input id="modal-list-name" value="${esc(list.name)}" maxlength="80"></label>`, buttons: [{ id: "save", label: "שמירה", primary: true }, { id: "cancel", label: "ביטול" }] }).then(choice => { if (choice !== "save") return; const name = document.getElementById("modal-list-name")?.value.trim(); if (!name) return toast("יש להכניס שם לרשימה", "warning"); list.name = name; markChanged(list, "rename_list"); renderAll(); }); }
   function listMenu(listId) { const list = state.lists.find(x => x.id === listId); if (!list) return; modal({ kicker: "אפשרויות רשימה", title: list.name, html: `<p>${list.contacts.length} אנשי קשר · עודכן ${fmtDate(list.updatedAt)}</p>`, buttons: [{ id: "open", label: "פתיחה", primary: true }, { id: "rename", label: "שינוי שם" }, { id: "delete", label: "העברה לסל" }, { id: "cancel", label: "סגירה" }] }).then(choice => { if (choice === "open") openList(listId); if (choice === "rename") { state.activeListId = listId; renameList(); } if (choice === "delete") deleteList(list); }); }
-  function deleteList(list) { list.deletedAt = now(); markChanged(list, "delete_list"); if (state.user) enqueue("deleteList", { listId: list.id }, null); if (state.activeListId === list.id) state.activeListId = state.lists.find(x => !x.deletedAt)?.id || null; persistLocal(); renderAll(); toast("הרשימה הועברה לסל המחזור"); logAction("delete_list", list.id); }
+  function deleteList(list) { list.deletedAt = now(); markChanged(list, "delete_list"); if (state.user) enqueue("deleteList", { listId: list.id }, null); if (state.activeListId === list.id) { state.activeListId = state.lists.find(x => !x.deletedAt)?.id || null; resetReview(); } persistLocal(); renderAll(); toast("הרשימה הועברה לסל המחזור"); logAction("delete_list", list.id); }
 
   function openDrawer(contactId = null) {
     const contact = contactId ? currentList()?.contacts.find(c => c.id === contactId) : blankContact();
@@ -315,7 +347,17 @@
   }
   function deleteDrawer() { const cid = document.getElementById("contact-id").value; const contact = currentList()?.contacts.find(c => c.id === cid); if (!contact) return; confirmBox("מחיקת איש קשר", `למחוק את ${contact.name}?`, "מחיקה").then(ok => { if (!ok) return; const list = currentList(); list.contacts = list.contacts.filter(c => c.id !== cid); recordChange(list, "מחיקת איש קשר", [clone(contact)], [null]); markChanged(list, "delete_contact"); closeDrawer(); renderAll(); }); }
 
-  function recordChange(list, label, before, after) { list.undo = list.undo || []; list.redo = []; list.undo.push({ id: id("change"), label, before, after, at: now() }); if (list.undo.length > 50) list.undo.shift(); }
+  function recordChange(list, label, before, after) {
+    list.undo = list.undo || []; list.redo = [];
+    list.undo.push({ id: id("change"), label, before, after, at: now() });
+    if (list.undo.length > 50) list.undo.shift();
+    /* תקרה גם על נפח ולא רק על מספר פעולות: ייבוא של 5000 אנשי קשר הוא רשומת
+       undo אחת שמחזיקה 5000 עותקים, וכמה כאלה מפוצצים את מכסת localStorage.
+       הפעולה האחרונה נשארת תמיד, כדי ש"בטל" יעבוד גם אחרי ייבוא ענק. */
+    const weight = a => (a.before?.length || 0) + (a.after?.length || 0);
+    let total = list.undo.reduce((n, a) => n + weight(a), 0);
+    while (list.undo.length > 1 && total > 6000) total -= weight(list.undo.shift());
+  }
   function applyChange(list, action, side) { const other = side === "before" ? "after" : "before"; const ids = new Set([...(action[side] || []), ...(action[other] || [])].filter(Boolean).map(c => c.id)); list.contacts = list.contacts.filter(c => !ids.has(c.id)); for (const item of action[side] || []) if (item) list.contacts.push(clone(item)); }
   function undo() { const list = currentList(); const action = list?.undo?.pop(); if (!action) return; applyChange(list, action, "before"); list.redo.push(action); state.selected.clear(); markChanged(list, "undo"); toast(`בוטל: ${action.label}`); renderAll(); }
   function redo() { const list = currentList(); const action = list?.redo?.pop(); if (!action) return; applyChange(list, action, "after"); list.undo.push(action); state.selected.clear(); markChanged(list, "redo"); toast(`בוצע שוב: ${action.label}`); renderAll(); }
@@ -386,7 +428,7 @@
         for (const entry of ENGINE.buildQueue(currentDupeGroups())) {
           steps.push({ kind: "dupe", key: entry.key, title: entry.title, desc: entry.desc, tone: entry.tone, icon: entry.icon, bulk: entry.bulk });
         }
-        state.review = { scope: scopeKey, steps, stepIndex: 0, itemIndex: 0, screen: "overview", stats: { symbols: 0, merged: 0, skipped: 0 } };
+        state.review = { scope: scopeKey, steps, stepIndex: 0, itemIndex: 0, screen: "overview", stats: { symbols: 0, merged: 0, skipped: 0, deleted: 0 } };
         renderReview();
         const total = steps.reduce((sum, step) => sum + stepItems(step).length, 0);
         toast(total ? `הבדיקה הסתיימה: ${total} פריטים לטיפול` : "הבדיקה הסתיימה — לא נמצא מה לתקן");
@@ -452,17 +494,24 @@
     const dupes = live.filter(({ step }) => step.kind === "dupe");
     const autoCount = dupes.filter(({ step }) => step.key === "exact" || step.key === "safe")
       .reduce((sum, entry) => sum + entry.count, 0);
+    /* הכפתורים למעלה, ליד הכותרת: אחרי סריקה ארוכה זו הפעולה הבאה, ואסור
+       שתסתתר מתחת לכל הקוביות. הקוביות עצמן — רשת אחידה, מספר וכותרת באותו
+       מקום בכל קובייה. */
     return `
       <div class="qsummary">
-        <h2>הבדיקה הושלמה</h2>
-        <p class="qlead">נמצאו <strong>${total}</strong> פריטים ב-${live.length} סוגים. נעבור עליהם לפי הסדר — קודם מה שבטוח, ואחר כך רק מה שדורש החלטה שלכם.</p>
+        <div class="qsummary-head">
+          <div>
+            <h2>הבדיקה הושלמה</h2>
+            <p class="qlead">נמצאו <strong>${total}</strong> פריטים ב-${live.length} סוגים. נעבור עליהם לפי הסדר — קודם מה שבטוח, ואחר כך רק מה שדורש החלטה שלכם.</p>
+          </div>
+          <div class="qactions qactions-top">
+            <button class="btn btn-primary btn-large" data-action="review-start">בוא נתחיל ←</button>
+            ${autoCount ? `<button class="btn btn-secondary" data-action="review-auto">מזג את ${autoCount} הכפולים הוודאיים</button>` : ""}
+          </div>
+        </div>
+        <p class="qnote qnote-top">אפשר גם ללחוץ על קובייה כדי לקפוץ ישר לסוג הזה.</p>
         ${section("סימונים בשמות", "תווים שנדבקו לשם ואינם חלק ממנו. כדאי לנקות אותם קודם — הם מסתירים כפילויות.", symbols)}
         ${section("אנשי קשר כפולים", "כרטיסים שנראים כמו אותו אדם, מסודרים מהוודאי אל המסופק.", dupes)}
-        <div class="qactions">
-          <button class="btn btn-primary" data-action="review-start">בוא נתחיל ←</button>
-          ${autoCount ? `<button class="btn btn-secondary" data-action="review-auto">מזג את ${autoCount} הכפולים הוודאיים</button>` : ""}
-        </div>
-        <p class="qnote">אפשר גם ללחוץ על כרטיס כדי לקפוץ ישר לסוג הזה.</p>
       </div>`;
   }
 
@@ -517,6 +566,28 @@
       : dupeItemHtml(step, items[review.itemIndex], position);
   }
 
+  /* פרטי הכרטיס במסך אחד-אחד: המספרים והמייל, כדי שרואים על מי מחליטים בלי
+     לפתוח את הכרטיס. מספר שכתוב בשני שדות מוצג פעם אחת, וה-✕ שלו מוחק אותו
+     מכל השדות שבהם הוא יושב — אחרת הוא היה "חוזר" מהשדה השני. */
+  function contactDetailsHtml(contact) {
+    const byKey = new Map();
+    for (const field of PHONE_FIELDS) {
+      const value = String(contact[field] || "").trim();
+      if (!value) continue;
+      const key = normalizePhone(value) || value;
+      const entry = byKey.get(key);
+      if (entry) entry.fields.push(field);
+      else byKey.set(key, { value, fields: [field] });
+    }
+    const clear = (fields, label) => `<button class="qclear" data-review-clear-contact="${esc(contact.id)}" data-clear-field="${fields.join(",")}" title="מחיקת ה${esc(label)} מהכרטיס" aria-label="מחיקת ה${esc(label)}">✕</button>`;
+    const edit = (fields, label) => `<button class="qclear qedit" data-review-edit-contact="${esc(contact.id)}" data-edit-field="${fields.join(",")}" title="עריכת ה${esc(label)}" aria-label="עריכת ה${esc(label)}">✎</button>`;
+    const parts = [...byKey.values()].map((entry) =>
+      `<span><b>${LABELS[entry.fields[0]]}:</b> <span dir="ltr">${esc(entry.value)}</span>${edit(entry.fields, LABELS[entry.fields[0]])}${clear(entry.fields, LABELS[entry.fields[0]])}</span>`);
+    if (contact.email) parts.push(`<span><b>מייל:</b> <span dir="ltr">${esc(contact.email)}</span>${edit(["email"], "מייל")}${clear(["email"], "מייל")}</span>`);
+    if (!parts.length) return `<p class="qdetails"><span>אין מספר או מייל בכרטיס הזה.</span></p>`;
+    return `<p class="qdetails">${parts.join("")}</p>`;
+  }
+
   function symbolItemHtml(step, contact, position) {
     const after = ENGINE.applyPatternRemove(contact.name, step.key);
     return `
@@ -524,13 +595,15 @@
       <div class="qitem">
         <p class="qitem-pos">${position} · ${esc(step.title)}</p>
         <div class="qrename">
-          <div><span class="qlabel">השם היום</span><div class="qname">${esc(contact.name)}</div></div>
+          <div><span class="qlabel">השם היום</span><div class="qname">${esc(contact.name)}<button class="qclear qedit" data-review-edit-contact="${esc(contact.id)}" data-edit-field="name" title="עריכת השם ידנית" aria-label="עריכת השם">✎</button></div></div>
           <div class="qarrow">←</div>
           <div><span class="qlabel">אחרי ההסרה</span><div class="qname qname-new">${esc(after)}</div></div>
         </div>
+        ${contactDetailsHtml(contact)}
         <div class="qactions">
           <button class="btn btn-primary" data-action="review-apply">הסר ✓</button>
           <button class="btn btn-quiet" data-action="review-skip-item">השאר כמו שהוא ←</button>
+          <button class="btn btn-danger" data-review-delete-contact="${esc(contact.id)}">מחק את איש הקשר</button>
         </div>
       </div>`;
   }
@@ -538,12 +611,20 @@
   function dupeItemHtml(step, group, position) {
     const proposal = proposeMerge(group.contacts);
     const columns = ENGINE.FIELDS.filter((field) => group.contacts.some((contact) => contact[field]));
+    /* פח בכל שורה: במקום למזג אפשר למחוק את אחד הכרטיסים. ו-✕ ליד כל ערך:
+       מחיקת פרט בודד — שם, מספר, מייל או הערה — מהכרטיס שלו בלבד. אחרי כל
+       מחיקה הקבוצות מחושבות מחדש והמסך מציג את המצב החדש. */
+    const cell = (contact, field) => {
+      const value = String(contact[field] || "").trim();
+      if (!value) return "—";
+      return `<span class="qcell">${esc(value)}<button class="qclear qedit" data-review-edit-contact="${esc(contact.id)}" data-edit-field="${field}" title="עריכת ה${esc(LABELS[field])}" aria-label="עריכת ה${esc(LABELS[field])}">✎</button><button class="qclear" data-review-clear-contact="${esc(contact.id)}" data-clear-field="${field}" title="מחיקת ה${esc(LABELS[field])} מהכרטיס הזה" aria-label="מחיקת ה${esc(LABELS[field])}">✕</button></span>`;
+    };
     const table = `
       <div class="qtable-wrap">
         <table class="qtable">
-          <thead><tr>${columns.map((field) => `<th>${esc(LABELS[field])}</th>`).join("")}</tr></thead>
+          <thead><tr>${columns.map((field) => `<th>${esc(LABELS[field])}</th>`).join("")}<th class="qtable-actions">מחיקה</th></tr></thead>
           <tbody>${group.contacts.map((contact) =>
-            `<tr>${columns.map((field) => `<td>${esc(contact[field] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
+            `<tr>${columns.map((field) => `<td>${cell(contact, field)}</td>`).join("")}<td class="qtable-actions"><button class="icon-btn qdel" data-review-delete-contact="${esc(contact.id)}" aria-label="מחיקת הכרטיס של ${esc(contact.name || "ללא שם")}" title="מחיקת הכרטיס הזה">🗑</button></td></tr>`).join("")}</tbody>
         </table>
       </div>`;
 
@@ -630,6 +711,7 @@
     const parts = [];
     if (stats.symbols) parts.push(`נוקו <strong>${stats.symbols}</strong> שמות`);
     if (stats.merged) parts.push(`מוזגו <strong>${stats.merged}</strong> קבוצות`);
+    if (stats.deleted) parts.push(`נמחקו <strong>${stats.deleted}</strong> כרטיסים`);
     if (stats.skipped) parts.push(`דילגתם על <strong>${stats.skipped}</strong>`);
     return `
       <div class="qdone">
@@ -757,8 +839,14 @@
       if (name && name !== item.name) {
         applySymbolChanges([{ before: clone(item), after: Object.assign(clone(item), { name }) }], `הסרת ${step.title}`);
         review.stats.symbols++;
+      } else if (!name) {
+        // כל השם הוא הסימון — הסרה הייתה משאירה כרטיס בלי שם. מדלגים במפורש,
+        // אחרת הלחיצה לא משנה כלום והמסך נראה תקוע.
+        toast("לא נשאר שם אחרי ההסרה — הכרטיס נשאר כמו שהוא", "warning");
+        review.stats.skipped++;
+        review.itemIndex++;
       }
-      // ההסרה מוציאה את הכרטיס מרשימת השלב, ולכן המצביע נשאר במקומו.
+      // הסרה מוצלחת מוציאה את הכרטיס מרשימת השלב, ולכן המצביע נשאר במקומו.
       if (review.itemIndex >= stepItems(step).length) return reviewNextStep();
       return renderReview();
     }
@@ -769,6 +857,94 @@
     review.stats.merged++;
     toast(`מוזג: ${merged.name || "ללא שם"}`);
     if (review.itemIndex >= stepItems(step).length) return reviewNextStep();
+    renderReview();
+  }
+
+  /* מחיקת פרט בודד — שם, מספר, מייל או הערה — מכרטיס אחד, בלי למחוק את הכרטיס.
+     fieldSpec יכול לכלול כמה שדות מופרדים בפסיק (אותו מספר בשני שדות). */
+  async function reviewClearField(contactId, fieldSpec) {
+    const fields = String(fieldSpec || "").split(",").filter((f) => FIELDS.includes(f));
+    const list = currentList(); if (!list || !fields.length) return;
+    const contact = list.contacts.find((c) => c.id === contactId); if (!contact) return;
+    const value = contact[fields[0]]; if (!value) return;
+    const label = LABELS[fields[0]];
+
+    /* כשהפרט הנמחק הוא הראיה שמקשרת את הכרטיס לקבוצה (למשל מחיקת השם כששני
+       הכרטיסים חולקים רק שם), הקבוצה תתפרק והכרטיס יישאר ברשימה כעצמאי.
+       זה לגיטימי — אבל צריך לדעת את זה לפני, לא לגלות אחרי. הבדיקה: מריצים
+       את המנוע על כרטיסי הקבוצה בלבד, עם הפרט כבר מחוק, ורואים אם הכרטיס
+       עדיין מקושר למישהו. */
+    let warning = "";
+    const review = state.review;
+    const step = review && review.steps[review.stepIndex];
+    if (step && step.kind === "dupe" && review.screen === "item") {
+      const group = stepItems(step)[review.itemIndex];
+      if (group && group.contacts.some((c) => c.id === contactId)) {
+        const simulated = group.contacts.map((c) => {
+          if (c.id !== contactId) return c;
+          const copy = clone(c);
+          for (const field of fields) copy[field] = "";
+          return copy;
+        });
+        const stillLinked = ENGINE.findDuplicateGroups(simulated, { separatedPairs: list.separatedPairs })
+          .some((g) => g.contacts.some((c) => c.id === contactId));
+        if (!stillLinked) warning = ` שימו לב: ה${label} הוא מה שמקשר את הכרטיס לקבוצה — אחרי המחיקה הוא כבר לא ייחשב כפול, ויישאר ברשימה ככרטיס נפרד.`;
+      }
+    }
+
+    const ok = await confirmBox(`מחיקת ${label}`, `למחוק את ה${label} "${value}" מהכרטיס של ${contact.name || "ללא שם"}? שאר הפרטים נשארים.${warning}`, "מחיקה");
+    if (!ok) return;
+    const before = clone(contact);
+    for (const field of fields) contact[field] = "";
+    recordChange(list, `מחיקת ${label}`, [before], [clone(contact)]);
+    markChanged(list, "clear_field");
+    toast(`נמחק ${label}: ${value}`);
+    renderReview();
+  }
+
+  /* עריכת פרט בודד מתוך מסכי הבדיקה: חלון קטן עם השדה, שמירה, והמסך מציג את
+     המצב החדש. כשאותו מספר יושב בשני שדות, הערך החדש נכנס לשדה הראשון והשני
+     מתרוקן — עותק כפול של אותו מספר הוא בעצמו לכלוך. */
+  async function reviewEditField(contactId, fieldSpec) {
+    const fields = String(fieldSpec || "").split(",").filter((f) => FIELDS.includes(f));
+    const list = currentList(); if (!list || !fields.length) return;
+    const contact = list.contacts.find((c) => c.id === contactId); if (!contact) return;
+    const field = fields[0];
+    const label = LABELS[field];
+    const value = contact[field] || "";
+    const dir = field === "name" || field === "note" ? "rtl" : "ltr";
+    const choice = await modal({
+      kicker: `הכרטיס של ${contact.name || "ללא שם"}`, title: `עריכת ה${label}`,
+      html: `<label class="modal-field">${esc(label)}<input id="edit-field-input" value="${esc(value)}" dir="${dir}" maxlength="${PHONE_FIELDS.includes(field) ? 100 : 500}"></label>`,
+      buttons: [{ id: "save", label: "שמירה", primary: true }, { id: "cancel", label: "ביטול" }]
+    });
+    if (choice !== "save") return;
+    const next = document.getElementById("edit-field-input").value.trim();
+    if (next === value) return;
+    if (field === "name" && !next) return toast("שם לא יכול להישאר ריק — למחיקת השם יש ✕", "warning");
+    const before = clone(contact);
+    contact[field] = next;
+    for (let i = 1; i < fields.length; i++) contact[fields[i]] = "";
+    recordChange(list, `עריכת ${label}`, [before], [clone(contact)]);
+    markChanged(list, "edit_field");
+    toast(`עודכן ${label}: ${next || "(רוקן)"}`);
+    renderReview();
+  }
+
+  /* מחיקת כרטיס אחד מתוך מסכי הבדיקה, בלי לצאת מהאשף. הקבוצות מחושבות מחדש
+     מהרשימה החיה, ולכן מיד אחרי המחיקה המסך מציג מה נשאר: קבוצה שנותר בה
+     כרטיס אחד נעלמת, והאשף עובר לפריט הבא. ניתן לביטול עם ↶ כמו כל שינוי. */
+  async function reviewDeleteContact(contactId) {
+    const list = currentList(); if (!list) return;
+    const contact = list.contacts.find((c) => c.id === contactId); if (!contact) return;
+    const phone = PHONE_FIELDS.map((f) => contact[f]).find(Boolean);
+    const ok = await confirmBox("מחיקת איש קשר", `למחוק את ${contact.name || "הכרטיס"}${phone ? ` (${phone})` : ""}?`, "מחיקה");
+    if (!ok) return;
+    list.contacts = list.contacts.filter((c) => c.id !== contactId);
+    recordChange(list, "מחיקת איש קשר", [clone(contact)], [null]);
+    markChanged(list, "delete_contact");
+    if (state.review) state.review.stats.deleted = (state.review.stats.deleted || 0) + 1;
+    toast(`נמחק: ${contact.name || "ללא שם"}`);
     renderReview();
   }
 
@@ -921,7 +1097,7 @@
     let list = currentList(); if (!list) { list = blankList(filename.replace(/\.[^.]+$/, "")); state.lists.push(list); state.activeListId = list.id; }
     let mode = "add";
     if (list.contacts.length) { mode = await modal({ kicker: "ייבוא לרשימה קיימת", title: "איך להכניס את אנשי הקשר?", html: `<p>ברשימה כבר קיימים ${list.contacts.length} אנשי קשר.</p>`, buttons: [{ id: "add", label: "הוסף לרשימה הקיימת", primary: true }, { id: "replace", label: "החלף את כל הרשימה" }, { id: "cancel", label: "ביטול הייבוא וסגירת החלון" }], dismissible: false }); if (mode === "cancel") return; }
-    const before = mode === "replace" ? list.contacts.map(clone) : contacts.map(() => null); const after = contacts.map(clone); if (mode === "replace") list.contacts = contacts; else list.contacts.push(...contacts); list.importHashes = list.importHashes || []; if (state.importHash) list.importHashes.push(state.importHash); recordChange(list, `ייבוא ${contacts.length} אנשי קשר`, before, after); markChanged(list, "import"); state.activeListId = list.id; setPage("contacts"); toast(`יובאו ${contacts.length} אנשי קשר`); logAction("import", list.id);
+    const before = mode === "replace" ? list.contacts.map(clone) : contacts.map(() => null); const after = contacts.map(clone); if (mode === "replace") list.contacts = contacts; else list.contacts.push(...contacts); list.importHashes = list.importHashes || []; if (state.importHash) list.importHashes.push(state.importHash); recordChange(list, `ייבוא ${contacts.length} אנשי קשר`, before, after); markChanged(list, "import"); if (state.activeListId !== list.id) { state.activeListId = list.id; resetReview(); } setPage("contacts"); toast(`יובאו ${contacts.length} אנשי קשר`); logAction("import", list.id);
     const unnamed = contacts.filter(c => c.name === "ללא שם").length; const report = document.getElementById("import-report"); report.innerHTML = `<h3>דוח ייבוא</h3><p>יובאו ${contacts.length} אנשי קשר.${unnamed ? ` נמצאו ${unnamed} אנשי קשר ללא שם.` : ""}</p>${warnings.length ? `<ul>${warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}`; report.classList.remove("hidden");
   }
 
@@ -993,7 +1169,7 @@
       const finish = result => { if (done) return; done = true; worker.terminate(); resolve(result); };
       worker.onmessage = event => finish(event.data); worker.onerror = () => finish({ ok: false, message: "לא הצלחנו לבדוק את הביטוי" });
       worker.postMessage({ pattern, sample: currentList().contacts.slice(0, 500).map(c => FIELDS.map(f => c[f]).join(" ")).join("\n") });
-      setTimeout(() => finish({ ok: false, message: "הביטוי מורכב מדי ולכן הבדיקה נעצרה" }), 1200);
+      setTimeout(() => finish({ ok: false, message: "הביטוי מורכב מדי ולכן הבדיקה נעצרה" }), CFG.REGEX_TIMEOUT_MS || 1200);
     });
   }
   function showCleanPreview(changes, label) {
@@ -1176,9 +1352,21 @@
       state.user = session.user;
       localStorage.setItem("ankal.sessionHint", JSON.stringify({ email: state.user.email, name: state.user.name, picture: state.user.picture || "" }));
       localStorage.setItem(ENTRY_CHOICE_KEY, "google");
-      updateAccount(); await pullLists(); processQueue();
+      updateAccount(); await pullLists();
+      // רשימות שנערכו בלי חיבור (או שהתור שלהן רוקן ביציאה) נשלחות עכשיו.
+      for (const list of state.lists) if (list.dirty) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`);
+      processQueue();
       toast(`ברוכים הבאים${state.user.name ? ", " + state.user.name : ""}`);
-    } catch (error) { if (error?.message !== "LOGIN_CANCELLED") { toast("הכניסה עם Google לא הושלמה", "error"); reportError("google_login", error); } }
+    } catch (error) {
+      if (error?.message === "LOGIN_CANCELLED") return;
+      // בתוכנה, כניסה בלי app-config.json מלא נכשלת תמיד — אומרים את זה במפורש
+      // במקום "לא הושלמה" סתמי שנראה כמו תקלה חולפת.
+      if (/NOT_CONFIGURED/.test(String(error?.message || ""))) {
+        toast("הכניסה בתוכנה עדיין לא הוגדרה: חסר Client Secret ב-app-config.json (מדריך ההקמה, שלב 1)", "error");
+        return;
+      }
+      toast("הכניסה עם Google לא הושלמה", "error"); reportError("google_login", error);
+    }
   }
   function browserGoogleLogin() {
     return new Promise((resolve, reject) => {
@@ -1200,7 +1388,16 @@
     try { const data = await api("listLists"); const remoteLists = data.lists || []; const localById = new Map(state.lists.map(x => [x.id, x])); for (const remote of remoteLists) { const local = localById.get(remote.id); if (!local || !local.dirty) { const item = { ...remote, undo: [], redo: [], dirty: false, remoteVersion: remote.version || 0 }; if (local) state.lists[state.lists.indexOf(local)] = item; else state.lists.push(item); } } persistLocal(); renderAll(); }
     catch (error) { setSyncState("error", "עובד מהמחשב — החיבור יחודש"); }
   }
-  function logout() { state.user = null; state.token = ""; if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect(); updateAccount(); setSyncState("", "נשמר במחשב"); toast("יצאתם מהחשבון"); }
+  function logout() {
+    state.user = null; state.token = "";
+    /* התור מתרוקן ביציאה: במחשב משותף, מי שייכנס אחר כך עם חשבון אחר אסור
+       שיעלה אליו עבודות של הקודם. שום עבודה לא אובדת — רשימה שלא סונכרנה
+       נשארת dirty, והכניסה הבאה שולחת אותה מחדש. */
+    clearTimeout(state.retryTimer); state.syncQueue = [];
+    localStorage.removeItem("ankal.sessionHint");
+    persistLocal();
+    if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect(); updateAccount(); setSyncState("", "נשמר במחשב"); toast("יצאתם מהחשבון");
+  }
   function updateAccount() {
     const hint = state.user || {};
     document.getElementById("account-name").textContent = hint.name || "מצב מקומי";
@@ -1215,7 +1412,7 @@
   async function accountSettings() {
     const html = `<p>${state.user ? `מחוברים כעת כ־${esc(state.user.email)}.` : "העבודה נשמרת כרגע במחשב זה."}</p><p>גרסת תנאים: ${esc(CFG.TERMS_VERSION || "—")} · גרסת פרטיות: ${esc(CFG.PRIVACY_VERSION || "—")}</p>`;
     const buttons = state.user ? [{ id: "delete", label: "מחיקת החשבון" }, { id: "close", label: "סגירה", primary: true }] : [{ id: "login", label: "כניסה עם Google", primary: true }, { id: "close", label: "סגירה" }]; const choice = await modal({ kicker: "חשבון", title: "הגדרות", html, buttons });
-    if (choice === "login") googleLogin(); if (choice === "delete") { const ok = await confirmBox("מחיקת חשבון", "החשבון והרשימות יועברו לסל למשך 30 יום. להמשיך?", "העברה לסל"); if (ok) { await api("deleteAccount"); logout(); toast("החשבון הועבר לסל המחזור"); } }
+    if (choice === "login") googleLogin(); if (choice === "delete") { const ok = await confirmBox("מחיקת חשבון", "החשבון והרשימות יועברו לסל ויימחקו סופית לאחר 30 יום. כניסה מחדש עם החשבון בתוך התקופה מבטלת את המחיקה. להמשיך?", "העברה לסל"); if (ok) { await api("deleteAccount"); logout(); toast("החשבון הועבר לסל המחזור"); } }
   }
 
   function modal({ kicker = "", title = "", html = "", buttons = [], dismissible = true, beforeResolve = null }) {
@@ -1227,7 +1424,7 @@
   async function confirmBox(title, text, accept = "אישור") { return (await modal({ title, html: `<p>${esc(text)}</p>`, buttons: [{ id: "yes", label: accept, primary: true }, { id: "no", label: "ביטול" }] })) === "yes"; }
 
   function handleAction(action) {
-    const actions = { "toggle-theme": toggleTheme, "enter-app": () => enterApp(), "show-landing": showLanding, "open-help": () => { enterApp("help"); }, "quick-import": quickImport, "toggle-sidebar": () => { const side = document.getElementById("sidebar"); side.classList.toggle(innerWidth <= 760 ? "mobile-open" : "collapsed"); }, "new-list": createList, "refresh-lists": () => state.user ? pullLists() : renderLists(), "rename-list": renameList, "add-contact": () => openDrawer(), "close-drawer": closeDrawer, "save-contact": () => saveDrawer(true), "drawer-delete": deleteDrawer, undo, redo, "select-all": selectAll, "clear-selection": clearSelection, "delete-selected": deleteSelected, "move-selected": moveSelected, "toggle-density": () => { state.dense = !state.dense; persistLocal(); renderContacts(); }, "load-more": () => { state.visibleLimit += CFG.CONTACTS_PAGE_SIZE || 100; renderContacts(); }, "preview-add-text": previewAddText, "preview-replace": previewReplace, "download-template": downloadTemplate, "google-login": googleLogin, logout, "account-settings": accountSettings, "account-menu": () => document.getElementById("account-menu").classList.toggle("hidden"), "admin-refresh": loadAdmin, "download-app": downloadApp,
+    const actions = { "toggle-theme": toggleTheme, "enter-app": () => enterApp(), "show-landing": showLanding, "open-help": () => { enterApp("help"); }, "quick-import": quickImport, "toggle-sidebar": () => { const side = document.getElementById("sidebar"); side.classList.toggle(innerWidth <= 760 ? "mobile-open" : "collapsed"); }, "new-list": createList, "refresh-lists": () => state.user ? pullLists() : renderLists(), "rename-list": renameList, "add-contact": () => openDrawer(), "close-drawer": closeDrawer, "save-contact": () => saveDrawer(true), "drawer-delete": deleteDrawer, undo, redo, "select-all": selectAll, "clear-selection": clearSelection, "delete-selected": deleteSelected, "move-selected": moveSelected, "toggle-density": () => { state.dense = !state.dense; persistLocal(); renderContacts(); }, "preview-add-text": previewAddText, "preview-replace": previewReplace, "download-template": downloadTemplate, "google-login": googleLogin, logout, "account-settings": accountSettings, "account-menu": () => document.getElementById("account-menu").classList.toggle("hidden"), "admin-refresh": loadAdmin, "download-app": downloadApp,
       "scan-duplicates": () => scanReview("duplicates"), "scan-symbols": () => scanReview("smart"),
       "review-start": reviewStart, "review-overview": reviewOverview, "review-one-by-one": reviewOneByOne,
       "review-bulk": reviewBulk, "review-skip-step": reviewSkipStep, "review-apply": reviewApplyItem,
@@ -1253,11 +1450,31 @@
       const owner = event.target.closest("[data-admin-lists]")?.dataset.adminLists; if (owner) return adminUserLists(owner);
       const preset = event.target.closest("[data-preset]")?.dataset.preset; if (preset) return applyPreset(preset);
       const jump = event.target.closest("[data-review-jump]")?.dataset.reviewJump; if (jump) return reviewJump(jump);
+      const delContact = event.target.closest("[data-review-delete-contact]")?.dataset.reviewDeleteContact; if (delContact) return reviewDeleteContact(delContact);
+      const clearBtn = event.target.closest("[data-review-clear-contact]"); if (clearBtn) return reviewClearField(clearBtn.dataset.reviewClearContact, clearBtn.dataset.clearField);
+      const editBtn = event.target.closest("[data-review-edit-contact]"); if (editBtn) return reviewEditField(editBtn.dataset.reviewEditContact, editBtn.dataset.editField);
       if (event.target.id === "modal-backdrop" && state.modal?.dismissible) closeModal("cancel");
     });
-    document.addEventListener("keydown", event => { if (event.key === "Escape" && state.modal?.dismissible) closeModal("cancel"); });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && state.modal?.dismissible) closeModal("cancel");
+      /* Enter מאשר את החלון הפתוח: מפעיל את הכפתור הראשי. לא כשעומדים על
+         textarea (שם Enter הוא שורה חדשה), על כפתור אחר (Enter מפעיל אותו
+         ממילא) או על select (Enter בוחר מהרשימה הפתוחה). */
+      if (event.key === "Enter" && state.modal) {
+        const tag = event.target.tagName;
+        if (tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT") return;
+        const primary = document.querySelector("#modal-footer .btn-primary");
+        if (primary) { event.preventDefault(); primary.click(); }
+      }
+    });
+    // הקלדה בשדה "שם אחר" מסמנת את הרדיו שלו — בלי זה מה שהוקלד היה נזרק בשקט
+    // אם המשתמש לא לחץ על העיגול בעצמו.
+    document.addEventListener("input", event => {
+      const group = event.target.closest("[data-checks]")?.dataset.checks;
+      if (group) { const radio = event.target.closest("label")?.querySelector(`input[name="${group}"]`); if (radio) radio.checked = true; }
+    });
     document.getElementById("file-picker").addEventListener("change", event => { const file = event.target.files[0]; event.target.value = ""; if (file) handleFile(file); });
-    document.getElementById("contact-search").addEventListener("input", event => { state.search = event.target.value; state.visibleLimit = CFG.CONTACTS_PAGE_SIZE || 100; renderContacts(); });
+    document.getElementById("contact-search").addEventListener("input", event => { state.search = event.target.value; renderContacts(); });
     document.getElementById("list-search").addEventListener("input", event => { state.listSearch = event.target.value; renderLists(); });
     document.getElementById("contact-form").addEventListener("input", () => { clearTimeout(state.drawerTimer); document.getElementById("drawer-save-state").textContent = "ממתין לשמירה"; state.drawerTimer = setTimeout(() => saveDrawer(false), 900); });
     const drop = document.getElementById("drop-zone"); ["dragenter", "dragover"].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add("dragging"); })); ["dragleave", "drop"].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.remove("dragging"); })); drop.addEventListener("drop", event => { const file = event.dataTransfer.files[0]; if (file) handleFile(file); });

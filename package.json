@@ -10,7 +10,7 @@
     "start": "electron .",
     "test": "node tests/run-tests.js",
     "smoke": "node tests/smoke.js",
-    "build": "npm test && electron-builder --win portable"
+    "build": "npm test && node scripts/check-build-config.js && electron-builder --win portable"
   },
   "devDependencies": {
     "electron": "43.4.1",

@@ -17,7 +17,7 @@
 
 ## כתובת Apps Script
 
-מומלץ להגדיר ב־Netlify משתנה סביבה `APPS_SCRIPT_URL`. לחלופין פותחים רק את `netlify/functions/ankal-api.mjs` ומחליפים את `PASTE_APPS_SCRIPT_URL_HERE` בכתובת `/exec`.
+מומלץ להגדיר ב־Netlify משתנה סביבה `APPS_SCRIPT_URL`, והוא גובר. לחלופין מעדכנים את כתובת ה־`/exec` בראש `netlify/functions/ankal-api.mjs` — זה המקום היחיד בקוד.
 
 ## בדיקה ובנייה
 

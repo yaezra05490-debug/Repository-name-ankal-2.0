@@ -37,7 +37,7 @@
 
 מומלץ להגדיר ב־Netlify משתנה סביבה בשם `APPS_SCRIPT_URL` ולהדביק בו את כתובת `/exec`.
 
-אפשר גם לפתוח רק את `netlify/functions/ankal-api.mjs` ולהחליף את `PASTE_APPS_SCRIPT_URL_HERE`. אין לשנות מקום אחר.
+אפשר גם לעדכן את כתובת ה־`/exec` בראש `netlify/functions/ankal-api.mjs` — זה המקום היחיד בקוד. אין לשנות מקום אחר.
 
 ## 4. העלאה ל־Netlify
 
@@ -67,11 +67,11 @@ netlify deploy --prod
 
 ## 7. תוכנת Windows
 
-1. הכניסו Desktop Client ID ב־`app-config.json`.
-2. הפעילו `npm install` ואז `npm run build`.
-3. הקובץ יופיע ב־`dist`.
-4. העלו אותו ל־`src/downloads/ankal-windows.exe` ועדכנו את `src/version.json` בגרסה חדשה.
-5. זו הכתובת שכפתור `הורדת התוכנה למחשב` בדף הנחיתה מצביע עליה כברירת מחדל, ולכן הוא מתחיל לעבוד מעצמו. אם אתם מארחים את הקובץ במקום אחר, הדביקו את הקישור הישיר ב־`DOWNLOAD_URL` שב־`src/config.js`. כל עוד הקובץ אינו קיים, הכפתור מציג הסבר למשתמש במקום שגיאה.
+1. הכניסו Desktop Client ID ו־Client Secret ב־`app-config.json` (הבנייה נעצרת אם הם חסרים).
+2. הפעילו `npm install` ואז `npm run build`. הקובץ יופיע ב־`dist/ankal-windows.exe`.
+3. העלו ל־GitHub Releases עם `scripts/release.ps1` (דורש פעם אחת `winget install GitHub.cli` ואז `gh auth login`).
+4. כפתור `הורדת התוכנה למחשב` בדף הנחיתה מצביע ל־`releases/latest/download/ankal-windows.exe` — כתובת יציבה שמפנה תמיד למהדורה האחרונה, ולכן אין מה לעדכן בקוד בשחרור גרסה. אם אתם מארחים את הקובץ במקום אחר, הדביקו את הקישור הישיר ב־`DOWNLOAD_URL` שב־`src/config.js`.
+5. כדי שמשתמשי התוכנה הקיימים יקבלו הצעת עדכון, עדכנו את `src/version.json` למספר הגרסה החדש. הקובץ הזה גם קובע לאן הצעת העדכון מפנה.
 
 התוכנה אינה חתומה. Windows עשוי להציג SmartScreen; המשתמשים יבחרו מידע נוסף → הפעל בכל זאת. העדכון מוצג כהצעה ואינו נכפה.
 

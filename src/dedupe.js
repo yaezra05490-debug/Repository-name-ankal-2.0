@@ -82,14 +82,18 @@
     return 2; // חסר האפס המוביל
   }
 
-  /* כל המספרים השונים בקבוצה, בלי כפילויות, עם השדה שבו כל אחד יושב היום. */
+  /* כל המספרים השונים בקבוצה, בלי כפילויות, עם השדה שבו כל אחד יושב היום.
+     גם מספר קצר (שלוחה, קוד חיוג) נכנס — הוא לא מקשר בין כרטיסים, אבל למחוק
+     אותו במיזוג זה אובדן מידע. רק טקסט בלי אף ספרה נשאר בחוץ. */
   function distinctNumbers(contacts) {
     const byKey = new Map();
     for (const contact of contacts) {
       for (const field of PHONE_FIELDS) {
         const value = String(contact[field] || "").trim();
-        const key = normalizePhone(value);
-        if (!value || !key) continue;
+        if (!value) continue;
+        const digits = value.replace(/\D/g, "");
+        const key = normalizePhone(value) || (digits && "EXT:" + digits);
+        if (!key) continue;
         const seen = byKey.get(key);
         if (!seen) { byKey.set(key, { value, field }); continue; }
         // אותו מספר בכתיבה טובה יותר מחליף את זו שנשמרה, אך שומר על השדה
@@ -102,15 +106,24 @@
 
   /* ---------------- שמות ---------------- */
 
+  /* שמות שהמערכת עצמה ממציאה כשבקובץ לא היה שם. הם אינם מזהים אדם, ולכן מפתח
+     השם שלהם ריק ואינו מקשר בין כרטיסים.
+
+     בלי זה שני דברים נשברו: ‎40 כרטיסים חסרי-שם מאותו ייצוא היו נכנסים לקבוצת
+     כפולים אחת בת 40 (שם צפוף מנוטרל רק לכרטיסים שיש להם טלפון, ולכרטיסים
+     האלה אין), ובמיזוג של "ללא שם" עם "דוד" ניצח "ללא שם" — כי הוא ארוך יותר. */
+  const PLACEHOLDER_NAMES = new Set(["ללא שם", "לא ידוע", "no name", "noname", "unnamed", "unknown"]);
+
   /* מפתח שם להשוואת כפולים בלבד, לעולם לא לתצוגה: מוריד סימונים שמשתנים באופן
      לגיטימי בין ייצואים של "אותו" איש קשר (סיומות ‎_1/‎_2, מקפים, ספרות, גרשיים). */
   function nameKey(value) {
-    return String(value == null ? "" : value)
+    const key = String(value == null ? "" : value)
       .toLowerCase()
       .replace(/[-_"'׳״]/g, "")
       .replace(/[0-9]/g, "")
       .replace(/\s+/g, " ")
       .trim();
+    return PLACEHOLDER_NAMES.has(key) ? "" : key;
   }
 
   const FUZZY_NAME_MIN_SIMILARITY = 0.85;
@@ -154,7 +167,14 @@
   /* ---------------- ניקוד קבוצה ---------------- */
 
   function compareKey(field, value) {
-    if (PHONE_FIELDS.includes(field)) return normalizePhone(value);
+    if (PHONE_FIELDS.includes(field)) {
+      const key = normalizePhone(value);
+      if (key) return key;
+      /* קצר מ-8 ספרות אינו מפתח קישור — אבל הוא עדיין ערך. "8224" מול "4939"
+         הם סתירה שדורשת הכרעה, לא "זהים לגמרי" (הבאג: המפתח הריק גרם לשניהם
+         להיראות כשדה ריק). טקסט בלי ספרות כלל ("אין", "-") נשאר ריק. */
+      return String(value == null ? "" : value).replace(/\D/g, "");
+    }
     return String(value == null ? "" : value).trim().toLowerCase().replace(/\s+/g, " ");
   }
 

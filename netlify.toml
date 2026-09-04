@@ -11,6 +11,10 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    # האתר לא אמור להיטען בתוך iframe של אתר אחר (הגנת clickjacking).
+    # CSP מלא דורש התאמות ל-GTM ולכניסת Google, אבל frame-ancestors בטוח תמיד.
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
 
 [[redirects]]
   from = "/app"

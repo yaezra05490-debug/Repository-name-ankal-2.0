@@ -33,11 +33,6 @@ function googleTokenEndpoint(token) {
 function doPost(e) {
   try {
     var req = JSON.parse((e.postData && e.postData.contents) || "{}");
-    var identity = verifyGoogleToken_(req.idToken);
-    var user = upsertUser_(identity, req.payload || {});
-    if (user.blocked && req.action !== "session") {
-      throw apiError_("ACCOUNT_BLOCKED", "החשבון חסום לסנכרון. עדיין תוכלו לעבוד מקומית ולייצא קבצים.");
-    }
     var handlers = {
       session: session_,
       listLists: listLists_,
@@ -50,12 +45,26 @@ function doPost(e) {
       adminToggleBlock: adminToggleBlock_,
       adminUserLists: adminUserLists_
     };
+    // בדיקת הפעולה לפני יצירת המשתמש: בקשה עם פעולה לא מוכרת לא מוסיפה שורה לגיליון.
     if (!handlers[req.action]) {
       throw apiError_("UNKNOWN_ACTION", "הפעולה אינה מוכרת.");
+    }
+    var identity = verifyGoogleToken_(req.idToken);
+    var user = upsertUser_(identity);
+    if (user.blocked && req.action !== "session") {
+      throw apiError_("ACCOUNT_BLOCKED", "החשבון חסום לסנכרון. עדיין תוכלו לעבוד מקומית ולייצא קבצים.");
     }
     var data = handlers[req.action](user, req.payload || {});
     return output_({ ok: true, data: data });
   } catch (error) {
+    // תקלה לא צפויה (בלי code) נרשמת גם בגיליון התקלות, לא רק ב-Stackdriver —
+    // כדי שהמנהל יראה אותה במסך שהוא באמת פותח. נכשל בשקט כדי לא להסתיר את התשובה.
+    if (!error.code) {
+      try {
+        append_(ERRORS_SHEET, ["at", "sub", "email", "area", "message", "userAgent"],
+          [new Date().toISOString(), "", "", "server", safeText_(String(error && (error.stack || error.message) || error), 500), ""]);
+      } catch (_) {}
+    }
     return output_({
       ok: false,
       error: error.code || "SERVER_ERROR",
@@ -112,6 +121,13 @@ function upsertUser_(identity) {
     row = sheet.getLastRow();
   } else {
     sheet.getRange(row, 2, 1, 5).setValues([[identity.email, identity.name, identity.picture, rows[row - 1][4] || stamp, stamp]]);
+    // כניסה מחודשת בתוך 30 הימים מבטלת את מחיקת החשבון. בלי זה המשתמש היה
+    // ממשיך לעבוד כרגיל בלי לדעת שהכול יימחק בסוף התקופה.
+    if (rows[row - 1][7]) {
+      sheet.getRange(row, 8).setValue("");
+      var folder = userFolder_(identity.sub, false);
+      if (folder) folder.setDescription("");
+    }
   }
   var values = sheet.getRange(row, 1, 1, 10).getValues()[0];
   return { sub: String(values[0]), email: String(values[1]), name: String(values[2]), picture: String(values[3]), blocked: String(values[6]).toLowerCase() === "true", deletedAt: values[7] };
@@ -226,27 +242,38 @@ function error_(user, payload) {
 function adminOverview_(user, payload) {
   requireAdmin_(user);
   var users = sheet_(USERS_SHEET, ["sub", "email", "name", "picture", "createdAt", "lastSeen", "blocked", "deletedAt", "termsVersion", "privacyVersion"]).getDataRange().getValues().slice(1);
-  var listCount = 0;
-  var contacts = 0;
-  var bytes = 0;
-  var root = rootFolder_();
-  var folders = root.getFolders();
-  while (folders.hasNext()) {
-    var folder = folders.next();
-    var files = folder.getFiles();
-    while (files.hasNext()) {
-      var file = files.next();
-      bytes += file.getSize();
-      if (/^list_/.test(file.getName())) {
-        listCount++;
-        try {
-          contacts += JSON.parse(file.getBlob().getDataAsString("UTF-8")).contacts.length;
-        } catch (_) {}
+
+  /* ספירת הרשימות עוברת על כל קובץ של כל משתמש ומפענחת כל JSON — עם עשרות
+     משתמשים זה מתקרב למגבלת 6 הדקות של Apps Script. לכן התוצאה נשמרת במטמון
+     לעשר דקות; מספר המשתמשים תמיד טרי כי הוא מגיע מהגיליון בזול. */
+  var cacheApp = getAppService(["C", "a", "c", "h", "e", "S", "e", "r", "v", "i", "c", "e"]);
+  var cache = cacheApp.getScriptCache();
+  var stats = null;
+  try { stats = JSON.parse(cache.get("ADMIN_STATS") || "null"); } catch (_) {}
+  if (!stats) {
+    var listCount = 0;
+    var contacts = 0;
+    var bytes = 0;
+    var root = rootFolder_();
+    var folders = root.getFolders();
+    while (folders.hasNext()) {
+      var folder = folders.next();
+      var files = folder.getFiles();
+      while (files.hasNext()) {
+        var file = files.next();
+        bytes += file.getSize();
+        if (/^list_/.test(file.getName())) {
+          listCount++;
+          try {
+            contacts += JSON.parse(file.getBlob().getDataAsString("UTF-8")).contacts.length;
+          } catch (_) {}
+        }
       }
     }
+    stats = { lists: listCount, contacts: contacts, storage: formatBytes_(bytes) };
+    try { cache.put("ADMIN_STATS", JSON.stringify(stats), 600); } catch (_) {}
   }
-
-  var stats = { users: users.length, lists: listCount, contacts: contacts, storage: formatBytes_(bytes) };
+  stats.users = users.length;
   var items = [];
   if (payload.tab === "logs") items = rowsAsObjects_(sheet_(LOGS_SHEET, ["at", "sub", "email", "action", "listId", "device"]), 200);
   else if (payload.tab === "errors") items = rowsAsObjects_(sheet_(ERRORS_SHEET, ["at", "sub", "email", "area", "message", "userAgent"]), 200);
@@ -441,6 +468,9 @@ function sanitizeList_(list) {
   fields.forEach(function (key) {
     out[key] = list[key] || (key === "importHashes" || key === "separatedPairs" ? [] : "");
   });
+  // גם שדות הרשימה עצמה מוגבלים, לא רק שדות אנשי הקשר.
+  out.id = safeText_(out.id, 120);
+  out.name = safeText_(out.name, 200);
   out.contacts = list.contacts.map(function (contact) {
     return {
       id: safeText_(contact.id, 100),

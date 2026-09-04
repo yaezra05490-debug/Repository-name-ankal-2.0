@@ -322,6 +322,63 @@ test("שם ממלא-מקום לא מאחד את כל הרשימה לקבוצה �
   assert.deepEqual(D.findDuplicateGroups(contacts), []);
 });
 
+test("מספרים קצרים שונים הם סתירה, לא 'זהים לגמרי'", () => {
+  // הרגרסיה: "8224" ו-"4939" קצרים מ-8 ספרות, normalizePhone החזיר לשניהם
+  // מפתח ריק, והקבוצה סווגה "זהים לגמרי · 100%" למרות ששני מספרים שונים על המסך.
+  const groups = D.findDuplicateGroups([
+    contact({ name: "קוד", mobile: "8224" }),
+    contact({ name: "קוד", mobile: "4939" })
+  ]);
+  assert.equal(groups.length, 1);            // השם הזהה עדיין מקשר אותם
+  assert.equal(groups[0].exact, false);      // אבל הם לא זהים
+  assert.equal(groups[0].category, "phone"); // אותו שם, מספרים שונים — שאלה למשתמש
+});
+
+test("מיזוג לא זורק מספר קצר (שלוחה או קוד)", () => {
+  // הרגרסיה: distinctNumbers סינן כל מספר בלי מפתח קישור, והכרטיס הממוזג
+  // יצא בלי אף מספר — "שם: קוד" בלבד.
+  const merged = D.mergeContacts([
+    contact({ name: "קוד", mobile: "8224" }),
+    contact({ name: "קוד", mobile: "4939" })
+  ]);
+  const numbers = D.PHONE_FIELDS.map((f) => merged[f]).filter(Boolean);
+  assert.deepEqual(numbers.sort(), ["4939", "8224"]);
+});
+
+test("מספר קצר זהה בשני כרטיסים הוא כן 'זהים לגמרי' ונשמר במיזוג", () => {
+  const groups = D.findDuplicateGroups([
+    contact({ name: "קוד", mobile: "8224" }),
+    contact({ name: "קוד", mobile: "8224" })
+  ]);
+  assert.equal(groups[0].exact, true);
+  assert.equal(D.mergeContacts(groups[0].contacts).mobile, "8224");
+});
+
+test("'ללא שם' אינו שם: כרטיסים חסרי-שם בלי טלפון לא מתאחדים", () => {
+  // הרגרסיה: 40 כרטיסים שיובאו בלי עמודת שם קיבלו כולם "ללא שם" ונכנסו
+  // לקבוצת כפולים אחת בת 40 — מנגנון השם-הצפוף מנטרל רק כרטיסים עם טלפון.
+  const contacts = [];
+  for (let i = 0; i < 40; i++) contacts.push(contact({ name: "ללא שם", email: `u${i}@x.co` }));
+  assert.deepEqual(D.findDuplicateGroups(contacts), []);
+});
+
+test("'ללא שם' עם אותו טלפון עדיין מתאחד — הטלפון הוא הראיה", () => {
+  const contacts = [
+    contact({ name: "ללא שם", mobile: "050-1234567" }),
+    contact({ name: "ללא שם", mobile: "0501234567" })
+  ];
+  assert.equal(D.findDuplicateGroups(contacts).length, 1);
+});
+
+test("במיזוג שם אמיתי מנצח את 'ללא שם'", () => {
+  // "ללא שם" ארוך מ"דוד", ובחירה לפי אורך גולמי הייתה משאירה את ממלא המקום.
+  const merged = D.mergeContacts([
+    contact({ name: "ללא שם", mobile: "050-1234567" }),
+    contact({ name: "דוד", mobile: "0501234567" })
+  ]);
+  assert.equal(merged.name, "דוד");
+});
+
 test("רשימה גדולה נסרקת מהר ומוצאת את מה שנשתל", () => {
   const contacts = [];
   for (let i = 0; i < 5000; i++) contacts.push(contact({ name: "איש קשר מספר " + i, mobile: "05" + String(10000000 + i) }));

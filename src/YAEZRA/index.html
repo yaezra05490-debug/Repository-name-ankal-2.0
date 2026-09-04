@@ -34,13 +34,14 @@
   .u-copy strong{display:block;font:600 14px var(--display);overflow-wrap:anywhere}
   .u-copy span{display:block;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
   .u-tag{margin-right:auto;flex:none;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:800;background:#ffe3e7;color:#a72f42}
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px;margin-bottom:20px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px;margin-bottom:14px}
   .stat{padding:15px;background:var(--card);border:1px solid var(--line);border-radius:13px}
   .stat b{display:block;font:700 23px var(--display)}
   .stat span{font-size:11px;color:var(--muted)}
   .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:right;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td.wrap{white-space:normal;max-width:420px;overflow-wrap:anywhere}
   th{background:var(--paper);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
   tr:last-child td{border-bottom:0}
   .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
@@ -55,6 +56,21 @@
   .linkish{border:0;background:transparent;color:var(--cyan);font:inherit;font-size:11px;padding:2px 6px;
     border-radius:7px;cursor:pointer}
   .linkish:hover{background:hsl(172 60% 45% / .16)}
+  /* לשוניות: משתמשים, יומן, תקלות, סל. */
+  .adm-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .adm-tabs button{border:1px solid var(--line);background:var(--card);color:var(--muted);font:600 13px var(--font);
+    padding:8px 15px;border-radius:11px;cursor:pointer;transition:.15s}
+  .adm-tabs button:hover{border-color:var(--cyan-2)}
+  .adm-tabs button.active{background:hsl(172 60% 45% / .14);border-color:var(--cyan-2);color:var(--cyan-2)}
+  .adm-tabs .refresh{margin-right:auto}
+  /* חיפוש מקומי בתוך כל מסך. */
+  .adm-search{display:flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--line);
+    border-radius:11px;padding:0 12px;height:40px;margin-bottom:14px;color:var(--muted);max-width:420px}
+  .adm-search input{flex:1;border:0;outline:0;background:transparent;color:var(--text);font:inherit}
+  .toast{position:fixed;bottom:20px;right:20px;z-index:50;background:#162033;color:#fff;font-size:13px;
+    padding:12px 16px;border-radius:12px;border-left:3px solid var(--cyan);box-shadow:0 18px 50px rgba(0,0,0,.35)}
+  .u-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+  .u-head .spacer{flex:1}
 </style>
 </head>
 <body>
@@ -77,10 +93,27 @@
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const FIELDS = ["name", "mobile", "home", "work", "fax", "email", "note"];
   const LABELS = { name: "שם", mobile: "נייד", home: "בית", work: "עבודה", fax: "פקס", email: "מייל", note: "הערה" };
+  const TABS = [
+    { key: "users", label: "משתמשים" },
+    { key: "logs", label: "יומן פעולות" },
+    { key: "errors", label: "תקלות" },
+    { key: "trash", label: "סל מחזור" }
+  ];
 
   let token = "";
   let me = null;
-  const state = { users: [], user: null, lists: [], list: null };
+  const state = { tab: "users", stats: {}, items: [], users: [], user: null, lists: [], list: null, q: "" };
+
+  function fmtDate(v) {
+    if (!v) return "—";
+    try { return new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(v)); }
+    catch (_) { return String(v); }
+  }
+  function toast(message) {
+    const el = document.createElement("div");
+    el.className = "toast"; el.textContent = message;
+    document.body.appendChild(el); setTimeout(() => el.remove(), 3500);
+  }
 
   /* ── קוד כניסה ──
      שער נוח שמונע כניסה מקרית של מי שנתקל בכתובת. הוא אינו הגנה של ממש:
@@ -173,7 +206,7 @@
         `${me.picture ? `<img src="${esc(me.picture)}" alt="" referrerpolicy="no-referrer">` : ""}<span>${esc(me.name || me.email)}</span>`
         + `<button class="linkish" id="change-code">שינוי קוד</button>`;
       document.getElementById("change-code").onclick = changeCode;
-      openUsers();
+      openTab("users");
     } catch (error) {
       token = "";
       renderGate(error.message);
@@ -191,32 +224,91 @@
     alert("הקוד הוחלף. הוא נשמר בדפדפן הזה בלבד — במחשב אחר עדיין יעבוד קוד ברירת המחדל.");
   }
 
-  /* ───────── רשימת המשתמשים ───────── */
+  /* ───────── מעטפת: סטטיסטיקות + לשוניות ───────── */
 
-  async function openUsers() {
-    state.user = null; state.list = null;
-    view.innerHTML = `<div class="load">טוען משתמשים…</div>`;
+  function statsHtml() {
+    const s = state.stats || {};
+    return `<div class="stats">
+      <div class="stat"><b>${s.users ?? "—"}</b><span>משתמשים</span></div>
+      <div class="stat"><b>${s.lists ?? "—"}</b><span>רשימות</span></div>
+      <div class="stat"><b>${s.contacts ?? "—"}</b><span>אנשי קשר</span></div>
+      <div class="stat"><b dir="ltr">${esc(s.storage ?? "—")}</b><span>נפח אחסון</span></div>
+    </div>`;
+  }
+  function tabsHtml() {
+    return `<div class="adm-tabs">
+      ${TABS.map((t) => `<button data-tab="${t.key}" class="${state.tab === t.key ? "active" : ""}">${t.label}</button>`).join("")}
+      <button class="refresh" data-tab="${esc(state.tab)}" title="טעינה מחדש">⟳ רענון</button>
+    </div>`;
+  }
+  function searchHtml(placeholder) {
+    return `<div class="adm-search"><span>⌕</span><input id="adm-q" type="search" placeholder="${esc(placeholder)}" value="${esc(state.q)}"></div>`;
+  }
+  function bindShell() {
+    view.querySelectorAll("[data-tab]").forEach((el) => el.onclick = () => { state.q = ""; openTab(el.dataset.tab); });
+    const q = document.getElementById("adm-q");
+    if (q) q.oninput = () => { state.q = q.value; renderTabContent(); };
+  }
+
+  async function openTab(tab) {
+    state.tab = tab; state.user = null; state.list = null;
+    view.innerHTML = `<div class="load">טוען…</div>`;
     try {
-      const data = await api("adminOverview", { tab: "users" });
-      state.users = data.items || [];
-      const s = data.stats || {};
-      view.innerHTML = `
-        <div class="stats">
-          <div class="stat"><b>${s.users ?? state.users.length}</b><span>משתמשים</span></div>
-          <div class="stat"><b>${s.lists ?? "—"}</b><span>רשימות</span></div>
-          <div class="stat"><b>${s.contacts ?? "—"}</b><span>אנשי קשר</span></div>
-          <div class="stat"><b dir="ltr">${esc(s.storage ?? "—")}</b><span>נפח אחסון</span></div>
-        </div>
-        <div class="panel">
-          <h2>משתמשים</h2>
-          <p>לחצו על משתמש כדי לראות את הרשימות שלו.</p>
-          <div class="grid">${state.users.map(userCard).join("") || '<p class="muted">אין עדיין משתמשים.</p>'}</div>
-        </div>`;
-      view.querySelectorAll("[data-sub]").forEach((el) => el.onclick = () => openLists(el.dataset.sub));
+      const data = await api("adminOverview", { tab });
+      state.stats = data.stats || {};
+      state.items = data.items || [];
+      if (tab === "users") state.users = state.items;
+      renderTab();
     } catch (error) {
       view.innerHTML = `<div class="panel"><div class="err">${esc(error.message)}</div>
         <button class="btn btn-secondary" onclick="location.reload()">נסה שוב</button></div>`;
     }
+  }
+
+  function renderTab() {
+    const meta = TABS.find((t) => t.key === state.tab) || TABS[0];
+    view.innerHTML = `${statsHtml()}${tabsHtml()}
+      <div class="panel">
+        <h2>${esc(meta.label)}</h2>
+        <p id="tab-hint"></p>
+        ${searchHtml(state.tab === "users" ? "חיפוש לפי שם או מייל…" : "סינון…")}
+        <div id="tab-content"></div>
+      </div>`;
+    bindShell();
+    renderTabContent();
+  }
+
+  function filteredItems() {
+    const q = state.q.trim().toLowerCase();
+    if (!q) return state.items;
+    return state.items.filter((item) => Object.values(item).some((v) => String(v ?? "").toLowerCase().includes(q)));
+  }
+
+  function renderTabContent() {
+    const box = document.getElementById("tab-content");
+    const hint = document.getElementById("tab-hint");
+    if (!box) return;
+    const items = filteredItems();
+    if (hint) hint.textContent = state.q ? `${items.length} מתוך ${state.items.length}` :
+      state.tab === "users" ? "לחצו על משתמש כדי לראות את הרשימות שלו." :
+      state.tab === "logs" ? "200 הפעולות האחרונות, מהחדשה לישנה." :
+      state.tab === "errors" ? "200 התקלות האחרונות שדווחו מהמכשירים ומהשרת." :
+      "חשבונות שנמחקו — יימחקו סופית אחרי 30 יום. כניסה מחודשת של המשתמש מבטלת את המחיקה.";
+
+    if (state.tab === "users") {
+      box.innerHTML = `<div class="grid">${items.map(userCard).join("") || '<p class="muted">אין משתמשים להצגה.</p>'}</div>`;
+      box.querySelectorAll("[data-sub]").forEach((el) => el.onclick = () => openLists(el.dataset.sub));
+      return;
+    }
+    const columns =
+      state.tab === "logs" ? [["at", "מתי"], ["email", "משתמש"], ["action", "פעולה"], ["listId", "רשימה"], ["device", "מכשיר"]] :
+      state.tab === "errors" ? [["at", "מתי"], ["email", "משתמש"], ["area", "אזור"], ["message", "הודעה"]] :
+      [["email", "מייל"], ["name", "שם"], ["deletedAt", "נמחק בתאריך"], ["status", "מצב"]];
+    box.innerHTML = items.length ? `<div class="tbl-wrap"><table>
+        <thead><tr>${columns.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>
+        <tbody>${items.map((item) => `<tr>${columns.map(([key]) =>
+          `<td class="${key === "message" ? "wrap" : ""}">${key === "at" || key === "deletedAt" ? esc(fmtDate(item[key])) : esc(item[key] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table></div>` : '<p class="muted">אין פריטים להצגה.</p>';
   }
 
   function userCard(user) {
@@ -226,7 +318,8 @@
       : `<span class="u-pic">${esc(initial(name))}</span>`;
     return `<button class="u" style="--tint:${hue(name)}" data-sub="${esc(user.sub)}">
       ${pic}
-      <span class="u-copy"><strong>${esc(name)}</strong><span dir="ltr">${esc(user.email || "")}</span></span>
+      <span class="u-copy"><strong>${esc(name)}</strong><span dir="ltr">${esc(user.email || "")}</span>
+        <span>נראה לאחרונה: ${esc(fmtDate(user.lastSeen))}</span></span>
       ${user.blocked ? '<span class="u-tag">חסום</span>' : ""}
     </button>`;
   }
@@ -244,22 +337,43 @@
       view.innerHTML = `
         ${crumbs([{ label: "משתמשים", go: "users" }, { label: name }])}
         <div class="panel">
-          <h2>${esc(name)}</h2>
-          <p>${esc(state.user.email || "")} · ${state.lists.length} רשימות</p>
+          <div class="u-head">
+            <h2>${esc(name)}</h2>
+            <span class="spacer"></span>
+            <button class="btn btn-secondary" id="block-btn">${state.user.blocked ? "ביטול חסימת סנכרון" : "חסימת סנכרון"}</button>
+          </div>
+          <p>${esc(state.user.email || "")} · ${state.lists.length} רשימות · הצטרפות: ${esc(fmtDate(state.user.createdAt))}</p>
           <div class="grid">${state.lists.map((list) => `
             <button class="u" style="--tint:${hue(list.name)}" data-list="${esc(list.id)}">
               <span class="u-pic">${esc(initial(list.name || "רשימה"))}</span>
               <span class="u-copy"><strong>${esc(list.name || "ללא שם")}</strong>
-                <span>${(list.contacts || []).length} אנשי קשר</span></span>
+                <span>${(list.contacts || []).length} אנשי קשר · עודכן ${esc(fmtDate(list.updatedAt))}</span></span>
             </button>`).join("") || '<p class="muted">למשתמש הזה אין רשימות.</p>'}
           </div>
         </div>`;
       bindCrumbs();
+      document.getElementById("block-btn").onclick = toggleBlock;
       view.querySelectorAll("[data-list]").forEach((el) => el.onclick = () => openList(el.dataset.list));
     } catch (error) {
       view.innerHTML = `${crumbs([{ label: "משתמשים", go: "users" }])}<div class="panel"><div class="err">${esc(error.message)}</div></div>`;
       bindCrumbs();
     }
+  }
+
+  /* חסימה עוצרת סנכרון בלבד: המשתמש ממשיך לעבוד מקומית ולייצא. */
+  async function toggleBlock() {
+    const blocking = !state.user.blocked;
+    if (!confirm(blocking
+      ? `לחסום את הסנכרון של ${state.user.email}? הם ימשיכו לעבוד מקומית, אבל שינויים לא יעלו לענן.`
+      : `לבטל את החסימה של ${state.user.email}?`)) return;
+    try {
+      await api("adminToggleBlock", { sub: state.user.sub });
+      state.user.blocked = blocking;
+      const row = state.users.find((u) => String(u.sub) === String(state.user.sub));
+      if (row) row.blocked = blocking;
+      toast(blocking ? "הסנכרון נחסם" : "החסימה בוטלה");
+      openLists(state.user.sub);
+    } catch (error) { toast("הפעולה נכשלה: " + error.message); }
   }
 
   /* ───────── אנשי הקשר ברשימה ───────── */
@@ -280,16 +394,27 @@
           <button class="btn btn-secondary" data-x="csv">⤓ ייצוא CSV</button>
           <button class="btn btn-secondary" data-x="xlsx">⤓ ייצוא Excel</button>
         </div>
-        <div class="tbl-wrap" style="margin-top:15px">
+        <div class="adm-search" style="margin-top:15px"><span>⌕</span>
+          <input id="list-q" type="search" placeholder="חיפוש בתוך הרשימה…"></div>
+        <div class="tbl-wrap">
           <table>
             <thead><tr>${columns.map((f) => `<th>${esc(LABELS[f])}</th>`).join("")}</tr></thead>
-            <tbody>${contacts.map((c) => `<tr>${columns.map((f) => `<td>${esc(c[f] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
+            <tbody id="list-rows"></tbody>
           </table>
         </div>
         ${contacts.length ? "" : '<p class="muted" style="margin-top:12px">הרשימה ריקה.</p>'}
       </div>`;
     bindCrumbs();
     view.querySelectorAll("[data-x]").forEach((el) => el.onclick = () => exportList(el.dataset.x));
+    const rows = document.getElementById("list-rows");
+    const renderRows = (q) => {
+      const query = String(q || "").trim().toLowerCase();
+      const shown = query ? contacts.filter((c) => FIELDS.some((f) => String(c[f] || "").toLowerCase().includes(query))) : contacts;
+      rows.innerHTML = shown.map((c) => `<tr>${columns.map((f) => `<td class="${f === "note" ? "wrap" : ""}">${esc(c[f] || "—")}</td>`).join("")}</tr>`).join("")
+        || `<tr><td colspan="${columns.length}" class="muted">אין התאמות.</td></tr>`;
+    };
+    renderRows("");
+    document.getElementById("list-q").oninput = (e) => renderRows(e.target.value);
   }
 
   /* ───────── ניווט ───────── */
@@ -300,7 +425,7 @@
   }
   function bindCrumbs() {
     view.querySelectorAll("[data-go]").forEach((el) => el.onclick = () => {
-      if (el.dataset.go === "users") openUsers();
+      if (el.dataset.go === "users") openTab("users");
       if (el.dataset.go === "lists") openLists(state.user.sub);
     });
   }
