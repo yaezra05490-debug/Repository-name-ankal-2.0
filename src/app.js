@@ -1288,7 +1288,11 @@
     const stats = data.stats || {}; document.getElementById("admin-stats").innerHTML = `<article><strong>${stats.users || 0}</strong><span>משתמשים</span></article><article><strong>${stats.lists || 0}</strong><span>רשימות</span></article><article><strong>${stats.contacts || 0}</strong><span>אנשי קשר</span></article><article><strong>${esc(stats.storage || "0 MB")}</strong><span>אחסון</span></article>`;
     const items = data.items || []; const content = document.getElementById("admin-content");
     if (!items.length) { content.innerHTML = "<p>אין פריטים להצגה.</p>"; return; }
-    content.innerHTML = `<div class="modal-list">${items.map(item => `<div class="modal-list-row"><span><b>${esc(item.name || ACTION_HE[item.action] || item.action || item.area || item.email || "פריט")}</b><small>${esc([item.email, item.at ? fmtDate(item.at) : item.updatedAt ? fmtDate(item.updatedAt) : ""].filter(Boolean).join(" · "))}</small></span><span>${item.blocked !== undefined ? `<button class="btn btn-quiet" data-admin-lists="${esc(item.sub)}">רשימות</button> <button class="btn btn-quiet" data-admin-block="${esc(item.sub)}">${item.blocked ? "ביטול חסימה" : "חסימה"}</button>` : esc(item.message || item.status || "")}</span></div>`).join("")}</div>`;
+    /* ברשומת יומן הכותרת היא הפעולה ומתחתיה מי ומתי; בשורת משתמש הכותרת היא
+       המשתמש עצמו. בלי ההבחנה הזו השם היה מסתיר את הפעולה שהתרחשה. */
+    const rowTitle = item => item.action ? (ACTION_HE[item.action] || item.action) : (item.area || item.name || item.email || "פריט");
+    const rowSub = item => [item.action || item.area ? (item.name || item.email) : item.email, item.at ? fmtDate(item.at) : item.updatedAt ? fmtDate(item.updatedAt) : ""].filter(Boolean).join(" · ");
+    content.innerHTML = `<div class="modal-list">${items.map(item => `<div class="modal-list-row"><span><b>${esc(rowTitle(item))}</b><small>${esc(rowSub(item))}</small></span><span>${item.blocked !== undefined ? `<button class="btn btn-quiet" data-admin-lists="${esc(item.sub)}">רשימות</button> <button class="btn btn-quiet" data-admin-block="${esc(item.sub)}">${item.blocked ? "ביטול חסימה" : "חסימה"}</button>` : esc(item.message || item.status || "")}</span></div>`).join("")}</div>`;
   }
   async function adminBlock(sub) { try { await api("adminToggleBlock", { sub }); toast("מצב המשתמש עודכן"); loadAdmin(); } catch (error) { toast(error.message, "error"); } }
   /* קודם בוחרים רשימה, ורק אז רואים את אנשי הקשר שבה. הגרסה הקודמת שפכה את

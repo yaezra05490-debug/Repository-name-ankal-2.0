@@ -274,13 +274,39 @@ function adminOverview_(user, payload) {
     try { cache.put("ADMIN_STATS", JSON.stringify(stats), 600); } catch (_) {}
   }
   stats.users = users.length;
+  /* היומן מוחזר במלואו כברירת מחדל (עד תקרה שמונעת תשובה ענקית), כדי שהמנהל
+     יראה את כל ההיסטוריה ולא רק את הסוף. total אומר כמה באמת קיימות. */
+  var limit = Math.max(1, Math.min(Number(payload.limit || 20000), 50000));
   var items = [];
-  if (payload.tab === "logs") items = rowsAsObjects_(sheet_(LOGS_SHEET, ["at", "sub", "email", "action", "listId", "device"]), 200);
-  else if (payload.tab === "errors") items = rowsAsObjects_(sheet_(ERRORS_SHEET, ["at", "sub", "email", "area", "message", "userAgent"]), 200);
-  else if (payload.tab === "trash") items = users.filter(r => r[7]).map(r => ({ sub:r[0], email:r[1], name:r[2], deletedAt:r[7], status:"יימחק לאחר 30 יום" }));
-  else items = users.map(r => ({ sub:r[0], email:r[1], name:r[2], createdAt:r[4], lastSeen:r[5], blocked:String(r[6]).toLowerCase()==="true", deletedAt:r[7], termsVersion:r[8], privacyVersion:r[9] }));
-  return { stats: stats, items: items };
+  var total = 0;
+  if (payload.tab === "logs") {
+    var logSheet = sheet_(LOGS_SHEET, ["at", "sub", "email", "action", "listId", "device"]);
+    total = Math.max(0, logSheet.getLastRow() - 1);
+    items = withUserNames_(rowsAsObjects_(logSheet, limit), users);
+  } else if (payload.tab === "errors") {
+    var errSheet = sheet_(ERRORS_SHEET, ["at", "sub", "email", "area", "message", "userAgent"]);
+    total = Math.max(0, errSheet.getLastRow() - 1);
+    items = withUserNames_(rowsAsObjects_(errSheet, limit), users);
+  } else if (payload.tab === "trash") {
+    items = users.filter(r => r[7]).map(r => ({ sub:r[0], email:r[1], name:r[2], deletedAt:r[7], status:"יימחק לאחר 30 יום" }));
+    total = items.length;
+  } else {
+    items = users.map(r => ({ sub:r[0], email:r[1], name:r[2], createdAt:r[4], lastSeen:r[5], blocked:String(r[6]).toLowerCase()==="true", deletedAt:r[7], termsVersion:r[8], privacyVersion:r[9] }));
+    total = items.length;
+  }
+  return { stats: stats, items: items, total: total };
 }
+/* היומן שומר מזהה ומייל בלבד. השם מגיע מגיליון המשתמשים שכבר נטען כאן, ולכן
+   גם רשומות ישנות מקבלות שם בלי לשנות את מבנה הגיליון. */
+function withUserNames_(items, users) {
+  var names = {};
+  for (var i = 0; i < users.length; i++) names[String(users[i][0])] = String(users[i][2] || "");
+  return items.map(function (item) {
+    item.name = names[String(item.sub)] || "";
+    return item;
+  });
+}
+
 function adminToggleBlock_(user, payload) {
   requireAdmin_(user);
   var found = findUserRow_(payload.sub);

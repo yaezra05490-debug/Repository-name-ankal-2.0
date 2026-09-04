@@ -71,6 +71,9 @@
     padding:12px 16px;border-radius:12px;border-left:3px solid var(--cyan);box-shadow:0 18px 50px rgba(0,0,0,.35)}
   .u-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px}
   .u-head .spacer{flex:1}
+  .who-cell{display:flex;flex-direction:column;line-height:1.4}
+  .who-cell b{font-weight:600}
+  .who-cell small{font-size:11px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -111,7 +114,7 @@
 
   let token = "";
   let me = null;
-  const state = { tab: "users", stats: {}, items: [], users: [], user: null, lists: [], list: null, q: "" };
+  const state = { tab: "users", stats: {}, items: [], total: 0, users: [], user: null, lists: [], list: null, q: "" };
 
   function fmtDate(v) {
     if (!v) return "—";
@@ -266,6 +269,7 @@
       const data = await api("adminOverview", { tab });
       state.stats = data.stats || {};
       state.items = data.items || [];
+      state.total = data.total ?? state.items.length;
       if (tab === "users") state.users = state.items;
       renderTab();
     } catch (error) {
@@ -298,10 +302,13 @@
     const hint = document.getElementById("tab-hint");
     if (!box) return;
     const items = filteredItems();
-    if (hint) hint.textContent = state.q ? `${items.length} מתוך ${state.items.length}` :
+    const shown = state.items.length;
+    const all = state.total ?? shown;
+    const scope = shown >= all ? `כל ${all} הרשומות` : `${shown} מתוך ${all}`;
+    if (hint) hint.textContent = state.q ? `${items.length} תוצאות מתוך ${shown}` :
       state.tab === "users" ? "לחצו על משתמש כדי לראות את הרשימות שלו." :
-      state.tab === "logs" ? "200 הפעולות האחרונות, מהחדשה לישנה." :
-      state.tab === "errors" ? "200 התקלות האחרונות שדווחו מהמכשירים ומהשרת." :
+      state.tab === "logs" ? `${scope} — מהפעולה החדשה לישנה.` :
+      state.tab === "errors" ? `${scope} — תקלות שדווחו מהמכשירים ומהשרת.` :
       "חשבונות שנמחקו — יימחקו סופית אחרי 30 יום. כניסה מחודשת של המשתמש מבטלת את המחיקה.";
 
     if (state.tab === "users") {
@@ -310,9 +317,9 @@
       return;
     }
     const columns =
-      state.tab === "logs" ? [["at", "מתי"], ["email", "משתמש"], ["action", "פעולה"], ["listId", "רשימה"], ["device", "מכשיר"]] :
-      state.tab === "errors" ? [["at", "מתי"], ["email", "משתמש"], ["area", "אזור"], ["message", "הודעה"]] :
-      [["email", "מייל"], ["name", "שם"], ["deletedAt", "נמחק בתאריך"], ["status", "מצב"]];
+      state.tab === "logs" ? [["at", "מתי"], ["who", "משתמש"], ["action", "פעולה"], ["listId", "רשימה"], ["device", "מכשיר"]] :
+      state.tab === "errors" ? [["at", "מתי"], ["who", "משתמש"], ["area", "אזור"], ["message", "הודעה"]] :
+      [["who", "משתמש"], ["deletedAt", "נמחק בתאריך"], ["status", "מצב"]];
     /* כל תא מוצג בצורה קריאה: תאריך עברי, פעולה במילים, מייל ביישור LTR
        (אחרת ה-@ מתהפך בעברית), ומזהה רשימה מקוצר עם המזהה המלא בריחוף. */
     const cellHtml = (key, item) => {
@@ -320,7 +327,13 @@
       if (key === "at" || key === "deletedAt") return esc(fmtDate(value));
       if (key === "action") return esc(ACTION_HE[value] || value || "—");
       if (key === "device") return esc(DEVICE_HE[value] || value || "—");
-      if (key === "email") return value ? `<span dir="ltr">${esc(value)}</span>` : "—";
+      // שם המשתמש הוא הזיהוי; המייל מתחתיו בקטן ומיושר LTR כדי שה-@ לא יתהפך.
+      if (key === "who") {
+        const name = String(item.name || "").trim();
+        const mail = String(item.email || "").trim();
+        if (!name && !mail) return "—";
+        return `<span class="who-cell"><b>${esc(name || mail)}</b>${name && mail ? `<small dir="ltr">${esc(mail)}</small>` : ""}</span>`;
+      }
       if (key === "listId") return value ? `<span class="muted" dir="ltr" title="${esc(value)}">…${esc(String(value).slice(-6))}</span>` : "—";
       return esc(value || "—");
     };
