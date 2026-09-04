@@ -8,7 +8,7 @@ let mainWindow;
 const b64url = buffer => buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 function createWindow() {
-  mainWindow = new BrowserWindow({ width: 1280, height: 820, minWidth: 880, minHeight: 600, backgroundColor: "#0b1220", title: 'אנק"ל', autoHideMenuBar: true,
+  mainWindow = new BrowserWindow({ width: 1280, height: 820, minWidth: 880, minHeight: 600, backgroundColor: "#0b1220", title: 'אנק"ל', autoHideMenuBar: true, icon: path.join(__dirname, "src", "logo.png"),
     webPreferences: { preload: path.join(__dirname, "preload.js"), nodeIntegration: false, contextIsolation: true, sandbox: true, spellcheck: false } });
   Menu.setApplicationMenu(null);
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url); return { action: "deny" }; });
