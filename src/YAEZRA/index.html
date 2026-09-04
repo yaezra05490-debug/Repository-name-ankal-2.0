@@ -99,6 +99,15 @@
     { key: "errors", label: "תקלות" },
     { key: "trash", label: "סל מחזור" }
   ];
+  /* היומן שומר קודי פעולה טכניים; כאן הם מתורגמים למשפט עברי שאומר מה קרה. */
+  const ACTION_HE = {
+    create_list: "יצירת רשימה חדשה", delete_list: "העברת רשימה לסל",
+    import: "ייבוא קובץ אנשי קשר", export_vcf: "ייצוא קובץ VCF",
+    export_xlsx: "ייצוא קובץ Excel", export_csv: "ייצוא קובץ CSV",
+    download_app: "הורדת התוכנה למחשב",
+    move_contacts: "העברת אנשי קשר בין רשימות", copy_contacts: "העתקת אנשי קשר בין רשימות"
+  };
+  const DEVICE_HE = { web: "אתר", desktop: "תוכנה" };
 
   let token = "";
   let me = null;
@@ -304,10 +313,21 @@
       state.tab === "logs" ? [["at", "מתי"], ["email", "משתמש"], ["action", "פעולה"], ["listId", "רשימה"], ["device", "מכשיר"]] :
       state.tab === "errors" ? [["at", "מתי"], ["email", "משתמש"], ["area", "אזור"], ["message", "הודעה"]] :
       [["email", "מייל"], ["name", "שם"], ["deletedAt", "נמחק בתאריך"], ["status", "מצב"]];
+    /* כל תא מוצג בצורה קריאה: תאריך עברי, פעולה במילים, מייל ביישור LTR
+       (אחרת ה-@ מתהפך בעברית), ומזהה רשימה מקוצר עם המזהה המלא בריחוף. */
+    const cellHtml = (key, item) => {
+      const value = item[key];
+      if (key === "at" || key === "deletedAt") return esc(fmtDate(value));
+      if (key === "action") return esc(ACTION_HE[value] || value || "—");
+      if (key === "device") return esc(DEVICE_HE[value] || value || "—");
+      if (key === "email") return value ? `<span dir="ltr">${esc(value)}</span>` : "—";
+      if (key === "listId") return value ? `<span class="muted" dir="ltr" title="${esc(value)}">…${esc(String(value).slice(-6))}</span>` : "—";
+      return esc(value || "—");
+    };
     box.innerHTML = items.length ? `<div class="tbl-wrap"><table>
         <thead><tr>${columns.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>
         <tbody>${items.map((item) => `<tr>${columns.map(([key]) =>
-          `<td class="${key === "message" ? "wrap" : ""}">${key === "at" || key === "deletedAt" ? esc(fmtDate(item[key])) : esc(item[key] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
+          `<td class="${key === "message" ? "wrap" : ""}">${cellHtml(key, item)}</td>`).join("")}</tr>`).join("")}</tbody>
       </table></div>` : '<p class="muted">אין פריטים להצגה.</p>';
   }
 

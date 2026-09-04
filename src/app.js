@@ -7,6 +7,8 @@
   const PHONE_FIELDS = ["mobile", "home", "work", "fax"];
   const FIELDS = ["name", ...PHONE_FIELDS, "email", "note"];
   const LABELS = { name: "שם", mobile: "נייד", home: "בית", work: "עבודה", fax: "פקס", email: "מייל", note: "הערה" };
+  // תרגום קודי הפעולה של היומן לעברית שאומרת מה קרה.
+  const ACTION_HE = { create_list: "יצירת רשימה חדשה", delete_list: "העברת רשימה לסל", import: "ייבוא קובץ אנשי קשר", export_vcf: "ייצוא קובץ VCF", export_xlsx: "ייצוא קובץ Excel", export_csv: "ייצוא קובץ CSV", download_app: "הורדת התוכנה למחשב", move_contacts: "העברת אנשי קשר בין רשימות", copy_contacts: "העתקת אנשי קשר בין רשימות" };
   const PAGE_TITLES = { lists: ["מרכז העבודה", "הרשימות שלי"], contacts: ["ניהול רשימה", "אנשי קשר"], clean: ["כלי עבודה", "ניקוי והחלפה"], duplicates: ["בקרת איכות", "בדיקת כפולים"], smart: ["איכות נתונים", "ניהול חכם"], transfer: ["קבצים", "ייבוא וייצוא"], help: ["מרכז מידע", "עזרה והסברים"], admin: ["למנהל בלבד", "ניהול מערכת"] };
   const HELP = {
     start: `<h2>התחלה מהירה</h2><div class="help-step"><b>1</b><div><strong>צרו או פתחו רשימה</strong><p>במסך הרשימות לחצו “רשימה חדשה”, או ייבאו קובץ קיים.</p></div></div><div class="help-step"><b>2</b><div><strong>בדקו את המיפוי</strong><p>בייבוא Excel בחרו גיליון, שורת כותרות והעמודה המתאימה לכל אחד משבעת השדות.</p></div></div><div class="help-step"><b>3</b><div><strong>נקו ובדקו כפולים</strong><p>השתמשו בכלי הניקוי ולאחר מכן הפעילו בדיקת כפולים. מיזוג אוטומטי מתבצע רק כשאין סתירה.</p></div></div><div class="help-step"><b>4</b><div><strong>ייצאו</strong><p>עברו לייבוא וייצוא ובחרו VCF, Excel או CSV.</p></div></div>`,
@@ -101,6 +103,9 @@
     persistLocal(); processQueue();
   }
   async function processQueue() {
+    // תור ריק אצל משתמש מחובר = הכול בענן. בלי העדכון כאן, מי שנכנס בלי
+    // שינויים ממתינים נשאר עם "נשמר במחשב" למרות שהוא מסונכרן לגמרי.
+    if (state.user && !state.syncQueue.length && !state.syncRunning && navigator.onLine) setSyncState("", "נשמר בענן");
     if (state.syncRunning || !state.user || !state.syncQueue.length || !navigator.onLine) return;
     clearTimeout(state.retryTimer);
     state.syncRunning = true; setSyncState("pending", "מסנכרן");
@@ -1283,7 +1288,7 @@
     const stats = data.stats || {}; document.getElementById("admin-stats").innerHTML = `<article><strong>${stats.users || 0}</strong><span>משתמשים</span></article><article><strong>${stats.lists || 0}</strong><span>רשימות</span></article><article><strong>${stats.contacts || 0}</strong><span>אנשי קשר</span></article><article><strong>${esc(stats.storage || "0 MB")}</strong><span>אחסון</span></article>`;
     const items = data.items || []; const content = document.getElementById("admin-content");
     if (!items.length) { content.innerHTML = "<p>אין פריטים להצגה.</p>"; return; }
-    content.innerHTML = `<div class="modal-list">${items.map(item => `<div class="modal-list-row"><span><b>${esc(item.name || item.email || item.action || item.area || item.listName || "פריט")}</b><small>${esc(item.email || item.at || item.updatedAt || "")}</small></span><span>${item.blocked !== undefined ? `<button class="btn btn-quiet" data-admin-lists="${esc(item.sub)}">רשימות</button> <button class="btn btn-quiet" data-admin-block="${esc(item.sub)}">${item.blocked ? "ביטול חסימה" : "חסימה"}</button>` : esc(item.message || item.status || "")}</span></div>`).join("")}</div>`;
+    content.innerHTML = `<div class="modal-list">${items.map(item => `<div class="modal-list-row"><span><b>${esc(item.name || ACTION_HE[item.action] || item.action || item.area || item.email || "פריט")}</b><small>${esc([item.email, item.at ? fmtDate(item.at) : item.updatedAt ? fmtDate(item.updatedAt) : ""].filter(Boolean).join(" · "))}</small></span><span>${item.blocked !== undefined ? `<button class="btn btn-quiet" data-admin-lists="${esc(item.sub)}">רשימות</button> <button class="btn btn-quiet" data-admin-block="${esc(item.sub)}">${item.blocked ? "ביטול חסימה" : "חסימה"}</button>` : esc(item.message || item.status || "")}</span></div>`).join("")}</div>`;
   }
   async function adminBlock(sub) { try { await api("adminToggleBlock", { sub }); toast("מצב המשתמש עודכן"); loadAdmin(); } catch (error) { toast(error.message, "error"); } }
   /* קודם בוחרים רשימה, ורק אז רואים את אנשי הקשר שבה. הגרסה הקודמת שפכה את
@@ -1337,6 +1342,17 @@
     });
   }
 
+  /* קריאת תוכן ה-ID Token בלי שרת: הפרטים חתומים על ידי גוגל וטובים לתצוגה
+     מיידית. האימות האמיתי (חתימה, הרשאת מנהל, חסימה) נשאר בשרת — הוא פשוט
+     קורה ברקע ומעדכן את המסך כשהוא מסתיים. */
+  function jwtPayload(token) {
+    try {
+      const part = String(token).split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const bin = atob(part);
+      return JSON.parse(decodeURIComponent(bin.split("").map(c => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")));
+    } catch (_) { return null; }
+  }
+
   async function googleLogin() {
     if (String(CFG.GOOGLE_WEB_CLIENT_ID || "").includes("PASTE_")) return toast("המנהל עדיין לא הגדיר כניסה באמצעות Google", "warning");
     /* לחיצה אחת: ישר לבחירת החשבון של Google, בלי מסך אישור מקדים. ההסכמה
@@ -1347,16 +1363,28 @@
       else credential = await browserGoogleLogin();
       if (!credential?.idToken) throw new Error("לא התקבל אישור מ־Google");
       state.token = credential.idToken;
-      const session = await api("session", { termsVersion: CFG.TERMS_VERSION, privacyVersion: CFG.PRIVACY_VERSION });
-      // השם והתמונה מגיעים מ-Google דרך ה-ID Token ונשמרים בגיליון המשתמשים.
-      state.user = session.user;
+
+      /* כניסה מיידית: המסך לא מחכה ל-Apps Script. הפרטים מגיעים מהאישור עצמו,
+         והשרת מאשר ברקע. אם האישור ייכשל שם — מתנתקים ומודיעים. */
+      const info = jwtPayload(credential.idToken) || {};
+      state.user = { sub: info.sub || "", email: info.email || "", name: info.name || info.email || "", picture: info.picture || "", isAdmin: false, blocked: false };
       localStorage.setItem("ankal.sessionHint", JSON.stringify({ email: state.user.email, name: state.user.name, picture: state.user.picture || "" }));
       localStorage.setItem(ENTRY_CHOICE_KEY, "google");
-      updateAccount(); await pullLists();
-      // רשימות שנערכו בלי חיבור (או שהתור שלהן רוקן ביציאה) נשלחות עכשיו.
-      for (const list of state.lists) if (list.dirty) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`);
-      processQueue();
+      updateAccount();
       toast(`ברוכים הבאים${state.user.name ? ", " + state.user.name : ""}`);
+
+      api("session", { termsVersion: CFG.TERMS_VERSION, privacyVersion: CFG.PRIVACY_VERSION })
+        .then((session) => { state.user = session.user; updateAccount(); })
+        .catch((error) => {
+          state.user = null; state.token = "";
+          updateAccount(); setSyncState("", "נשמר במחשב");
+          toast("אימות הכניסה מול השרת נכשל — נסו להיכנס שוב", "error");
+        });
+      pullLists().then(() => {
+        // רשימות שנערכו בלי חיבור (או שהתור שלהן רוקן ביציאה) נשלחות עכשיו.
+        for (const list of state.lists) if (list.dirty) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`);
+        processQueue();
+      });
     } catch (error) {
       if (error?.message === "LOGIN_CANCELLED") return;
       // בתוכנה, כניסה בלי app-config.json מלא נכשלת תמיד — אומרים את זה במפורש
