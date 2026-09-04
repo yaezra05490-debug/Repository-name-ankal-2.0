@@ -27,7 +27,7 @@ window.ANKAL_CONFIG = Object.freeze({
 
   // גרסת מבנה הנתונים. אין לשנות ידנית.
   DATA_VERSION: 2,
-  APP_VERSION: "2.0.0",
+  APP_VERSION: "2.0.1",
   TERMS_VERSION: "2026-08-21",
   PRIVACY_VERSION: "2026-08-21",
   AUTOSAVE_DELAY_MS: 1800,

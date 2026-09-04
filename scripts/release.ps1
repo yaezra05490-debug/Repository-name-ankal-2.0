@@ -1,4 +1,4 @@
-# מעלה את קובץ ההתקנה של Windows ל-GitHub Releases.
+﻿# מעלה את קובץ ההתקנה של Windows ל-GitHub Releases.
 #
 # למה סקריפט ולא העלאה ידנית: הכתובת שהאתר מצביע עליה היא
 # releases/latest/download/ankal-windows.exe — היא עובדת רק אם שם הקובץ
@@ -38,8 +38,13 @@ $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host "מעלה $tag  ($mb MB)…" -ForegroundColor Cyan
 
 # מהדורה קיימת מתעדכנת במקום ליפול על שגיאה, כדי שאפשר יהיה לתקן בנייה שגויה.
-$exists = (gh release view $tag 2>$null)
-if ($LASTEXITCODE -eq 0) {
+# הבדיקה עטופה: ב-PowerShell 5.1 שגיאת stderr של gh ("release not found") הופכת
+# לשגיאה עוצרת תחת ErrorActionPreference=Stop, למרות שהיא בדיוק המקרה הצפוי.
+$ErrorActionPreference = "Continue"
+gh release view $tag *> $null
+$found = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = "Stop"
+if ($found) {
   Write-Host "המהדורה $tag כבר קיימת — מחליף את הקובץ."
   gh release upload $tag $exe --clobber
 } else {
