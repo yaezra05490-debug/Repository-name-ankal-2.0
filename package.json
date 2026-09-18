@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node tests/run-tests.js",
-    "smoke": "node tests/smoke.js",
+    "smoke": "node tests/smoke.js && node tests/wizard-skip.js",
     "build": "npm test && node scripts/check-build-config.js && electron-builder --win portable"
   },
   "devDependencies": {

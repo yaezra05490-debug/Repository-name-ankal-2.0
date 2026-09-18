@@ -433,7 +433,7 @@
         for (const entry of ENGINE.buildQueue(currentDupeGroups())) {
           steps.push({ kind: "dupe", key: entry.key, title: entry.title, desc: entry.desc, tone: entry.tone, icon: entry.icon, bulk: entry.bulk });
         }
-        state.review = { scope: scopeKey, steps, stepIndex: 0, itemIndex: 0, screen: "overview", stats: { symbols: 0, merged: 0, skipped: 0, deleted: 0 } };
+        state.review = { scope: scopeKey, steps, stepIndex: 0, itemIndex: 0, screen: "overview", trail: [], stats: { symbols: 0, merged: 0, skipped: 0, deleted: 0 } };
         renderReview();
         const total = steps.reduce((sum, step) => sum + stepItems(step).length, 0);
         toast(total ? `הבדיקה הסתיימה: ${total} פריטים לטיפול` : "הבדיקה הסתיימה — לא נמצא מה לתקן");
@@ -523,10 +523,13 @@
   function reviewNavHtml() {
     const review = state.review;
     const percent = Math.round(review.stepIndex / Math.max(review.steps.length, 1) * 100);
+    // "הקודם" מופיע רק כשיש לאן לחזור — אחרי דילוג. לחיצה מחזירה בדיוק לפריט
+    // שדילגו עליו, כך שטעות בלחיצה על "דלג" לא מחייבת סריקה מחדש.
     return `
       <div class="qnav">
         <span class="qnav-step">שלב ${Math.min(review.stepIndex + 1, review.steps.length)} מתוך ${review.steps.length}</span>
         <div class="qbar"><i style="width:${percent}%"></i></div>
+        ${review.trail.length ? `<button class="btn btn-quiet btn-sm" data-action="review-back" title="חזרה לפריט שדילגתם עליו">→ הקודם</button>` : ""}
         <button class="btn btn-quiet btn-sm" data-action="review-overview">לסיכום</button>
       </div>`;
   }
@@ -725,6 +728,7 @@
         <p>${parts.length ? parts.join(", ") + "." : "לא בוצעו שינויים."} ברשימה ${currentList()?.contacts.length || 0} אנשי קשר.</p>
         <div class="qactions">
           <button class="btn btn-primary" data-action="review-rescan">סרוק שוב</button>
+          ${state.review.trail.length ? `<button class="btn btn-secondary" data-action="review-back">→ חזרה לפריט שדילגתם עליו</button>` : ""}
           <button class="btn btn-quiet" data-action="review-overview">לסיכום</button>
         </div>
       </div>`;
@@ -732,16 +736,18 @@
 
   /* ──── פעולות האשף ──── */
 
+  // התחלה מחדש או קפיצה לשלב מאפסות את המסלול — אחרת "הקודם" היה קופץ קדימה
+  // למיקום שנשמר לפני הקפיצה.
   function reviewStart() {
     const review = state.review; if (!review) return;
-    review.stepIndex = 0; review.itemIndex = 0; review.screen = "step";
+    review.stepIndex = 0; review.itemIndex = 0; review.screen = "step"; review.trail = [];
     renderReview();
   }
   function reviewJump(stepKey) {
     const review = state.review; if (!review) return;
     const index = review.steps.findIndex((step) => step.key === stepKey);
     if (index < 0) return;
-    review.stepIndex = index; review.itemIndex = 0; review.screen = "step";
+    review.stepIndex = index; review.itemIndex = 0; review.screen = "step"; review.trail = [];
     renderReview();
   }
   function reviewOverview() {
@@ -754,22 +760,38 @@
     review.itemIndex = 0; review.screen = "item";
     renderReview();
   }
+  /* דילוג נרשם במסלול (trail), כדי ש"הקודם" יחזיר לפריט שדילגו עליו — בטעות
+     או כדי לבחור בו "אלה אנשים שונים" אחרי הכול. הפריטים שלפני המצביע יציבים:
+     כל פעולה נוגעת רק בפריט שמתחת למצביע, ולכן מיקום שנשמר נשאר נכון. */
   function reviewSkipStep() {
     const review = state.review; if (!review) return;
-    review.stats.skipped += stepItems(review.steps[review.stepIndex]).length;
+    const count = stepItems(review.steps[review.stepIndex]).length;
+    review.trail.push({ stepIndex: review.stepIndex, itemIndex: review.itemIndex, screen: "step", count });
+    review.stats.skipped += count;
     review.stepIndex++; review.itemIndex = 0; review.screen = "step";
     renderReview();
   }
   function reviewNextStep() {
-    const review = state.review;
+    const review = state.review; if (!review) return;
     review.stepIndex++; review.itemIndex = 0; review.screen = "step";
     renderReview();
   }
   function reviewSkipItem() {
     const review = state.review; if (!review) return;
+    review.trail.push({ stepIndex: review.stepIndex, itemIndex: review.itemIndex, screen: "item", count: 1 });
     review.stats.skipped++;
     review.itemIndex++;
     if (review.itemIndex >= stepItems(review.steps[review.stepIndex]).length) return reviewNextStep();
+    renderReview();
+  }
+  function reviewBack() {
+    const review = state.review; if (!review) return;
+    const last = review.trail.pop();
+    if (!last) return;
+    review.stepIndex = Math.min(last.stepIndex, review.steps.length - 1);
+    review.itemIndex = last.itemIndex;
+    review.screen = last.screen;
+    review.stats.skipped = Math.max(0, review.stats.skipped - last.count);
     renderReview();
   }
 
@@ -1460,7 +1482,7 @@
       "scan-duplicates": () => scanReview("duplicates"), "scan-symbols": () => scanReview("smart"),
       "review-start": reviewStart, "review-overview": reviewOverview, "review-one-by-one": reviewOneByOne,
       "review-bulk": reviewBulk, "review-skip-step": reviewSkipStep, "review-apply": reviewApplyItem,
-      "review-skip-item": reviewSkipItem, "review-separate": reviewSeparateItem, "review-auto": reviewAuto,
+      "review-skip-item": reviewSkipItem, "review-separate": reviewSeparateItem, "review-auto": reviewAuto, "review-back": reviewBack,
       "review-rescan": reviewRescan };
     actions[action]?.();
   }
