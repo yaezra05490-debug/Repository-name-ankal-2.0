@@ -50,8 +50,12 @@
     if (!state.activeListId) state.activeListId = state.lists[0].id;
   }
 
+  /* היסטוריית הביטול נשארת בזיכרון ולא נכתבת לדיסק: כל פעולה גורפת שומרת עותק
+     מלא של הכרטיסים "לפני" ו"אחרי", וברשימה של אלף-פלוס אנשי קשר כמה פעולות
+     כאלה עברו את מכסת localStorage והשמירה עצמה נכשלה. ביטול אחרי רענון הדף
+     הוא ויתור קטן לעומת אובדן השמירה. */
   function persistLocal() {
-    const payload = { dataVersion: CFG.DATA_VERSION || 2, activeListId: state.activeListId, dense: state.dense, lists: state.lists };
+    const payload = { dataVersion: CFG.DATA_VERSION || 2, activeListId: state.activeListId, dense: state.dense, lists: state.lists.map(list => { const copy = { ...list }; delete copy.undo; delete copy.redo; return copy; }) };
     const json = JSON.stringify(payload);
     if (window.electronAPI?.saveWorkspace) window.electronAPI.saveWorkspace(json).catch(() => {});
     try {
@@ -1001,7 +1005,7 @@
     const question = step.kind === "symbol"
       ? `להסיר את הסימון מ-${items.length} אנשי קשר?`
       : `לאשר את ההצעה ולמזג ${items.length} קבוצות מסוג "${step.title}"?`;
-    confirmBox(step.title, question, "אישור").then((ok) => {
+    confirmBox(step.title, question, "אישור", { enterConfirms: false }).then((ok) => {
       if (!ok) return;
       if (step.kind === "symbol") {
         const changes = [];
@@ -1041,7 +1045,7 @@
     const review = state.review; if (!review) return;
     const groups = currentDupeGroups().filter((group) => group.category === "exact" || group.category === "safe");
     if (!groups.length) return toast("אין כפולים ודאיים למזג", "warning");
-    confirmBox("מיזוג הכפולים הוודאיים", `למזג ${groups.length} קבוצות שאין בהן שום סתירה?`, "מיזוג").then((ok) => {
+    confirmBox("מיזוג הכפולים הוודאיים", `למזג ${groups.length} קבוצות שאין בהן שום סתירה?`, "מיזוג", { enterConfirms: false }).then((ok) => {
       if (!ok) return;
       review.stats.merged += mergeGroups(groups, "מיזוג הכפולים הוודאיים");
       toast(`מוזגו ${groups.length} קבוצות`);
@@ -1297,7 +1301,7 @@
     });
     updateSelectionUi();
   }
-  async function deleteSelected() { const list = currentList(); if (!list || !state.selected.size) return; const ok = await confirmBox("מחיקת אנשי קשר", `למחוק ${state.selected.size} אנשי קשר שנבחרו?`, "מחיקה"); if (!ok) return; const removed = list.contacts.filter(c => state.selected.has(c.id)); list.contacts = list.contacts.filter(c => !state.selected.has(c.id)); recordChange(list, "מחיקת אנשי קשר", removed.map(clone), removed.map(() => null)); state.selected.clear(); markChanged(list, "bulk_delete"); renderAll(); }
+  async function deleteSelected() { const list = currentList(); if (!list || !state.selected.size) return; const ok = await confirmBox("מחיקת אנשי קשר", `למחוק ${state.selected.size} אנשי קשר שנבחרו?`, "מחיקה", { enterConfirms: false }); if (!ok) return; const removed = list.contacts.filter(c => state.selected.has(c.id)); list.contacts = list.contacts.filter(c => !state.selected.has(c.id)); recordChange(list, "מחיקת אנשי קשר", removed.map(clone), removed.map(() => null)); state.selected.clear(); markChanged(list, "bulk_delete"); renderAll(); }
 
   function showHelp(topic) { document.querySelectorAll("[data-help]").forEach(x => x.classList.toggle("active", x.dataset.help === topic)); document.getElementById("help-content").innerHTML = HELP[topic] || HELP.start; }
   async function loadAdmin() {
@@ -1469,13 +1473,15 @@
     if (choice === "login") googleLogin(); if (choice === "delete") { const ok = await confirmBox("מחיקת חשבון", "החשבון והרשימות יועברו לסל ויימחקו סופית לאחר 30 יום. כניסה מחדש עם החשבון בתוך התקופה מבטלת את המחיקה. להמשיך?", "העברה לסל"); if (ok) { await api("deleteAccount"); logout(); toast("החשבון הועבר לסל המחזור"); } }
   }
 
-  function modal({ kicker = "", title = "", html = "", buttons = [], dismissible = true, beforeResolve = null }) {
+  /* enterConfirms=false לחלונות שמאשרים פעולה גורפת (מיזוג עשרות קבוצות, מחיקה
+     מרובה): שם Enter רפלקסיבי היה מבצע את הפעולה בלי כוונה. נדרשת לחיצה. */
+  function modal({ kicker = "", title = "", html = "", buttons = [], dismissible = true, beforeResolve = null, enterConfirms = true }) {
     if (state.modal) state.modal.resolve("cancel"); const backdrop = document.getElementById("modal-backdrop"); document.getElementById("modal-kicker").textContent = kicker; document.getElementById("modal-title").textContent = title; document.getElementById("modal-body").innerHTML = html; const footer = document.getElementById("modal-footer");
     footer.innerHTML = buttons.map(b => `<button class="btn ${b.primary ? "btn-primary" : b.id === "delete" ? "btn-danger" : "btn-quiet"}" data-modal-choice="${esc(b.id)}">${esc(b.label)}</button>`).join(""); backdrop.classList.add("open"); backdrop.setAttribute("aria-hidden", "false");
-    return new Promise(resolve => { state.modal = { resolve, dismissible, beforeResolve }; setTimeout(() => backdrop.querySelector("input,select,button")?.focus(), 30); });
+    return new Promise(resolve => { state.modal = { resolve, dismissible, beforeResolve, enterConfirms }; setTimeout(() => backdrop.querySelector("input,select,button")?.focus(), 30); });
   }
   function closeModal(value) { const active = state.modal; if (!active) return; if (active.beforeResolve && !active.beforeResolve(value)) return; document.getElementById("modal-backdrop").classList.remove("open"); document.getElementById("modal-backdrop").setAttribute("aria-hidden", "true"); state.modal = null; active.resolve(value); }
-  async function confirmBox(title, text, accept = "אישור") { return (await modal({ title, html: `<p>${esc(text)}</p>`, buttons: [{ id: "yes", label: accept, primary: true }, { id: "no", label: "ביטול" }] })) === "yes"; }
+  async function confirmBox(title, text, accept = "אישור", options = {}) { return (await modal({ title, html: `<p>${esc(text)}</p>`, buttons: [{ id: "yes", label: accept, primary: true }, { id: "no", label: "ביטול" }], ...options })) === "yes"; }
 
   function handleAction(action) {
     const actions = { "toggle-theme": toggleTheme, "enter-app": () => enterApp(), "show-landing": showLanding, "open-help": () => { enterApp("help"); }, "quick-import": quickImport, "toggle-sidebar": () => { const side = document.getElementById("sidebar"); side.classList.toggle(innerWidth <= 760 ? "mobile-open" : "collapsed"); }, "new-list": createList, "refresh-lists": () => state.user ? pullLists() : renderLists(), "rename-list": renameList, "add-contact": () => openDrawer(), "close-drawer": closeDrawer, "save-contact": () => saveDrawer(true), "drawer-delete": deleteDrawer, undo, redo, "select-all": selectAll, "clear-selection": clearSelection, "delete-selected": deleteSelected, "move-selected": moveSelected, "toggle-density": () => { state.dense = !state.dense; persistLocal(); renderContacts(); }, "preview-add-text": previewAddText, "preview-replace": previewReplace, "download-template": downloadTemplate, "google-login": googleLogin, logout, "account-settings": accountSettings, "account-menu": () => document.getElementById("account-menu").classList.toggle("hidden"), "admin-refresh": loadAdmin, "download-app": downloadApp,
@@ -1514,7 +1520,7 @@
       /* Enter מאשר את החלון הפתוח: מפעיל את הכפתור הראשי. לא כשעומדים על
          textarea (שם Enter הוא שורה חדשה), על כפתור אחר (Enter מפעיל אותו
          ממילא) או על select (Enter בוחר מהרשימה הפתוחה). */
-      if (event.key === "Enter" && state.modal) {
+      if (event.key === "Enter" && state.modal && state.modal.enterConfirms !== false) {
         const tag = event.target.tagName;
         if (tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT") return;
         const primary = document.querySelector("#modal-footer .btn-primary");

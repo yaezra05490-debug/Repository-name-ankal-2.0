@@ -85,6 +85,7 @@ server.listen(PORT, async () => {
       { name: "עדי", email: "a@x.co", mobile: "050-6666666" }, { name: "עדי", email: "b@x.co", mobile: "050-6666666" },
       { name: "גילה שטיב", mobile: "052-7777777" }, { name: "גילה שטיבל", mobile: "053-7777778" },
       { name: "קוד", mobile: "8224" }, { name: "קוד", mobile: "4939" },
+      { name: "רות אבן", mobile: "050-8888888" }, { name: "רות אבן", mobile: "050-8888888" },
       { name: "יחיד", mobile: "058-1231234" }
     ];
     localStorage.setItem("ankal.v2.workspace", JSON.stringify({ lists: [{ id: "list_skip", name: "דלג", contacts: seed.map((c, i) => Object.assign({ id: "c" + i, name: "", mobile: "", home: "", work: "", fax: "", email: "", note: "" }, c)), version: 1, remoteVersion: 0, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(), importHashes: [], separatedPairs: [], undo: [], redo: [], dirty: false }], activeListId: "list_skip" }));
@@ -210,6 +211,32 @@ server.listen(PORT, async () => {
   await click("review-back");
   const fromDone = await snapshot();
   record("חזרה מ'סיימנו' מגיעה לפריט האחרון שדילגו עליו", fromDone.screen === "item", `${fromDone.title} · ${fromDone.pos}`);
+
+  /* מסלול 3ד: Enter לא מאשר מיזוג גורף — רק לחיצה. */
+  await reseed();
+  {
+    const auto = await ev(`!!document.querySelector('[data-action="review-auto"]')`);
+    if (auto) {
+      const before = await ev(`document.getElementById("nav-contact-count").textContent`);
+      await click("review-auto");
+      const open = await ev(`document.getElementById("modal-backdrop").classList.contains("open")`);
+      await ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), 1`); await wait(300);
+      const stillOpen = await ev(`document.getElementById("modal-backdrop").classList.contains("open")`);
+      const after = await ev(`document.getElementById("nav-contact-count").textContent`);
+      record("Enter לא מאשר 'מזג את הוודאיים'", open && stillOpen && before === after, `חלון נשאר פתוח=${stillOpen}, אנשי קשר ${before}→${after}`);
+      await ev(`document.querySelector('[data-modal-choice="no"]')?.click(), 1`); await wait(150);
+    } else record("Enter לא מאשר 'מזג את הוודאיים'", true, "(אין כפולים ודאיים ברשימה — דילוג)");
+  }
+  { // ולעומת זאת, בחלון עריכה רגיל Enter כן שומר.
+    await click("review-start"); await wait(150);
+    let s = await snapshot(); guard = 0;
+    while (guard++ < 20 && !(s.screen === "item")) { await click(s.hasOneByOne ? "review-one-by-one" : "review-skip-step"); s = await snapshot(); }
+    await ev(`document.querySelector('#smart-review [data-review-edit-contact]')?.click(), 1`); await wait(200);
+    const open = await ev(`document.getElementById("modal-backdrop").classList.contains("open")`);
+    await ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), 1`); await wait(300);
+    const closed = await ev(`!document.getElementById("modal-backdrop").classList.contains("open")`);
+    record("Enter כן מאשר חלון עריכה רגיל", open && closed, `נפתח=${open}, נסגר=${closed}`);
+  }
 
   /* מסלול 4: מהמסך "סיימנו" — לסיכום, קפיצה לכרטיס, ושוב דלג. */
   await click("review-overview"); await wait(200);

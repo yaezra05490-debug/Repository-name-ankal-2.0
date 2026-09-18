@@ -72,6 +72,15 @@ html[data-theme="light"]{--bg:#eaf0f7;--shell:#f5f7fb;--side:#fff;--panel:#fff;-
 .qclear:hover{color:#fff;background:var(--danger);opacity:1}
 .qedit:hover{color:#fff;background:var(--cyan-2);opacity:1}
 .qname .qedit{font-size:13px;margin-right:7px;vertical-align:2px}
+/* במסך מגע אין ריחוף: הכפתורים תמיד גלויים במלואם ובגודל שאצבע פוגעת בו. */
+@media(hover:none){
+  .qclear{opacity:1;font-size:14px;min-width:36px;min-height:36px;padding:6px 8px;display:inline-grid;place-items:center}
+  .qclear:not(.qedit){color:var(--danger);background:hsl(351 72% 63% / .12)}
+  .qedit{color:var(--cyan-2);background:hsl(172 60% 45% / .14)}
+  .qname .qedit{font-size:16px}
+  .qcell{gap:8px}
+  .qtable td{padding:8px 10px}
+}
 /* סיכום הבדיקה: הכפתורים למעלה ליד הכותרת, והקוביות ברשת אחידה. */
 .qsummary-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
 .qsummary-head>div:first-child{flex:1;min-width:260px}

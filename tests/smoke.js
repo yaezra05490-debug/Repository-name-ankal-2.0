@@ -301,6 +301,8 @@ async function loadWs() {
           `GET ${parsed.pathname} HTTP/1.1\r\nHost: ${parsed.host}\r\nUpgrade: websocket\r\n` +
           `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`);
       });
+      // מאזין אחד לשגיאות שקט. קודם נרשם מאזין חדש בכל מנת נתונים ו-Node הזהיר על דליפה.
+      this.socket.on("error", () => {});
       let handshake = false;
       let buffer = Buffer.alloc(0);
       this.socket.on("data", (chunk) => {
@@ -312,7 +314,6 @@ async function loadWs() {
           buffer = buffer.slice(end + 4);
           this.emit("open");
         }
-        this.socket.on("error", () => {});
         while (buffer.length >= 2) {
           const len1 = buffer[1] & 127;
           let offset = 2, length = len1;

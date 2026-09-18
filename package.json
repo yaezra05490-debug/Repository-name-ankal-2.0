@@ -1,10 +1,10 @@
-{
+﻿{
   "name": "ankal-contacts",
   "productName": "Ankal",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Ankal - contacts manager and VCF/Excel/CSV converter",
   "main": "main.js",
-  "author": "You",
+  "author": "yaezra05490-debug",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
