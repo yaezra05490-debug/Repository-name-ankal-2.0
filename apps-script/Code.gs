@@ -105,21 +105,39 @@ function verifyGoogleToken_(token) {
   return { sub: String(info.sub), email: String(info.email).toLowerCase(), name: info.name || info.email, picture: info.picture || "" };
 }
 
+function findRowBySub_(rows, sub) {
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(sub)) return i + 1;
+  }
+  return 0;
+}
+
+/* הוספת משתמש חדש חייבת נעילה: שתי בקשות מקבילות (הכניסה שולחת session ו-
+   listLists) קראו שתיהן גיליון בלי השורה, ושתיהן הוסיפו — וכך נוצרו שתי שורות
+   לאותו משתמש. הנעילה נלקחת רק כשצריך להוסיף, ואחריה קוראים שוב: כך בקשה
+   רגילה של משתמש קיים אינה משלמת על הנעילה כלל. */
 function upsertUser_(identity) {
   var sheet = sheet_(USERS_SHEET, ["sub", "email", "name", "picture", "createdAt", "lastSeen", "blocked", "deletedAt", "termsVersion", "privacyVersion"]);
   var rows = sheet.getDataRange().getValues();
-  var row = 0;
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === identity.sub) {
-      row = i + 1;
-      break;
-    }
-  }
+  var row = findRowBySub_(rows, identity.sub);
   var stamp = new Date().toISOString();
   if (!row) {
-    sheet.appendRow([identity.sub, identity.email, identity.name, identity.picture, stamp, stamp, false, "", "", ""]);
-    row = sheet.getLastRow();
-  } else {
+    var lockService = getAppService(["L", "o", "c", "k", "S", "e", "r", "v", "i", "c", "e"]);
+    var lock = lockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      rows = sheet.getDataRange().getValues();
+      row = findRowBySub_(rows, identity.sub);
+      if (!row) {
+        sheet.appendRow([identity.sub, identity.email, identity.name, identity.picture, stamp, stamp, false, "", "", ""]);
+        rows = sheet.getDataRange().getValues();
+        row = sheet.getLastRow();
+      }
+    } finally {
+      lock.releaseLock();
+    }
+  }
+  if (row) {
     sheet.getRange(row, 2, 1, 5).setValues([[identity.email, identity.name, identity.picture, rows[row - 1][4] || stamp, stamp]]);
     // כניסה מחודשת בתוך 30 הימים מבטלת את מחיקת החשבון. בלי זה המשתמש היה
     // ממשיך לעבוד כרגיל בלי לדעת שהכול יימחק בסוף התקופה.
@@ -131,6 +149,71 @@ function upsertUser_(identity) {
   }
   var values = sheet.getRange(row, 1, 1, 10).getValues()[0];
   return { sub: String(values[0]), email: String(values[1]), name: String(values[2]), picture: String(values[3]), blocked: String(values[6]).toLowerCase() === "true", deletedAt: values[7] };
+}
+
+/* ניקוי שורות כפולות שנוצרו לפני תיקון הנעילה. מריצים ידנית מעורך הסקריפט.
+   שורות עם אותו sub מתארות את אותו משתמש ואת אותה תיקייה בדרייב, ולכן איחוד
+   שלהן בטוח: שומרים את ההצטרפות המוקדמת, את הביקור האחרון, וכל דגל חסימה או
+   מחיקה שהופיע באחת מהן. מייל זהה עם sub שונה הוא סיפור אחר — שם יש שתי
+   תיקיות נפרדות, ולכן רק מדווחים ולא נוגעים. */
+function mergeDuplicateUsers() {
+  var lockService = getAppService(["L", "o", "c", "k", "S", "e", "r", "v", "i", "c", "e"]);
+  var lock = lockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = sheet_(USERS_SHEET, ["sub", "email", "name", "picture", "createdAt", "lastSeen", "blocked", "deletedAt", "termsVersion", "privacyVersion"]);
+    var rows = sheet.getDataRange().getValues();
+    var keepRowOf = {};
+    var removeRows = [];
+    var merged = 0;
+
+    for (var i = 1; i < rows.length; i++) {
+      var sub = String(rows[i][0]);
+      if (!sub) continue;
+      if (!(sub in keepRowOf)) { keepRowOf[sub] = i; continue; }
+
+      var keep = keepRowOf[sub];
+      var dup = rows[i];
+      // ההצטרפות המוקדמת ביותר, הביקור האחרון ביותר.
+      if (String(dup[4]) && (!String(rows[keep][4]) || String(dup[4]) < String(rows[keep][4]))) rows[keep][4] = dup[4];
+      if (String(dup[5]) > String(rows[keep][5])) rows[keep][5] = dup[5];
+      // דגל שהופעל באחת מהשורות שורד את האיחוד.
+      if (String(dup[6]).toLowerCase() === "true") rows[keep][6] = true;
+      if (dup[7] && !rows[keep][7]) rows[keep][7] = dup[7];
+      for (var c = 1; c <= 3; c++) if (!rows[keep][c] && dup[c]) rows[keep][c] = dup[c];
+      for (var v = 8; v <= 9; v++) if (!rows[keep][v] && dup[v]) rows[keep][v] = dup[v];
+      removeRows.push(i + 1);
+      merged++;
+    }
+
+    for (var sub2 in keepRowOf) {
+      var r = keepRowOf[sub2];
+      sheet.getRange(r + 1, 1, 1, 10).setValues([rows[r]]);
+    }
+    // מוחקים מלמטה למעלה, אחרת כל מחיקה מזיזה את האינדקסים שמתחתיה.
+    removeRows.sort(function (a, b) { return b - a; });
+    for (var d = 0; d < removeRows.length; d++) sheet.deleteRow(removeRows[d]);
+
+    // מייל שמופיע ביותר מ-sub אחד: שני חשבונות נפרדים, לא כפילות טכנית.
+    var byEmail = {};
+    var after = sheet.getDataRange().getValues();
+    for (var k = 1; k < after.length; k++) {
+      var mail = String(after[k][1]).toLowerCase();
+      if (!mail) continue;
+      if (!byEmail[mail]) byEmail[mail] = [];
+      if (byEmail[mail].indexOf(String(after[k][0])) < 0) byEmail[mail].push(String(after[k][0]));
+    }
+    var sameMail = [];
+    for (var m in byEmail) if (byEmail[m].length > 1) sameMail.push(m + " (" + byEmail[m].length + " מזהים)");
+
+    var report = "אוחדו " + merged + " שורות כפולות. נשארו " + (after.length - 1) + " משתמשים."
+      + (sameMail.length ? " שימו לב — מייל עם יותר ממזהה אחד: " + sameMail.join(", ") + ". אלה חשבונות נפרדים עם תיקיות נפרדות ולא אוחדו." : "");
+    Logger.log(report);
+    try { getAppService(["C", "a", "c", "h", "e", "S", "e", "r", "v", "i", "c", "e"]).getScriptCache().remove("ADMIN_STATS"); } catch (_) {}
+    return report;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function updateUserVersions_(sub, terms, privacy) {

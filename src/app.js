@@ -1403,18 +1403,25 @@
       updateAccount();
       toast(`ברוכים הבאים${state.user.name ? ", " + state.user.name : ""}`);
 
+      /* session קודם, ורק אחריו משיכת הרשימות. שליחת שתיהן במקביל גרמה לשתי
+         שורות בגיליון המשתמשים בכניסה הראשונה של חשבון: שתי הבקשות קראו גיליון
+         בלי השורה, ושתיהן הוסיפו. המשתמש כבר רואה את עצמו מהטוקן, ולכן ההמתנה
+         הקצרה הזו אינה מורגשת. */
       api("session", { termsVersion: CFG.TERMS_VERSION, privacyVersion: CFG.PRIVACY_VERSION })
-        .then((session) => { state.user = session.user; updateAccount(); })
+        .then((session) => {
+          state.user = session.user; updateAccount();
+          return pullLists();
+        })
+        .then(() => {
+          // רשימות שנערכו בלי חיבור (או שהתור שלהן רוקן ביציאה) נשלחות עכשיו.
+          for (const list of state.lists) if (list.dirty) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`);
+          processQueue();
+        })
         .catch((error) => {
           state.user = null; state.token = "";
           updateAccount(); setSyncState("", "נשמר במחשב");
           toast("אימות הכניסה מול השרת נכשל — נסו להיכנס שוב", "error");
         });
-      pullLists().then(() => {
-        // רשימות שנערכו בלי חיבור (או שהתור שלהן רוקן ביציאה) נשלחות עכשיו.
-        for (const list of state.lists) if (list.dirty) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`);
-        processQueue();
-      });
     } catch (error) {
       if (error?.message === "LOGIN_CANCELLED") return;
       // בתוכנה, כניסה בלי app-config.json מלא נכשלת תמיד — אומרים את זה במפורש
