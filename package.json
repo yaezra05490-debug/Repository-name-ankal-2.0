@@ -1,7 +1,7 @@
 {
   "name": "ankal-contacts",
   "productName": "Ankal",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Ankal - contacts manager and VCF/Excel/CSV converter",
   "main": "main.js",
   "author": "yaezra05490-debug",
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node tests/run-tests.js",
-    "smoke": "node tests/smoke.js && node tests/wizard-skip.js",
+    "smoke": "node tests/smoke.js && node tests/wizard-skip.js && node tests/qualix-smoke.js",
     "build": "npm test && node scripts/check-build-config.js && electron-builder --win portable"
   },
   "devDependencies": {

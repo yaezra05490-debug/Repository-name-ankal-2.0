@@ -20,6 +20,40 @@ ipcMain.handle("ankal:google-login", () => systemGoogleLogin());
 ipcMain.handle("ankal:save-workspace", (_, json) => atomicSave(json));
 ipcMain.handle("ankal:check-update", async () => { try { const response = await fetch(config.siteUrl.replace(/\/$/, "") + "/version.json"); return { ...(await response.json()), current: app.getVersion() }; } catch (_) { return null; } });
 
+/* ---- גיבוי קיוליקס: גישה לכרטיס הזיכרון של הטלפון ----
+   הדפדפן בתוך התוכנה הוא sandbox בלי מערכת קבצים, אז הקריאה והכתיבה עוברות כאן.
+   כל הפעולות מוגבלות לתיקיית שורש שהמשתמש בחר או לכרטיס שזוהה (יש בו תיקיית ibphone). */
+const qualixRoots = new Set();
+function qualixResolve(root, rel) {
+  if (!qualixRoots.has(root)) throw new Error("QUALIX_ROOT_NOT_ALLOWED");
+  const target = path.resolve(root, rel || "");
+  if (target !== root && !target.startsWith(root.endsWith(path.sep) ? root : root + path.sep)) throw new Error("QUALIX_PATH_OUTSIDE_ROOT");
+  return target;
+}
+ipcMain.handle("qualix:list-cards", () => {
+  const cards = [];
+  for (const letter of "DEFGHIJKLMNOPQRSTUVWXYZ") {
+    const root = `${letter}:\\`;
+    try { if (fs.existsSync(path.join(root, "ibphone")) && fs.statSync(path.join(root, "ibphone")).isDirectory()) { qualixRoots.add(root); cards.push({ root, letter, label: `כרטיס ${letter}:` }); } } catch (_) { }
+  }
+  return cards;
+});
+ipcMain.handle("qualix:choose-folder", async () => {
+  const { dialog } = require("electron");
+  const result = await dialog.showOpenDialog(mainWindow, { title: "בחירת תיקיית הגיבוי או כרטיס הזיכרון", properties: ["openDirectory"] });
+  if (result.canceled || !result.filePaths.length) return null;
+  const root = result.filePaths[0]; qualixRoots.add(root); return { root, label: root };
+});
+ipcMain.handle("qualix:list", (_, root, rel) => {
+  const dir = qualixResolve(root, rel);
+  return fs.readdirSync(dir, { withFileTypes: true }).map(e => ({ name: e.name, kind: e.isDirectory() ? "directory" : "file", size: e.isFile() ? (() => { try { return fs.statSync(path.join(dir, e.name)).size; } catch (_) { return 0; } })() : 0 }));
+});
+ipcMain.handle("qualix:read", (_, root, rel) => { const buf = fs.readFileSync(qualixResolve(root, rel)); return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength); });
+ipcMain.handle("qualix:write", (_, root, rel, data) => { const target = qualixResolve(root, rel); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, Buffer.from(data)); return true; });
+ipcMain.handle("qualix:mkdir", (_, root, rel) => { fs.mkdirSync(qualixResolve(root, rel), { recursive: true }); return true; });
+ipcMain.handle("qualix:remove", (_, root, rel) => { const target = qualixResolve(root, rel); if (target === root) throw new Error("QUALIX_REFUSE_ROOT"); fs.rmSync(target, { recursive: true, force: true }); return true; });
+ipcMain.handle("qualix:exists", (_, root, rel) => { try { return fs.existsSync(qualixResolve(root, rel)); } catch (_) { return false; } });
+
 /* לקוח OAuth מסוג Desktop אצל גוגל דורש client_secret בהחלפת הקוד לטוקן, גם
    כשמשתמשים ב-PKCE. בלעדיו גוגל מחזיר "client_secret is missing" וההתחברות
    נכשלת. גוגל עצמה מציינת שהסוד הזה אינו חסוי באמת באפליקציות מותקנות — הוא

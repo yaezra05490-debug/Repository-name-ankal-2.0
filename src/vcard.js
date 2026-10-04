@@ -112,7 +112,7 @@
     for (const original of unfoldVcf(text)) {
       const line = original.replace(/^\s+/, "");
       const upper = line.trim().toUpperCase();
-      if (upper === "BEGIN:VCARD") { if (current) finish(true); current = { name: "", note: "", phones: [], emails: [] }; continue; }
+      if (upper === "BEGIN:VCARD") { if (current) finish(true); current = { name: "", note: "", phones: [], emails: [], group: "", ringtone: "" }; continue; }
       if (upper === "END:VCARD") { finish(false); continue; }
       if (!current || !line.trim()) continue;
       const parsed = parseLine(line);
@@ -125,6 +125,9 @@
         current.phones.push({ value: value.trim().replace(/^tel:/i, ""), type });
       } else if (parsed.name === "EMAIL") current.emails.push({ value: value.trim().replace(/^mailto:/i, ""), type: (parsed.params.TYPE || []).join("/") });
       else if (parsed.name === "NOTE") current.note = value;
+      // שדות קיוליקס: קבוצת מתקשרים (CATEGORIES תקני) וצלצול אישי (שדה מורחב משלנו). הטלפון מתעלם מהם בייבוא VCF.
+      else if (parsed.name === "CATEGORIES" && !current.group) current.group = value.split(",")[0].trim();
+      else if (parsed.name === "X-ANKAL-RINGTONE") current.ringtone = value.trim();
     }
     if (current) finish(true);
     return { contacts, warnings };
@@ -152,7 +155,7 @@
   }
 
   const PHONE_TYPE = { mobile: "CELL", home: "HOME", work: "WORK", fax: "FAX" };
-  function buildVcf(contacts) {
+  function buildVcf(contacts, options = {}) {
     const lines = [];
     for (const contact of contacts || []) {
       lines.push("BEGIN:VCARD", "VERSION:3.0");
@@ -161,6 +164,10 @@
       for (const field of Object.keys(PHONE_TYPE)) if (contact[field]) lines.push(foldLine(`TEL;TYPE=${PHONE_TYPE[field]}:${escapeValue(contact[field])}`));
       if (contact.email) lines.push(foldLine("EMAIL:" + escapeValue(contact.email)));
       if (contact.note) lines.push(foldLine("NOTE:" + escapeValue(contact.note)));
+      if (options.qualix) {
+        if (contact.group) lines.push(foldLine("CATEGORIES:" + escapeValue(contact.group)));
+        if (contact.ringtone) lines.push(foldLine("X-ANKAL-RINGTONE:" + escapeValue(contact.ringtone)));
+      }
       lines.push("END:VCARD");
     }
     return lines.join("\r\n") + (lines.length ? "\r\n" : "");

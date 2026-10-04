@@ -227,6 +227,7 @@ html[data-theme="dark"] .contact-line b,:root:not([data-theme]) .contact-line b{
 .app-shell[data-active-page="clean"]{--page:190}
 .app-shell[data-active-page="duplicates"]{--page:38}
 .app-shell[data-active-page="transfer"]{--page:150}
+.app-shell[data-active-page="qualix"]{--page:286}
 .app-shell[data-active-page="help"]{--page:222}
 .app-shell[data-active-page="admin"]{--page:350}
 
@@ -250,6 +251,7 @@ html[data-theme="light"] .sidebar{background:linear-gradient(178deg,#fff,#f2f6fb
 .nav-item[data-page="clean"]{--page:190}
 .nav-item[data-page="duplicates"]{--page:38}
 .nav-item[data-page="transfer"]{--page:150}
+.nav-item[data-page="qualix"]{--page:286}
 .nav-item[data-page="help"]{--page:222}
 .nav-item[data-page="admin"]{--page:350}
 .nav-item:hover .nav-icon{background:hsl(var(--page) 65% 55% / .2);color:hsl(var(--page) 75% 68%)}

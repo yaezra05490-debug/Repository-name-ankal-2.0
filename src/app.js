@@ -6,23 +6,28 @@
   const QUEUE_KEY = "ankal.v2.syncQueue";
   const PHONE_FIELDS = ["mobile", "home", "work", "fax"];
   const FIELDS = ["name", ...PHONE_FIELDS, "email", "note"];
-  const LABELS = { name: "שם", mobile: "נייד", home: "בית", work: "עבודה", fax: "פקס", email: "מייל", note: "הערה" };
+  // שני שדות של הטלפון הכשר (קיוליקס): קבוצת מתקשרים וצלצול אישי. נשמרים ברשימה, מיוצאים רק לבקשה,
+  // ומכובדים בטלפון רק דרך גיבוי — לא דרך ייבוא VCF.
+  const EXTRA_FIELDS = ["group", "ringtone"];
+  const LABELS = { name: "שם", mobile: "נייד", home: "בית", work: "עבודה", fax: "פקס", email: "מייל", note: "הערה", group: "קבוצה", ringtone: "צלצול" };
   // תרגום קודי הפעולה של היומן לעברית שאומרת מה קרה.
   const ACTION_HE = { create_list: "יצירת רשימה חדשה", delete_list: "העברת רשימה לסל", import: "ייבוא קובץ אנשי קשר", export_vcf: "ייצוא קובץ VCF", export_xlsx: "ייצוא קובץ Excel", export_csv: "ייצוא קובץ CSV", download_app: "הורדת התוכנה למחשב", move_contacts: "העברת אנשי קשר בין רשימות", copy_contacts: "העתקת אנשי קשר בין רשימות" };
-  const PAGE_TITLES = { lists: ["מרכז העבודה", "הרשימות שלי"], contacts: ["ניהול רשימה", "אנשי קשר"], clean: ["כלי עבודה", "ניקוי והחלפה"], duplicates: ["בקרת איכות", "בדיקת כפולים"], smart: ["איכות נתונים", "ניהול חכם"], transfer: ["קבצים", "ייבוא וייצוא"], help: ["מרכז מידע", "עזרה והסברים"], admin: ["למנהל בלבד", "ניהול מערכת"] };
+  const PAGE_TITLES = { lists: ["מרכז העבודה", "הרשימות שלי"], contacts: ["ניהול רשימה", "אנשי קשר"], clean: ["כלי עבודה", "ניקוי והחלפה"], duplicates: ["בקרת איכות", "בדיקת כפולים"], smart: ["איכות נתונים", "ניהול חכם"], transfer: ["קבצים", "ייבוא וייצוא"], qualix: ["הטלפון הכשר", "גיבוי קיוליקס"], help: ["מרכז מידע", "עזרה והסברים"], admin: ["למנהל בלבד", "ניהול מערכת"] };
   const HELP = {
     start: `<h2>התחלה מהירה</h2><div class="help-step"><b>1</b><div><strong>צרו או פתחו רשימה</strong><p>במסך הרשימות לחצו “רשימה חדשה”, או ייבאו קובץ קיים.</p></div></div><div class="help-step"><b>2</b><div><strong>בדקו את המיפוי</strong><p>בייבוא Excel בחרו גיליון, שורת כותרות והעמודה המתאימה לכל אחד משבעת השדות.</p></div></div><div class="help-step"><b>3</b><div><strong>נקו ובדקו כפולים</strong><p>השתמשו בכלי הניקוי ולאחר מכן הפעילו בדיקת כפולים. מיזוג אוטומטי מתבצע רק כשאין סתירה.</p></div></div><div class="help-step"><b>4</b><div><strong>ייצאו</strong><p>עברו לייבוא וייצוא ובחרו VCF, Excel או CSV.</p></div></div>`,
     import: `<h2>ייבוא קבצים</h2><h3>אילו קבצים אפשר לייבא?</h3><p>VCF, XLSX, XLS ו־CSV בלבד. קובץ אחר לא ישנה את הרשימה.</p><h3>Excel עם כמה גיליונות</h3><p>בחרו גיליון אחד או כמה גיליונות. לכל גיליון ניתן לבחור את שורת הכותרות ולמפות את העמודות.</p><h3>מה קורה לערך נוסף?</h3><p>אם המקום שנבחר כבר מלא, אנק״ל ישאל אם להחליף את הערך. אפשר גם לחזור לבחירה או לא לייבא את הערך.</p><h3>ייבוא לרשימה קיימת</h3><p>בחרו אם להוסיף לרשימה או להחליף אותה. אם אותו קובץ כבר יובא, תוצג אזהרה.</p>`,
     duplicates: `<h2>בדיקת כפולים</h2><p>אנק״ל בודק מספרי טלפון, מיילים ושמות דומים. אותו מספר ישראלי מזוהה בכל צורות הכתיבה — עם 0, עם ‎+972, וגם כשאקסל אכל את האפס המוביל.</p><h3>איך עוברים על זה</h3><p>אחרי הסריקה מופיע מסך סיכום עם כרטיס לכל סוג בעיה. בכל סוג אפשר <b>לאשר את כולם בבת אחת</b> או <b>לעבור אחד אחד</b>, ותמיד אפשר לדלג על סוג שלם.</p><h3>מה המערכת מציעה לבד</h3><p>את השם הנקי ביותר (“מרים הריס” ולא “מרים הריס_1”), וכל מספר במשבצת שהקידומת שלו מכתיבה — 05x לנייד, 02/03/04/08/09 ו‑07x לקווי. אפשר לשנות כל שיוך.</p><h3>סוגי הכפילות</h3><p><b>זהים לגמרי</b> — אותו שם ואותם פרטים. <b>מיזוג בטוח</b> — אין סתירה, רק מידע שחסר בכרטיס אחד. <b>שם שונה</b> / <b>מספרים שונים</b> / <b>שם ומספרים שונים</b> — יש ברירת מחדל מוצעת. <b>מייל או הערה שונים</b> ו<b>שם דומה, מספרים שונים</b> — כאן אין ברירת מחדל אמינה וצריך להחליט אחד אחד.</p><h3>השאר נפרדים</h3><p>מסמן שאלה אנשים שונים. ההחלטה נשמרת ברשימה ולא חוזרת בסריקה הבאה.</p>`,
     sync: `<h2>שמירה וסנכרון</h2><p>במצב מקומי הרשימות נשמרות במחשב או בדפדפן. לאחר כניסה עם Google, השינויים ממתינים בתור ונשלחים ברקע.</p><ul><li><strong>נשמר במחשב</strong> — העותק המקומי מעודכן.</li><li><strong>ממתין לסנכרון</strong> — העבודה שמורה מקומית ותישלח כשאפשר.</li><li><strong>מסנכרן</strong> — מתבצעת שמירה בענן.</li><li><strong>נשמר בענן</strong> — השרת אישר את השמירה.</li></ul><p>אם אותה רשימה שונתה במכשיר אחר, המערכת לא תדרוס אותה ותציע להשוות או לשמור עותק.</p>`,
-    export: `<h2>ייצוא</h2><h3>VCF</h3><p>מתאים לייבוא בטלפון ושומר את שבעת השדות: שם, נייד, בית, עבודה, פקס, מייל והערה.</p><h3>Excel</h3><p>יוצר גיליון מסודר עם עמודה לכל שדה.</p><h3>CSV</h3><p>כולל הגנה כדי ש־Excel לא יפעיל טקסט כנוסחה. עברית נשמרת עם סימון מתאים ל־Excel.</p>`
+    export: `<h2>ייצוא</h2><h3>VCF</h3><p>מתאים לייבוא בטלפון ושומר את שבעת השדות: שם, נייד, בית, עבודה, פקס, מייל והערה.</p><h3>Excel</h3><p>יוצר גיליון מסודר עם עמודה לכל שדה.</p><h3>CSV</h3><p>כולל הגנה כדי ש־Excel לא יפעיל טקסט כנוסחה. עברית נשמרת עם סימון מתאים ל־Excel.</p><h3>קבוצה וצלצול</h3><p>שני השדות של הטלפון הכשר מיוצאים רק כשמסמנים את התיבה בייצוא. הטלפון מתעלם מהם בייבוא VCF ומכבד אותם רק דרך גיבוי קיוליקס.</p>`,
+    qualix: `<h2>גיבוי קיוליקס</h2><p>הטלפון הכשר שומר גיבוי בכרטיס הזיכרון, בתיקייה <b>ibphone</b>, תיקייה לכל גיבוי לפי תאריך ושעה. אנק״ל קורא את הגיבוי, נותן לערוך הכל, ושומר <b>גרסה חדשה</b> שהטלפון יודע לשחזר. הגיבוי המקורי לעולם לא נדרס.</p><div class="help-step"><b>1</b><div><strong>חברו את הכרטיס למחשב</strong><p>בתוכנה למחשב הכרטיס מזוהה לבד. באתר לחצו “בחירת תיקייה” ובחרו את הכרטיס (או את תיקיית ibphone). אפשר גם לעבוד על תיקייה שהועתקה למחשב.</p></div></div><div class="help-step"><b>2</b><div><strong>פתחו גרסה</strong><p>כל גיבוי הוא גרסה. בתוך גרסה יש לשוניות: אנשי קשר, יומן שיחות, פתקים, לוח שנה, רשימות השמעה וחיזוי טקסט. ההגדרות נשמרות כמו שהן.</p></div></div><div class="help-step"><b>3</b><div><strong>ערכו</strong><p>אנשי קשר עם קבוצה וצלצול אישי, שיחות שאפשר למחוק או להוסיף עם מספר, סוג, זמן ומשך, פתקים עם תצוגה ברוחב מסך הטלפון ומירכוז, אירועים ביומן, שירים ברשימות.</p></div></div><div class="help-step"><b>4</b><div><strong>שמרו כגרסה חדשה</strong><p>בטלפון: גיבוי ושחזור ← שחזור ← בחרו את הגרסה החדשה לפי השעה ← סמנו מה לשחזר.</p></div></div><h3>אנשי קשר מול הרשימות</h3><p>“העבר לרשימה” יוצר רשימה רגילה באנק״ל עם הקבוצה והצלצול. בכיוון ההפוך, בגרסה חדשה אפשר לקחת את אנשי הקשר מרשימה קיימת או מקובץ VCF/Excel.</p><h3>מה עדיין ניסיוני</h3><p>הוספת מילים לחיזוי הטקסט נכתבת בפורמט שפוענח חלקית. אחרי שחזור ראשון כדאי לוודא בטלפון שהמילון נשאר שלם.</p>`
   };
 
   const state = {
     lists: [], activeListId: null, page: "lists", selected: new Set(),
     dense: false, search: "", listSearch: "", user: null, token: "", syncQueue: [], syncRunning: false,
     modal: null, drawerTimer: null, saveTimer: null, retryTimer: null, importHash: null, adminTab: "users",
-    review: null // מצב אשף בקרת האיכות (סימונים + כפולים), null כשלא רצה בדיקה
+    review: null, // מצב אשף בקרת האיכות (סימונים + כפולים), null כשלא רצה בדיקה
+    importCollector: null // כשמודול הגיבוי מבקש קובץ, אנשי הקשר נמסרים לו במקום להיכנס לרשימה
   };
 
   function id(prefix = "id") { return `${prefix}_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)}`; }
@@ -31,7 +36,7 @@
   function esc(value) { return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
   function fmtDate(value) { if (!value) return "—"; try { return new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); } catch (_) { return value; } }
   function currentList() { return state.lists.find(list => list.id === state.activeListId) || null; }
-  function blankContact(values = {}) { return { id: values.id || id("contact"), name: values.name || "", mobile: values.mobile || "", home: values.home || "", work: values.work || "", fax: values.fax || "", email: values.email || "", note: values.note || "" }; }
+  function blankContact(values = {}) { return { id: values.id || id("contact"), name: values.name || "", mobile: values.mobile || "", home: values.home || "", work: values.work || "", fax: values.fax || "", email: values.email || "", note: values.note || "", group: values.group || "", ringtone: values.ringtone || "" }; }
   function blankList(name = "רשימה חדשה") { return { id: id("list"), name, contacts: [], version: 0, remoteVersion: 0, updatedAt: now(), createdAt: now(), importHashes: [], separatedPairs: [], undo: [], redo: [], dirty: true }; }
 
   function loadLocal() {
@@ -148,7 +153,7 @@
   function logAction(action, listId = state.activeListId) { if (state.user) enqueue("log", { action, listId, at: now(), device: /Electron/i.test(navigator.userAgent) ? "desktop" : "web" }); }
 
   function setPage(page) {
-    if (page !== "lists" && !currentList() && !["help", "admin"].includes(page)) page = "lists";
+    if (page !== "lists" && !currentList() && !["help", "admin", "qualix"].includes(page)) page = "lists";
     state.page = page;
     // כל עמוד נושא גוון משלו. הסימון כאן מאפשר ל-CSS לצבוע את הכותרת, האייקון
     // ופס ההדגשה לפי העמוד הפעיל, כך שהמיקום במערכת מזוהה בצבע ולא רק בטקסט.
@@ -159,6 +164,7 @@
     document.getElementById("page-kicker").textContent = kicker; document.getElementById("page-title").textContent = title;
     if (page === "help") showHelp("start");
     if (page === "admin") loadAdmin();
+    if (page === "qualix") window.ANKAL_QUALIX_UI?.show();
     renderAll();
   }
   const ENTRY_CHOICE_KEY = "ankal.entryChoice";
@@ -295,6 +301,7 @@
         + phones
         + (c.email ? `<div class="contact-line email-line"><b>מייל</b><span dir="ltr">${esc(c.email)}</span></div>` : "")
         + (c.note ? `<div class="contact-line note-line"><b>הערה</b><span class="contact-note">${esc(c.note)}</span></div>` : "")
+        + (c.group || c.ringtone ? `<div class="contact-line note-line"><b>קיוליקס</b><span class="contact-note">${esc([c.group, c.ringtone ? "♪ " + c.ringtone.split("\\").pop() : ""].filter(Boolean).join(" · "))}</span></div>` : "")
         + `<div class="card-actions"><button class="icon-btn" data-open-contact="${esc(c.id)}" aria-label="עריכה">✎</button></div></article>`;
     }).join("");
     document.getElementById("contacts-empty").classList.toggle("hidden", !!shown.length || !currentList());
@@ -338,14 +345,14 @@
     const contact = contactId ? currentList()?.contacts.find(c => c.id === contactId) : blankContact();
     if (!contact) return;
     document.getElementById("contact-id").value = contactId || "";
-    for (const field of FIELDS) document.getElementById("contact-" + field).value = contact[field] || "";
+    for (const field of FIELDS.concat(EXTRA_FIELDS)) document.getElementById("contact-" + field).value = contact[field] || "";
     document.getElementById("drawer-title").textContent = contactId ? contact.name || "ללא שם" : "איש קשר חדש";
     document.getElementById("drawer-delete").classList.toggle("hidden", !contactId);
     document.getElementById("contact-drawer").classList.add("open"); document.getElementById("drawer-shade").classList.add("open"); document.getElementById("contact-drawer").setAttribute("aria-hidden", "false");
     setTimeout(() => document.getElementById("contact-name").focus(), 150);
   }
   function closeDrawer() { clearTimeout(state.drawerTimer); document.getElementById("contact-drawer").classList.remove("open"); document.getElementById("drawer-shade").classList.remove("open"); document.getElementById("contact-drawer").setAttribute("aria-hidden", "true"); }
-  function drawerValues() { const values = {}; for (const field of FIELDS) values[field] = document.getElementById("contact-" + field).value.trim(); return values; }
+  function drawerValues() { const values = {}; for (const field of FIELDS.concat(EXTRA_FIELDS)) values[field] = document.getElementById("contact-" + field).value.trim(); return values; }
   function saveDrawer(close = false) {
     const list = currentList(); if (!list) return;
     const contactId = document.getElementById("contact-id").value; const values = drawerValues();
@@ -1097,17 +1104,17 @@
   async function chooseSheets(names) { const html = `<p>בחרו גיליון אחד או כמה גיליונות לייבוא.</p>${names.map((n, i) => `<label class="check-line"><input type="checkbox" name="sheet-choice" value="${i}" checked> ${esc(n)}</label>`).join("")}`; const choice = await modal({ kicker: "קובץ עם כמה גיליונות", title: "אילו גיליונות לייבא?", html, buttons: [{ id: "next", label: "המשך", primary: true }, { id: "cancel", label: "ביטול הייבוא וסגירת החלון" }], dismissible: false }); if (choice !== "next") return []; return [...document.querySelectorAll('input[name="sheet-choice"]:checked')].map(el => names[Number(el.value)]); }
   function guessedHeaderRow(matrix) { const words = Object.values(HEADER_HINTS).flat(); let best = 0, score = -1; matrix.slice(0, 10).forEach((row, index) => { const s = row.reduce((n, cell) => n + (words.some(w => String(cell).trim().toLowerCase() === w) ? 2 : String(cell).trim() ? .1 : 0), 0); if (s > score) { score = s; best = index; } }); return best; }
   async function chooseHeaderRow(matrix, sheetName) { const guess = guessedHeaderRow(matrix); const options = matrix.slice(0, Math.min(10, matrix.length)).map((row, i) => `<option value="${i}" ${i === guess ? "selected" : ""}>שורה ${i + 1}: ${esc(row.slice(0, 4).filter(Boolean).join(" | ") || "(ריקה)")}</option>`).join(""); const choice = await modal({ kicker: `גיליון: ${sheetName}`, title: "איפה נמצאות כותרות העמודות?", html: `<label class="modal-field">שורת הכותרות<select id="header-row-choice">${options}</select></label>`, buttons: [{ id: "next", label: "המשך למיפוי", primary: true }, { id: "cancel", label: "ביטול הייבוא וסגירת החלון" }], dismissible: false }); return choice === "next" ? Number(document.getElementById("header-row-choice").value) : -1; }
-  const HEADER_HINTS = { name: ["שם", "שם מלא", "name", "full name"], mobile: ["נייד", "פלאפון", "סלולרי", "mobile", "cell"], home: ["בית", "טלפון בבית", "home"], work: ["עבודה", "משרד", "work", "office"], fax: ["פקס", "fax"], email: ["מייל", "אימייל", "email", "e-mail"], note: ["הערה", "הערות", "note", "notes"] };
+  const HEADER_HINTS = { name: ["שם", "שם מלא", "name", "full name"], mobile: ["נייד", "פלאפון", "סלולרי", "mobile", "cell"], home: ["בית", "טלפון בבית", "home"], work: ["עבודה", "משרד", "work", "office"], fax: ["פקס", "fax"], email: ["מייל", "אימייל", "email", "e-mail"], note: ["הערה", "הערות", "note", "notes"], group: ["קבוצה", "group", "category"], ringtone: ["צלצול", "ringtone"] };
   function guessHeader(headers, field) { const normalized = headers.map(h => h.toLowerCase()); const hints = HEADER_HINTS[field]; let index = normalized.findIndex(h => hints.includes(h)); if (index < 0) index = normalized.findIndex(h => hints.some(x => h.includes(x))); return index; }
   async function chooseMapping(headers, sample) {
-    const rows = FIELDS.map(field => { const guess = guessHeader(headers, field); return `<tr><th>${LABELS[field]}</th><td><select data-map-field="${field}"><option value="">לא לייבא</option>${headers.map((h, i) => `<option value="${i}" ${i === guess ? "selected" : ""}>${esc(h)}</option>`).join("")}</select></td><td data-map-sample="${field}">${guess >= 0 ? esc(sample[guess] || "") : ""}</td></tr>`; }).join("");
+    const rows = FIELDS.concat(EXTRA_FIELDS).map(field => { const guess = guessHeader(headers, field); return `<tr><th>${LABELS[field]}</th><td><select data-map-field="${field}"><option value="">לא לייבא</option>${headers.map((h, i) => `<option value="${i}" ${i === guess ? "selected" : ""}>${esc(h)}</option>`).join("")}</select></td><td data-map-sample="${field}">${guess >= 0 ? esc(sample[guess] || "") : ""}</td></tr>`; }).join("");
     const choice = await modal({ kicker: "מיפוי עמודות", title: "התאימו כל עמודה לשדה", html: `<p>כל עמודה יכולה להיבחר פעם אחת בלבד.</p><div class="modal-list"><table class="data-table"><thead><tr><th>שדה</th><th>עמודה בקובץ</th><th>דוגמה</th></tr></thead><tbody>${rows}</tbody></table></div><div id="mapping-warning"></div>`, buttons: [{ id: "import", label: "המשך לייבוא", primary: true }, { id: "cancel", label: "ביטול הייבוא וסגירת החלון" }], dismissible: false, beforeResolve: value => value !== "import" || validateMapping() });
     if (choice !== "import") return null; const result = {}; document.querySelectorAll("[data-map-field]").forEach(el => result[el.dataset.mapField] = el.value === "" ? -1 : Number(el.value)); return result;
   }
   function validateMapping() { const values = [...document.querySelectorAll("[data-map-field]")].map(el => el.value).filter(Boolean); const duplicates = values.filter((v, i) => values.indexOf(v) !== i); const warning = document.getElementById("mapping-warning"); if (duplicates.length) { warning.textContent = "אותה עמודה נבחרה לכמה שדות. בחרו כל עמודה פעם אחת בלבד."; warning.style.color = "var(--danger)"; return false; } return true; }
-  function rowFromMapping(row, headers, map) { const get = field => map[field] >= 0 ? String(row[map[field]] ?? "").trim() : ""; const phones = PHONE_FIELDS.map(field => ({ value: repairIsraeliPhone(get(field)), type: ({ mobile: "CELL", home: "HOME", work: "WORK", fax: "FAX" })[field] })).filter(x => x.value); const email = get("email"); return { name: get("name"), note: get("note"), phones, emails: email ? [{ value: email, type: "" }] : [] }; }
+  function rowFromMapping(row, headers, map) { const get = field => map[field] >= 0 ? String(row[map[field]] ?? "").trim() : ""; const phones = PHONE_FIELDS.map(field => ({ value: repairIsraeliPhone(get(field)), type: ({ mobile: "CELL", home: "HOME", work: "WORK", fax: "FAX" })[field] })).filter(x => x.value); const email = get("email"); return { name: get("name"), note: get("note"), phones, emails: email ? [{ value: email, type: "" }] : [], group: get("group"), ringtone: get("ringtone") }; }
   async function reconcile(raw) {
-    const contact = blankContact({ name: String(raw.name || "").replace(/\s+/g, " ").trim() || "ללא שם", note: String(raw.note || "").trim() }); const pending = [];
+    const contact = blankContact({ name: String(raw.name || "").replace(/\s+/g, " ").trim() || "ללא שם", note: String(raw.note || "").trim(), group: String(raw.group || "").trim(), ringtone: String(raw.ringtone || "").trim() }); const pending = [];
     for (const phone of raw.phones || []) { const value = String(phone.value || "").replace(/^tel:/i, "").trim(); if (!value) continue; const types = String(phone.type || "").toUpperCase().replace(/["']/g, "").split(/[\/,]/); const field = types.includes("CELL") ? "mobile" : types.includes("HOME") ? "home" : types.includes("WORK") ? "work" : types.includes("FAX") ? "fax" : guessPhoneField(value); if (field && !contact[field]) contact[field] = value; else pending.push({ value, suggested: field || "mobile", source: "טלפון נוסף" }); }
     for (const email of raw.emails || []) { const value = String(email.value || "").trim(); if (!value) continue; if (!contact.email) contact.email = value; else pending.push({ value, suggested: "email", source: "מייל נוסף" }); }
     for (const item of pending) await resolvePending(contact, item);
@@ -1124,6 +1131,8 @@
     }
   }
   async function commitImport(contacts, filename, warnings) {
+    // מודול הגיבוי משתמש באותו צינור ייבוא (קידוד, גיליונות, מיפוי) ומקבל את התוצאה במקום הרשימה.
+    if (state.importCollector) { const collector = state.importCollector; state.importCollector = null; collector(contacts, warnings); return; }
     if (!contacts.length) return toast("לא נמצאו אנשי קשר בקובץ", "warning");
     let list = currentList(); if (!list) { list = blankList(filename.replace(/\.[^.]+$/, "")); state.lists.push(list); state.activeListId = list.id; }
     let mode = "add";
@@ -1155,15 +1164,18 @@
   async function exportContacts(contacts, listName, format) {
     if (!contacts.length) return toast("אין אנשי קשר לייצוא", "warning");
     const base = safeFilename(listName);
+    // \u05e7\u05d1\u05d5\u05e6\u05d4 \u05d5\u05e6\u05dc\u05e6\u05d5\u05dc \u05d9\u05d5\u05e6\u05d0\u05d9\u05dd \u05e8\u05e7 \u05dc\u05d1\u05e7\u05e9\u05d4 \u05de\u05e4\u05d5\u05e8\u05e9\u05ea: \u05d4\u05d8\u05dc\u05e4\u05d5\u05df \u05d4\u05db\u05e9\u05e8 \u05de\u05ea\u05e2\u05dc\u05dd \u05de\u05d4\u05dd \u05d1\u05d9\u05d9\u05d1\u05d5\u05d0 VCF, \u05d5\u05e7\u05d5\u05d1\u05e5 \u05e9\u05de\u05d9\u05d5\u05e2\u05d3 \u05dc\u05d8\u05dc\u05e4\u05d5\u05df \u05d0\u05d7\u05e8 \u05dc\u05d0 \u05e6\u05e8\u05d9\u05da \u05d0\u05d5\u05ea\u05dd.
+    const qualix = Boolean(document.getElementById("export-qualix-fields")?.checked);
+    const columns = qualix ? FIELDS.concat(EXTRA_FIELDS) : FIELDS;
     try {
-      if (format === "vcf") downloadBlob(buildVcf(contacts), "text/vcard;charset=utf-8", base + ".vcf");
+      if (format === "vcf") downloadBlob(buildVcf(contacts, { qualix }), "text/vcard;charset=utf-8", base + ".vcf");
       else if (format === "csv") {
-        const lines = [FIELDS.map(f => csvSafe(LABELS[f])).join(","), ...contacts.map(c => FIELDS.map(f => csvSafe(c[f])).join(","))];
+        const lines = [columns.map(f => csvSafe(LABELS[f])).join(","), ...contacts.map(c => columns.map(f => csvSafe(c[f])).join(","))];
         downloadBlob("\ufeff" + lines.join("\r\n"), "text/csv;charset=utf-8", base + ".csv");
       } else {
         await ensureXlsx();
-        const rows = contacts.map(c => Object.fromEntries(FIELDS.map(f => [LABELS[f], c[f] || ""])));
-        const sheet = XLSX.utils.json_to_sheet(rows, { header: FIELDS.map(f => LABELS[f]) });
+        const rows = contacts.map(c => Object.fromEntries(columns.map(f => [LABELS[f], c[f] || ""])));
+        const sheet = XLSX.utils.json_to_sheet(rows, { header: columns.map(f => LABELS[f]) });
         const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, "אנשי קשר"); XLSX.writeFile(book, base + ".xlsx", { compression: true });
       }
       toast("הקובץ מוכן להורדה"); logAction("export_" + format);
@@ -1547,6 +1559,15 @@
     const drop = document.getElementById("drop-zone"); ["dragenter", "dragover"].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add("dragging"); })); ["dragleave", "drop"].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.remove("dragging"); })); drop.addEventListener("drop", event => { const file = event.dataTransfer.files[0]; if (file) handleFile(file); });
     window.addEventListener("online", processQueue); window.addEventListener("beforeunload", persistLocal);
   }
+  /* גשר למודול גיבוי קיוליקס (qualix-ui.js): הוא חי בקובץ נפרד ומשתמש באותם חלונות, הודעות ורשימות. */
+  window.ANKAL_APP = {
+    modal, confirmBox, toast, esc, fmtDate, isDesktopApp, downloadBlob, ensureXlsx, setPage, blankContact,
+    getLists: () => state.lists.filter(list => !list.deletedAt),
+    createListWithContacts: (name, contacts) => { const list = blankList(name); list.contacts = contacts.map(c => blankContact(c)); state.lists.push(list); state.activeListId = list.id; resetReview(); persistLocal(); markChanged(list, "create_list"); logAction("create_list", list.id); return list; },
+    openList,
+    // קורא קובץ VCF/Excel/CSV דרך צינור הייבוא הרגיל (קידוד, גיליונות, מיפוי) ומחזיר את אנשי הקשר בלי לשנות רשימה
+    importFileToContacts: file => new Promise((resolve, reject) => { state.importCollector = contacts => resolve(contacts); handleFile(file).catch(reject).then(() => { if (state.importCollector) { state.importCollector = null; resolve(null); } }); })
+  };
   function init() {
     document.documentElement.dataset.theme = localStorage.getItem("ankal.theme") || "dark"; loadLocal(); bindEvents(); updateAccount(); renderAll();
     if (isDesktopApp() || new URLSearchParams(location.search).has("app")) enterApp("lists"); else showLanding();
