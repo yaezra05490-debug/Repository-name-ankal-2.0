@@ -368,8 +368,17 @@
     const m = qx.open?.data.memos[qx.memoIdx]; const el = document.getElementById("qx-memo-counter"); if (!m || !el) return;
     const len = m.text.length; el.textContent = `${len} / ${qx.memoLimit} תווים`; el.classList.toggle("over", len > qx.memoLimit);
     const prev = document.getElementById("qx-memo-preview"); if (!prev) return;
-    const pxPerUnit = Math.max(0.1, (prev.clientWidth - 24) / Q.LINE_UNITS);
+    // רוחב המסך נגזר מהאות ש של הדפדפן: תיבה של 71 יחידות = רוחב הגליף, וכך הטקסט נראה רגיל והפרופורציות של הטלפון נשמרות
+    const pxPerUnit = glyphUnit(prev);
+    prev.style.width = Math.round(Q.LINE_UNITS * pxPerUnit + 24 + 16) + "px";
     prev.innerHTML = wrapForPhone(m.text).map(l => `<div class="${l.wrap ? "qx-wrap" : ""}">${l.t ? phoneLineHtml(l.t, pxPerUnit) : "&nbsp;"}</div>`).join("");
+  }
+  let glyphCache = { font: "", unit: 0 };
+  function glyphUnit(el) {
+    const font = getComputedStyle(el).font || "15px Assistant";
+    if (glyphCache.font === font && glyphCache.unit) return glyphCache.unit;
+    let unit = 0.2; try { const ctx = document.createElement("canvas").getContext("2d"); ctx.font = font; const w = ctx.measureText("ש").width; if (w > 3) unit = (w + 1) / (widths()["ש"] || 71); } catch (_) { }
+    glyphCache = { font, unit }; return unit;
   }
   function newMemo() { const d = qx.open.data; const now = new Date(); const iso = localIso(now) + "T" + now.toTimeString().slice(0, 8); d.memos.unshift({ fileName: Q.memoFileName(now), text: "", created: iso, modified: iso, _dirty: true }); qx.memoIdx = 0; dirty("memo"); render(); setTimeout(() => document.getElementById("qx-memo-text")?.focus(), 50); }
   async function deleteMemo() { const d = qx.open.data; const m = d.memos[qx.memoIdx]; if (!m) return; if (!(await A().confirmBox("מחיקת פתק", "למחוק את הפתק?", "מחיקה"))) return; d.memos.splice(qx.memoIdx, 1); qx.memoIdx = Math.max(0, qx.memoIdx - 1); dirty("memo"); render(); }
