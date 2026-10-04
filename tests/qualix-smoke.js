@@ -145,6 +145,8 @@ server.listen(PORT, async () => {
   await step("מירכוז הכל", click('[data-qx="center-all"]'));
   await step("הטקסט מורכז ברווחים", `document.getElementById("qx-memo-text").value`, v => v.startsWith(" ") && v.includes("\n "));
   await step("תצוגת הטלפון", `document.querySelectorAll("#qx-memo-preview div").length`, 2);
+  await step("מסגרת מרובעת: שורת הגל ושורת הקווים באותו רוחב (עד 3%)", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = "~".repeat(17) + "\\n|" + " ".repeat(28) + "|\\n" + "'".repeat(32) + "\\nשלום 304512 עולם"; ta.dispatchEvent(new Event("input", { bubbles: true })); const w = [...document.querySelectorAll("#qx-memo-preview > div")].map(d => [...d.querySelectorAll("i")].reduce((n, i) => n + parseFloat(i.style.width), 0)); const max = Math.max(w[0], w[1], w[2]), min = Math.min(w[0], w[1], w[2]); return (max - min) / max < 0.03 ? "ok" : "diff " + w.map(x => x.toFixed(0)).join("/"); })()`, "ok");
+  await step("ספרות בתוך שורה עברית נשארות משמאל לימין", `[...document.querySelectorAll("#qx-memo-preview > div")][3].querySelector('.qx-run[dir="ltr"]')?.textContent`, "304512");
   await step("שני פתקים ברשימה", `document.querySelectorAll('#qualix-root .qx-list [data-qx="memo"]').length`, 2);
 
   await step("לשונית לוח שנה", click('[data-qx="tab"][data-tab="calendar"]'));

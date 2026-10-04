@@ -299,6 +299,16 @@
     if (mode === "replace") d.contacts = incoming; else d.contacts.push(...incoming);
     dirty("phonebook"); render(); A().toast(`${incoming.length} אנשי קשר נכנסו לגיבוי`);
   }
+  /* נקרא מהאפליקציה בסוף הניהול החכם: הרשימה הנקייה חוזרת לגרסה הפתוחה */
+  async function importList(list) {
+    if (!qx.open) return A().toast("אין גרסת גיבוי פתוחה", "warning");
+    const mode = await A().modal({ kicker: "חזרה לגיבוי", title: `להכניס את “${list.name}” לגרסה הפתוחה?`, html: `<p>${list.contacts.length} אנשי קשר מהרשימה ייכנסו לגרסת הגיבוי ${qx.open.isNew ? "החדשה" : folderDate(qx.open.folder)}.</p>`, buttons: [{ id: "replace", label: "להחליף את כל אנשי הקשר בגיבוי", primary: true }, { id: "add", label: "להוסיף לקיימים" }, { id: "cancel", label: "ביטול" }] });
+    if (mode === "cancel") return;
+    const d = qx.open.data; const incoming = list.contacts.map(fromAppContact);
+    if (mode === "replace") d.contacts = incoming; else d.contacts.push(...incoming);
+    dirty("phonebook"); qx.view = "editor"; qx.tab = "contacts"; qx.keepView = true; A().setPage("qualix");
+    A().toast(`${incoming.length} אנשי קשר נכנסו לגיבוי. לחצו “שמירה כגרסה חדשה” כדי לכתוב לכרטיס.`);
+  }
   async function contactsFromFile() {
     const file = await pickFile(); if (!file) return;
     const contacts = await A().importFileToContacts(file); if (!contacts || !contacts.length) return A().toast("לא נמצאו אנשי קשר בקובץ", "warning");
@@ -340,7 +350,27 @@
     }
     return lines;
   }
-  function memoCounter() { const m = qx.open?.data.memos[qx.memoIdx]; const el = document.getElementById("qx-memo-counter"); if (!m || !el) return; const len = m.text.length; el.textContent = `${len} / ${qx.memoLimit} תווים`; el.classList.toggle("over", len > qx.memoLimit); const prev = document.getElementById("qx-memo-preview"); if (prev) prev.innerHTML = wrapForPhone(m.text).map(l => `<div class="${l.wrap ? "qx-wrap" : ""}">${esc(l.t) || "&nbsp;"}</div>`).join(""); }
+  /* הטלפון מצייר כל תו ברוחב קבוע מהטבלה, לא לפי הפונט של הדפדפן. כדי שמסגרת שמרובעת בטלפון תהיה מרובעת
+     גם כאן, כל תו מקבל תיבה ברוחב שלו. רצפים של ספרות/לטינית נשארים משמאל לימין בתוך שורה עברית. */
+  function phoneLineHtml(text, pxPerUnit) {
+    const table = widths(); const runs = []; let cur = null;
+    const dirOf = ch => /[A-Za-z0-9]/.test(ch) ? "ltr" : /[֐-׿]/.test(ch) ? "rtl" : "";
+    for (const ch of text) {
+      const d = dirOf(ch);
+      if (!cur) { cur = { dir: d, chars: [] }; runs.push(cur); }
+      else if (d && cur.dir === "") cur.dir = d;                       // רצף שהתחיל בסימנים ניטרליים מקבל את הכיוון של האות הראשונה
+      else if (d && cur.dir !== d) { cur = { dir: d, chars: [] }; runs.push(cur); }
+      cur.chars.push(ch);
+    }
+    return runs.map(r => `<span class="qx-run" dir="${r.dir || "rtl"}">${r.chars.map(ch => `<i style="width:${(Q.textWidth(ch, table) * pxPerUnit).toFixed(2)}px">${ch === " " ? "" : esc(ch)}</i>`).join("")}</span>`).join("");
+  }
+  function memoCounter() {
+    const m = qx.open?.data.memos[qx.memoIdx]; const el = document.getElementById("qx-memo-counter"); if (!m || !el) return;
+    const len = m.text.length; el.textContent = `${len} / ${qx.memoLimit} תווים`; el.classList.toggle("over", len > qx.memoLimit);
+    const prev = document.getElementById("qx-memo-preview"); if (!prev) return;
+    const pxPerUnit = Math.max(0.1, (prev.clientWidth - 24) / Q.LINE_UNITS);
+    prev.innerHTML = wrapForPhone(m.text).map(l => `<div class="${l.wrap ? "qx-wrap" : ""}">${l.t ? phoneLineHtml(l.t, pxPerUnit) : "&nbsp;"}</div>`).join("");
+  }
   function newMemo() { const d = qx.open.data; const now = new Date(); const iso = localIso(now) + "T" + now.toTimeString().slice(0, 8); d.memos.unshift({ fileName: Q.memoFileName(now), text: "", created: iso, modified: iso, _dirty: true }); qx.memoIdx = 0; dirty("memo"); render(); setTimeout(() => document.getElementById("qx-memo-text")?.focus(), 50); }
   async function deleteMemo() { const d = qx.open.data; const m = d.memos[qx.memoIdx]; if (!m) return; if (!(await A().confirmBox("מחיקת פתק", "למחוק את הפתק?", "מחיקה"))) return; d.memos.splice(qx.memoIdx, 1); qx.memoIdx = Math.max(0, qx.memoIdx - 1); dirty("memo"); render(); }
   function centerMemo(all) { const m = qx.open?.data.memos[qx.memoIdx]; const ta = document.getElementById("qx-memo-text"); if (!m || !ta) return; if (all) m.text = Q.centerText(m.text, widths()); else { const pos = ta.selectionStart; const before = m.text.lastIndexOf("\n", pos - 1) + 1; let after = m.text.indexOf("\n", pos); if (after < 0) after = m.text.length; m.text = m.text.slice(0, before) + Q.centerLine(m.text.slice(before, after), widths()) + m.text.slice(after); } m._dirty = true; dirty("memo"); ta.value = m.text; memoCounter(); }
@@ -669,5 +699,5 @@
 
   // connect מאפשר לבדיקות דפדפן להזרים מתאם בזיכרון במקום כרטיס אמיתי
   // לחיצה על "גיבוי קיוליקס" בתפריט מציגה את הגרסאות (כמו "הרשימות שלי"); מעבר מקטגוריה בתפריט שומר על העורך.
-  window.ANKAL_QUALIX_UI = { show: () => { if (!qx.keepView) qx.view = "versions"; qx.keepView = false; render(); if (!qx.adapter && window.electronAPI?.qualix) detectCards(true); }, state: qx, connect, render };
+  window.ANKAL_QUALIX_UI = { show: () => { if (!qx.keepView) qx.view = "versions"; qx.keepView = false; render(); if (!qx.adapter && window.electronAPI?.qualix) detectCards(true); }, state: qx, connect, render, importList };
 })();

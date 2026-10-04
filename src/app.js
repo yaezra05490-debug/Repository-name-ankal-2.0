@@ -622,6 +622,7 @@
         <div class="qactions">
           <button class="btn btn-primary" data-action="review-apply">הסר ✓</button>
           <button class="btn btn-quiet" data-action="review-skip-item">השאר כמו שהוא ←</button>
+          <button class="btn btn-quiet" data-action="review-skip-step">דלג על כל השלב ⇥</button>
           <button class="btn btn-danger" data-review-delete-contact="${esc(contact.id)}">מחק את איש הקשר</button>
         </div>
       </div>`;
@@ -721,6 +722,7 @@
           <button class="btn btn-primary" data-action="review-apply">${questions ? "אשר ומזג ✓" : "מזג ✓"}</button>
           <button class="btn btn-secondary" data-action="review-separate">אלה אנשים שונים — השאר נפרדים</button>
           <button class="btn btn-quiet" data-action="review-skip-item">דלג ←</button>
+          <button class="btn btn-quiet" data-action="review-skip-step">דלג על כל השלב ⇥</button>
         </div>
       </div>`;
   }
@@ -739,6 +741,7 @@
         <p>${parts.length ? parts.join(", ") + "." : "לא בוצעו שינויים."} ברשימה ${currentList()?.contacts.length || 0} אנשי קשר.</p>
         <div class="qactions">
           <button class="btn btn-primary" data-action="review-rescan">סרוק שוב</button>
+          ${window.ANKAL_QUALIX_UI?.state?.open ? `<button class="btn btn-secondary" data-action="to-qualix">⇄ הכנס את התוצאה לגיבוי קיוליקס</button>` : ""}
           ${state.review.trail.length ? `<button class="btn btn-secondary" data-action="review-back">→ חזרה לפריט שדילגתם עליו</button>` : ""}
           <button class="btn btn-quiet" data-action="review-overview">לסיכום</button>
         </div>
@@ -1508,7 +1511,9 @@
       "review-start": reviewStart, "review-overview": reviewOverview, "review-one-by-one": reviewOneByOne,
       "review-bulk": reviewBulk, "review-skip-step": reviewSkipStep, "review-apply": reviewApplyItem,
       "review-skip-item": reviewSkipItem, "review-separate": reviewSeparateItem, "review-auto": reviewAuto, "review-back": reviewBack,
-      "review-rescan": reviewRescan };
+      "review-rescan": reviewRescan,
+      // סוף הניהול החכם: הרשימה הנקייה חוזרת לגרסת הגיבוי הפתוחה של קיוליקס
+      "to-qualix": () => { const list = currentList(); if (list && window.ANKAL_QUALIX_UI?.importList) window.ANKAL_QUALIX_UI.importList(list); } };
     actions[action]?.();
   }
   function bindEvents() {
