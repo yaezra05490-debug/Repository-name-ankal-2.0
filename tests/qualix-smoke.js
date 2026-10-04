@@ -112,7 +112,7 @@ server.listen(PORT, async () => {
 
   await step("לשונית יומן שיחות", click('[data-qx="tab"][data-tab="calls"]'));
   await wait(200);
-  await step("שתי שיחות", `document.querySelectorAll('#qualix-root [data-qx="delete-call"]').length`, 2);
+  await step("שני אנשי קשר ביומן (שורה לכל איש קשר)", `document.querySelectorAll('#qualix-root .qx-call[data-qx="call-group"]').length`, 2);
   await step("שם מזוהה לפי מספר", `[...document.querySelectorAll("#qualix-root .qx-call .qx-call-main b")].map(b => b.textContent).join("|")`, v => v.includes("שרה לוי") && v.includes("דוד כהן"));
   await step("מסנן לא נענו", `(() => { document.querySelector('[data-qx="call-filter"][data-filter="missed"]').click(); return document.querySelectorAll("#qualix-root .qx-call").length; })()`, 1);
   await step("חזרה להכל", `(() => { document.querySelector('[data-qx="call-filter"][data-filter="all"]').click(); return document.querySelectorAll("#qualix-root .qx-call").length; })()`, 2);
@@ -120,13 +120,20 @@ server.listen(PORT, async () => {
   await wait(300);
   await step("מילוי מספר", fill("qx-call-num", "0501234567"), "ok");
   await step("מילוי זמן", fill("qx-call-time", "2026-09-26T08:15"), "ok");
+  await step("סוג יוצאת ומשך דקה", `(() => { document.getElementById("qx-call-type").value = "outgoing"; document.getElementById("qx-call-dur").value = "60"; return "ok"; })()`, "ok");
   await step("אישור השיחה", click('[data-modal-choice="add"]'));
   await wait(300);
-  await step("שלוש שיחות", `document.querySelectorAll('#qualix-root [data-qx="delete-call"]').length`, 3);
-  await step("השיחה החדשה ראשונה, תחת תאריך היום שלה", `document.querySelector("#qualix-root .qx-call-day")?.textContent + " " + document.querySelector("#qualix-root .qx-call .qx-call-time")?.textContent`, "26.09.2026 08:15");
+  await step("עדיין שתי שורות, דוד עם (2) וסמל יוצאת", `(() => { const g = [...document.querySelectorAll('#qualix-root .qx-call[data-qx="call-group"]')]; const dan = g.find(x => x.textContent.includes("דוד כהן")); return g.length + " " + dan.querySelector(".qx-call-count")?.textContent + " " + dan.className.replace("qx-call ", ""); })()`, "2 (2) outgoing");
+  await step("פתיחת השיחות של דוד", `(() => { [...document.querySelectorAll('#qualix-root .qx-call[data-qx="call-group"]')].find(x => x.textContent.includes("דוד כהן")).click(); return document.querySelectorAll("#qualix-root .qx-call-item").length; })()`, 2);
+  await step("השיחה החדשה ראשונה, תחת תאריך היום שלה", `document.querySelector("#qualix-root .qx-call-day")?.textContent + " " + document.querySelector("#qualix-root .qx-call-item .qx-call-time")?.textContent`, "26.09.2026 08:15");
+  await step("פרטי שיחה", click('#qualix-root .qx-call-item'));
+  await wait(300);
+  await step("חלון הפרטים מציג שם, מספר, משך וסים", `document.getElementById("modal-body").textContent`, v => /דוד כהן/.test(v) && /0501234567/.test(v) && /1:00/.test(v) && /סים 1/.test(v));
+  await step("סגירת הפרטים", click('[data-modal-choice="ok"]'));
   await step("מחיקת שיחה", click('[data-qx="delete-call"]'));
   await wait(200);
-  await step("שתי שיחות אחרי מחיקה", `document.querySelectorAll('#qualix-root [data-qx="delete-call"]').length`, 2);
+  await step("נשארה שיחה אחת לדוד", `document.querySelectorAll('#qualix-root .qx-call-item').length`, 1);
+  await step("חזרה לרשימה", `(() => { document.querySelector('[data-qx="call-back"]').click(); return document.querySelectorAll('#qualix-root .qx-call[data-qx="call-group"]').length; })()`, 2);
 
   await step("לשונית פתקים", click('[data-qx="tab"][data-tab="memos"]'));
   await wait(200);
@@ -213,7 +220,9 @@ server.listen(PORT, async () => {
     return [pb.contacts.length, added ? added.mobile + "/" + added.group + "/bit" + added.groupBit : "חסר", calls, events, memoMan, lst.map(e => e.path).join(","), udb.join(","), head.categories.length, crcOk ? "crc-ok" : "crc-bad", head.folder === folder ? "folder-ok" : "folder-bad"].join(" | ");
   })()`, v => v === "4 | 0501112222/חברים/bit2 | 2 | 2 | 2 | E:\\b.mp3,E:\\a.mp3 | אנקל | 7 | crc-ok | folder-ok");
   await step("אין שינויים אחרי השמירה", `document.querySelector(".qx-save .qx-dirty") ? "יש" : "אין"`, "אין");
-  await step("שתי גרסאות ברשימה", `(() => { document.querySelector('[data-qx="back"]').click(); return document.querySelectorAll("#qualix-root .qx-version").length; })()`, 2);
+  await step("אין שורת מקור בתוך קטגוריה", `document.querySelector("#qualix-root .qx-source") ? "יש" : "אין"`, "אין");
+  await step("שתי גרסאות ברשימה", `(() => { document.querySelector('[data-page="qualix"]').click(); return document.querySelectorAll("#qualix-root .qx-version").length; })()`, 2);
+  await step("שורת המקור חזרה בעמוד הגרסאות", `document.querySelector("#qualix-root .qx-source") ? "יש" : "אין"`, "יש");
   await step("הגרסה החדשה היא הנוכחית", `document.querySelector("#qualix-root .qx-version.current h3")?.textContent`, v => /2026/.test(v));
 
   // שינוי בגרסה הפתוחה ואז פתיחת גרסה אחרת — חייב לשאול
