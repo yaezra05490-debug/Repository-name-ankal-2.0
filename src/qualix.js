@@ -267,14 +267,16 @@
 
   /* ---------- רוחב טקסט על מסך הטלפון (פונט פרופורציונלי). רוחב שורה = 1000 יחידות.
      כויל מפתקים אמיתיים: 14 ש / 38 ו / 17 ~ / 32 ' לשורה; השאר הוערך לפי יחסי פונט ערבי-עברי רגילים. ---------- */
-  const WIDTHS = { " ": 30, "ו": 26, "י": 26, "ז": 34, "ן": 26, "'": 31, "|": 26, "!": 28, ".": 28, ",": 28, ":": 28, ";": 28, "~": 59, "-": 36, "(": 36, ")": 36, '"': 38, "ש": 71, "ם": 62, "מ": 65, "ת": 62, "א": 61, "ב": 60, "ג": 46, "ד": 53, "ה": 61, "ח": 61, "ט": 61, "ך": 53, "כ": 53, "ל": 53, "נ": 44, "ס": 61, "ע": 61, "ף": 53, "פ": 61, "ץ": 55, "צ": 61, "ק": 61, "ר": 53 };
+  // ערכים מכוילים (עיגול כלפי מטה, כדי ששורה שנכנסת בטלפון תיכנס גם כאן): 14 ש, 38 ו, 17 ~, 32 ', |+28 רווחים+| לשורה
+  const WIDTHS = { " ": 30, "ו": 26, "י": 26, "ז": 34, "ן": 26, "'": 31, "|": 26, "!": 28, ".": 28, ",": 28, ":": 28, ";": 28, "~": 58, "-": 36, "(": 36, ")": 36, '"': 38, "ש": 71, "ם": 62, "מ": 65, "ת": 62, "א": 61, "ב": 60, "ג": 46, "ד": 53, "ה": 61, "ח": 61, "ט": 61, "ך": 53, "כ": 53, "ל": 53, "נ": 44, "ס": 61, "ע": 61, "ף": 53, "פ": 61, "ץ": 55, "צ": 61, "ק": 61, "ר": 53 };
   const DEFAULT_WIDTH = 60, LINE_UNITS = 1000;
   function charWidth(ch, table) { const t = table || WIDTHS; if (t[ch] != null) return t[ch]; const c = ch.charCodeAt(0); if (c >= 0x30 && c <= 0x39) return 60; if (/[iljtfI1.,:;'!|]/.test(ch)) return 30; if (/[A-Z]/.test(ch)) return 72; if (/[a-z]/.test(ch)) return 58; return DEFAULT_WIDTH; }
   function textWidth(text, table) { let w = 0; for (const ch of String(text || "")) w += charWidth(ch, table); return w; }
   function centerLine(line, table) { const text = String(line || "").trim(); const free = LINE_UNITS - textWidth(text, table); if (free <= 0) return text; return " ".repeat(Math.floor(free / 2 / charWidth(" ", table))) + text; }
   function centerText(text, table) { return String(text || "").split("\n").map(l => centerLine(l, table)).join("\n"); }
   // כיול: פתק שבו כל שורה היא תו אחד שחוזר עד שהשורה מתמלאה → רוחב התו = 1000 / מספר החזרות
-  function calibrateFromMemo(text, table) { const out = Object.assign({}, table || WIDTHS); for (const line of String(text || "").split("\n")) { const t = line.replace(/\s+$/, ""); if (t.length >= 3 && [...t].every(ch => ch === t[0])) out[t[0]] = Math.round(LINE_UNITS / t.length); } return out; }
+  // שורה של תו אחד שחוזר עד שהשורה מלאה: רוחב התו = 1000 / מספר החזרות, מעוגל כלפי מטה כדי שהשורה תיכנס
+  function calibrateFromMemo(text, table) { const out = Object.assign({}, table || WIDTHS); for (const line of String(text || "").split("\n")) { const t = line.replace(/\s+$/, ""); if (t.length >= 3 && [...t].every(ch => ch === t[0])) out[t[0]] = Math.floor(LINE_UNITS / t.length); } return out; }
 
   /* ---------- מילון המשתמש (udb.cache): המבנה פוענח, קידוד האותיות עדיין לא. קריאה בלבד. ---------- */
   function parseUdb(bytes) {
