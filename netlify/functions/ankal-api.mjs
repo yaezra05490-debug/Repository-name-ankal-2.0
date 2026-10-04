@@ -11,7 +11,18 @@ import * as server from "./lib/ankal-server.mjs";
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbxPc9F_6BUF593fe4qUtCTI-o2qXue_lt6MV6BtV5ujob3ouLa6uYJUYcBK2bN-wL1ahQ/exec";
 
 const allowedOrigins = new Set(["https://aivr-anshak.netlify.app", "http://localhost:8888", "http://localhost:3000"]);
-const LOCAL_ONLY = new Set(["adminServerMode"]); // תמיד בנטליקי: זה המתג עצמו
+const LOCAL_ONLY = new Set(["adminServerMode"]); // תמיד בנטליפי: זה המתג עצמו
+
+/* מצב השרת נקרא מהגיליון. במופע קר הקריאה לוקחת כשנייה (טוקן + גיליון), ולכן היא מתחילה כבר בעליית המופע,
+   והבקשה הראשונה מחכה לה עד 1.5 שניות; אחרי זה התשובה במטמון והבקשות הבאות לא מחכות כלל (תקרה 200 מ"ש).
+   אם אין תשובה בזמן, הבקשה הולכת לסקריפט — שנכון תמיד, כי שני השרתים עובדים על אותם נתונים. */
+let modeWarmup = process.env.SERVER_DISABLED === "1" || process.env.ANKAL_SERVER_MODE ? null : server.getServerMode().catch(() => "script");
+let firstRequest = true;
+async function resolveMode() {
+  const budget = firstRequest ? 1500 : 200; firstRequest = false;
+  const lookup = modeWarmup || server.getServerMode().catch(() => "script"); modeWarmup = null;
+  return Promise.race([lookup, new Promise(resolve => setTimeout(() => resolve("script"), budget))]);
+}
 
 export default async (request) => {
   const origin = request.headers.get("origin") || "";
@@ -26,9 +37,7 @@ export default async (request) => {
   const force = req.action === "ping" ? String(req.payload?.forceServer || "") : "";
   const disabled = process.env.SERVER_DISABLED === "1";
   let mode = force || process.env.ANKAL_SERVER_MODE || "";
-  /* בדיקת המצב מול הגיליון לא חוסמת: במופע קר היא לוקחת שנייה, ואז הבקשה הזו הולכת לסקריפט (שנכון תמיד,
-     כי שני השרתים עובדים על אותם נתונים) בזמן שהתשובה ממלאת את המטמון לבקשות הבאות. */
-  if (!mode && !disabled) mode = await Promise.race([server.getServerMode().catch(() => "script"), new Promise(resolve => setTimeout(() => resolve("script"), 150))]);
+  if (!mode && !disabled) mode = await resolveMode();
   const useNetlify = LOCAL_ONLY.has(req.action) || (mode === "netlify" && !disabled);
 
   if (useNetlify) {
