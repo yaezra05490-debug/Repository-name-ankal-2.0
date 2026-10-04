@@ -107,7 +107,8 @@ async function session(user, payload) {
 }
 async function listLists(user) {
   const folder = await userFolder(user.sub, false); if (!folder) return { lists: [] };
-  const lists = []; for (const f of await listFiles(folder.id)) { const item = await readList(f); if (item && !item.deletedAt) lists.push(item); }
+  const items = await Promise.all((await listFiles(folder.id)).map(readList));  // קריאה במקביל: Drive עונה כשנייה לקובץ
+  const lists = items.filter(item => item && !item.deletedAt);
   lists.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   return { lists };
 }
@@ -117,17 +118,23 @@ function sanitizeList(list) {
   out.contacts = list.contacts.map(c => ({ id: safeText(c.id, 100), name: safeText(c.name, 500), mobile: safeText(c.mobile, 100), home: safeText(c.home, 100), work: safeText(c.work, 100), fax: safeText(c.fax, 100), email: safeText(c.email, 500), note: safeText(c.note, 5000), group: safeText(c.group, 100), ringtone: safeText(c.ringtone, 300) }));
   return out;
 }
+/* לחשבון שירות אין מכסת אחסון ב-Drive (גוגל, 2025): הוא יכול לעדכן קבצים שהמנהל הבעלים שלהם, אבל לא ליצור
+   קבצים חדשים. לכן רשימה חדשה (או משתמש בלי תיקייה) נשלחת לסקריפט, שיוצר את הקובץ בבעלות המנהל; מכאן והלאה
+   כל העדכונים רצים כאן. */
+export function forwardToScript(reason) { const e = new Error("FORWARD_TO_SCRIPT"); e.forward = true; e.reason = reason; return e; }
 async function saveList(user, payload) {
   const list = payload.list;
   if (!list || !list.id || !Array.isArray(list.contacts)) throw apiError("INVALID_LIST", "הרשימה אינה תקינה.");
   if (JSON.stringify(list).length > 5500000) throw apiError("LIST_TOO_LARGE", "הרשימה גדולה מדי לשמירה אחת.");
-  const folder = await userFolder(user.sub, true); const name = "list_" + safeId(list.id) + ".json";
+  const folder = await userFolder(user.sub, false); const name = "list_" + safeId(list.id) + ".json";
+  if (!folder) throw forwardToScript("NEW_USER_FOLDER");
   const existing = (await S().listChildren(folder.id, { filesOnly: true, name }))[0] || null;
-  const current = existing ? await readList(existing) : null;
+  if (!existing) throw forwardToScript("NEW_LIST_FILE");
+  const current = await readList(existing);
   const currentVersion = Number(current && current.version || 0), expected = Number(payload.expectedVersion || 0);
   if (current && expected !== currentVersion) throw apiError("VERSION_CONFLICT", "הרשימה שונתה במקום אחר.", { list: current });
   const saved = sanitizeList(list); saved.version = currentVersion + 1; saved.ownerSub = user.sub; saved.updatedAt = now();
-  await S().writeFileText(folder.id, name, JSON.stringify(saved), "ANKAL list " + saved.id, existing ? existing.id : null);
+  await S().writeFileText(folder.id, name, JSON.stringify(saved), "ANKAL list " + saved.id, existing.id);
   return { version: saved.version, updatedAt: saved.updatedAt };
 }
 async function deleteList(user, payload) {
@@ -155,10 +162,12 @@ async function adminOverview(user, payload) {
   if (!stats) {
     let listCount = 0, contacts = 0, bytes = 0;
     const root = await rootFolder();
-    for (const folder of await S().listChildren(root.id, { foldersOnly: true })) {
-      if (folder.name === "backups") continue;
-      for (const f of await S().listChildren(folder.id, { filesOnly: true })) { bytes += f.size || 0; if (/^list_/.test(f.name)) { listCount++; const item = await readList(f); if (item && Array.isArray(item.contacts)) contacts += item.contacts.length; } }
-    }
+    const folders = (await S().listChildren(root.id, { foldersOnly: true })).filter(f => f.name !== "backups");
+    const perFolder = await Promise.all(folders.map(f => S().listChildren(f.id, { filesOnly: true })));
+    const listFilesAll = [];
+    for (const files of perFolder) for (const f of files) { bytes += f.size || 0; if (/^list_/.test(f.name)) { listCount++; listFilesAll.push(f); } }
+    const items = await Promise.all(listFilesAll.map(readList));
+    for (const item of items) if (item && Array.isArray(item.contacts)) contacts += item.contacts.length;
     stats = { lists: listCount, contacts, storage: formatBytes(bytes) }; statsCache = { at: Date.now(), stats };
   }
   stats = Object.assign({}, stats, { users: users.length, server: "netlify" });
@@ -178,8 +187,8 @@ async function adminToggleBlock(user, payload) {
 }
 async function adminUserLists(user, payload) {
   requireAdmin(user); const folder = await userFolder(payload.sub, false); if (!folder) return { lists: [] };
-  const lists = []; for (const f of await listFiles(folder.id)) { const item = await readList(f); if (item && !item.deletedAt) lists.push(item); }
-  return { lists };
+  const items = await Promise.all((await listFiles(folder.id)).map(readList));
+  return { lists: items.filter(item => item && !item.deletedAt) };
 }
 
 /* ---------- מצב השרת (נשמר בלשונית "הגדרות" של אותו גיליון) ---------- */
@@ -218,7 +227,7 @@ export async function handle(req) {
     const data = await HANDLERS[req.action](user, req.payload || {});
     return { ok: true, data };
   } catch (e) {
-    if (e.infra) throw e;
+    if (e.infra || e.forward) throw e;   // תקלת תשתית או "זה של הסקריפט": המנתב מעביר את הבקשה לסקריפט
     if (!e.code) { try { await S().appendRow(ERRORS.tab, ERRORS.headers, [now(), "", "", "netlify", safeText(String(e && (e.stack || e.message) || e), 500), ""]); } catch (_) { } }
     return { ok: false, error: e.code || "SERVER_ERROR", message: e.publicMessage || "השרת לא הצליח להשלים את הפעולה.", data: e.data || null };
   }

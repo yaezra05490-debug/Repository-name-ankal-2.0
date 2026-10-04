@@ -30,10 +30,11 @@ export default async (request) => {
   const useNetlify = LOCAL_ONLY.has(req.action) || (mode === "netlify" && !disabled);
 
   if (useNetlify) {
+    let failure = null;
     try { const out = await server.handle(req); return json(Object.assign(out, { server: "netlify" }), 200, headers); }
-    catch (e) { if (LOCAL_ONLY.has(req.action) || force === "netlify") return json({ ok: false, error: "NETLIFY_SERVER_ERROR", message: "השרת בנטליפי לא מוגדר או שגוגל לא ענה: " + (e.message || e), server: "netlify" }, 200, headers); }
-    // תקלת תשתית בנטליפי: ממשיכים לסקריפט כאילו כלום, ומסמנים שזו נפילה
-    return forward(raw, req, headers, "script-fallback");
+    catch (e) { failure = e; if (LOCAL_ONLY.has(req.action) || force === "netlify") return json({ ok: false, error: "NETLIFY_SERVER_ERROR", message: "השרת בנטליפי לא מוגדר או שגוגל לא ענה: " + (e.message || e), server: "netlify" }, 200, headers); }
+    // רשימה חדשה נוצרת רק בסקריפט (לחשבון שירות אין מכסת אחסון); תקלת תשתית נופלת לסקריפט ומסומנת ככזו
+    return forward(raw, req, headers, failure.forward ? "script" : "script-fallback");
   }
   return forward(raw, req, headers, "script");
 };

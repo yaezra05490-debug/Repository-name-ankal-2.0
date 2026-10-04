@@ -37,16 +37,20 @@ function memoryStore() {
     assert.equal(a.ok, true); assert.equal(a.data.user.email, "dan@example.com"); assert.equal(a.data.user.isAdmin, false); assert.deepEqual(b.data.lists, []);
     const rows = store.tabs["משתמשים"]; assert.equal(rows.length, 2, "שורה אחת למשתמש"); assert.equal(rows[1][8], "t1");
   });
-  test("saveList: גרסאות, קונפליקט, ושמירה בתיקיית המשתמש", async () => {
+  /* רשימה חדשה או משתמש בלי תיקייה: לחשבון שירות אין מכסת אחסון, ולכן הבקשה עוברת לסקריפט (e.forward).
+     בבדיקה מדמים את מה שהסקריפט עושה: יוצרים את התיקייה ואת הקובץ ישירות במחסן. */
+  async function scriptCreates(sub, list) { let folder = Object.values(store.items).find(i => i.isFolder && i.parent === "root" && i.name === "user_" + sub); if (!folder) { const f = await store.createFolder("root", "user_" + sub); folder = store.items[f.id]; } await store.writeFileText(folder.id, "list_" + list.id + ".json", JSON.stringify(Object.assign({ version: 1, updatedAt: new Date().toISOString() }, list)), "ANKAL list " + list.id, null); }
+  test("saveList: רשימה חדשה עוברת לסקריפט, עדכונים רצים כאן, גרסאות וקונפליקט", async () => {
     fresh(); const list = { id: "list_1", name: "רשימה", contacts: [{ id: "c1", name: "דוד", mobile: "0501", group: "משפחה", ringtone: "E:\\x.mp3", extra: "לא נשמר" }], importHashes: [], separatedPairs: [] };
-    const r1 = await call("saveList", "dan", { list, expectedVersion: 0 }); assert.equal(r1.ok, true); assert.equal(r1.data.version, 1);
-    const r2 = await call("saveList", "dan", { list, expectedVersion: 1 }); assert.equal(r2.data.version, 2);
+    let thrown = null; try { await call("saveList", "dan", { list, expectedVersion: 0 }); } catch (e) { thrown = e; } assert.ok(thrown && thrown.forward && thrown.reason === "NEW_USER_FOLDER", "משתמש בלי תיקייה → לסקריפט");
+    await scriptCreates("111", list);
+    thrown = null; try { await call("saveList", "dan", { list: Object.assign({}, list, { id: "list_2" }), expectedVersion: 0 }); } catch (e) { thrown = e; } assert.ok(thrown && thrown.reason === "NEW_LIST_FILE", "קובץ חדש → לסקריפט");
+    const r2 = await call("saveList", "dan", { list, expectedVersion: 1 }); assert.equal(r2.ok, true); assert.equal(r2.data.version, 2);
     const conflict = await call("saveList", "dan", { list, expectedVersion: 1 }); assert.equal(conflict.error, "VERSION_CONFLICT"); assert.equal(conflict.data.list.version, 2);
     const lists = (await call("listLists", "dan")).data.lists; assert.equal(lists.length, 1); assert.equal(lists[0].version, 2); assert.equal(lists[0].contacts[0].group, "משפחה"); assert.equal(lists[0].contacts[0].ringtone, "E:\\x.mp3"); assert.equal(lists[0].contacts[0].extra, undefined);
-    const folders = Object.values(store.items).filter(i => i.isFolder && i.parent === "root"); assert.equal(folders.length, 1); assert.equal(folders[0].name, "user_111");
   });
   test("deleteList מסמן מחיקה ו-listLists מסתיר", async () => {
-    fresh(); await call("saveList", "dan", { list: { id: "l2", name: "x", contacts: [] }, expectedVersion: 0 });
+    fresh(); await scriptCreates("111", { id: "l2", name: "x", contacts: [] });
     assert.equal((await call("deleteList", "dan", { listId: "l2" })).data.deleted, true); assert.equal((await call("listLists", "dan")).data.lists.length, 0);
   });
   test("רשימה לא תקינה נדחית", async () => { fresh(); assert.equal((await call("saveList", "dan", { list: { id: "x" } })).error, "INVALID_LIST"); });
@@ -59,13 +63,13 @@ function memoryStore() {
     assert.equal((await call("listLists", "dan")).error, "ACCOUNT_BLOCKED"); assert.equal((await call("session", "dan")).data.user.blocked, true);
   });
   test("deleteAccount מסמן תאריך וכניסה מחודשת מבטלת", async () => {
-    fresh(); await call("saveList", "dan", { list: { id: "l1", name: "x", contacts: [] }, expectedVersion: 0 });
+    fresh(); await scriptCreates("111", { id: "l1", name: "x", contacts: [] });
     await call("deleteAccount", "dan"); assert.ok(store.tabs["משתמשים"][1][7]); const folder = Object.values(store.items).find(i => i.name === "user_111"); assert.ok(folder.description.startsWith("DELETED_AT="));
     await call("session", "dan"); assert.equal(store.tabs["משתמשים"][1][7], ""); assert.equal(folder.description, "");
   });
   test("פעולות ניהול דורשות מנהל", async () => { fresh(); assert.equal((await call("adminOverview", "dan", { tab: "users" })).error, "ADMIN_ONLY"); });
   test("adminOverview: סטטיסטיקה, משתמשים, יומן, חסימה ורשימות משתמש", async () => {
-    fresh(); await call("saveList", "dan", { list: { id: "l1", name: "x", contacts: [{ id: "a", name: "א" }, { id: "b", name: "ב" }] }, expectedVersion: 0 }); await call("log", "dan", { action: "import" });
+    fresh(); await call("session", "dan"); await scriptCreates("111", { id: "l1", name: "x", contacts: [{ id: "a", name: "א" }, { id: "b", name: "ב" }] }); await call("log", "dan", { action: "import" });
     const ov = await call("adminOverview", "admin", { tab: "users" }); assert.equal(ov.ok, true); assert.equal(ov.data.stats.users, 2); assert.equal(ov.data.stats.lists, 1); assert.equal(ov.data.stats.contacts, 2); assert.equal(ov.data.stats.server, "netlify");
     const logs = await call("adminOverview", "admin", { tab: "logs" }); assert.equal(logs.data.items.length, 1); assert.equal(logs.data.items[0].name, "דן");
     assert.equal((await call("adminToggleBlock", "admin", { sub: "111" })).data.updated, true); assert.equal(store.tabs["משתמשים"][1][6], true);
