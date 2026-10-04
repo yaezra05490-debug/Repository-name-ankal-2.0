@@ -26,7 +26,9 @@ export default async (request) => {
   const force = req.action === "ping" ? String(req.payload?.forceServer || "") : "";
   const disabled = process.env.SERVER_DISABLED === "1";
   let mode = force || process.env.ANKAL_SERVER_MODE || "";
-  if (!mode && !disabled) mode = await server.getServerMode();
+  /* בדיקת המצב מול הגיליון לא חוסמת: במופע קר היא לוקחת שנייה, ואז הבקשה הזו הולכת לסקריפט (שנכון תמיד,
+     כי שני השרתים עובדים על אותם נתונים) בזמן שהתשובה ממלאת את המטמון לבקשות הבאות. */
+  if (!mode && !disabled) mode = await Promise.race([server.getServerMode().catch(() => "script"), new Promise(resolve => setTimeout(() => resolve("script"), 150))]);
   const useNetlify = LOCAL_ONLY.has(req.action) || (mode === "netlify" && !disabled);
 
   if (useNetlify) {

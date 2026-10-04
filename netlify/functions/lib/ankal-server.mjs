@@ -31,6 +31,10 @@ const S = () => store || (store = googleStore());
 
 let verifier = null;
 export function setTokenVerifier(fn) { verifier = fn; }
+/* זהות שאומתה נשמרת בזיכרון המופע ל-10 דקות (טוקן של גוגל תקף שעה): כל בקשה נוספת מאותו משתמש חוסכת סיבוב לגוגל */
+const identityCache = new Map();
+const cacheGet = (map, key, ttl) => { const hit = map.get(key); if (hit && Date.now() - hit.at < ttl) return hit.value; map.delete(key); return undefined; };
+const cacheSet = (map, key, value) => { if (map.size > 500) map.clear(); map.set(key, { at: Date.now(), value }); };
 
 export function apiError(code, message, data) { const e = new Error(code); e.code = code; e.publicMessage = message; if (data) e.data = data; return e; }
 const safeText = (v, max) => String(v || "").slice(0, max);
@@ -43,6 +47,7 @@ const cell = (row, i) => (row && row[i] !== undefined && row[i] !== null) ? row[
 async function verifyGoogleToken(token) {
   if (!token) throw apiError("LOGIN_REQUIRED", "יש להיכנס באמצעות Google.");
   if (verifier) return verifier(token);
+  const cached = cacheGet(identityCache, token, 600000); if (cached) return cached;
   const res = await fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(token));
   if (!res.ok) throw apiError("INVALID_TOKEN", "אישור הכניסה פג או אינו תקין.");
   const info = await res.json();
@@ -50,7 +55,8 @@ async function verifyGoogleToken(token) {
   const list = allowed.length ? allowed : DEFAULT_CLIENT_IDS;
   if (!list.includes(info.aud)) throw apiError("WRONG_AUDIENCE", "אישור הכניסה אינו שייך למערכת זו.");
   if (!info.sub || !info.email || info.email_verified !== "true") throw apiError("UNVERIFIED_ACCOUNT", "חשבון Google אינו מאומת.");
-  return { sub: String(info.sub), email: String(info.email).toLowerCase(), name: info.name || info.email, picture: info.picture || "" };
+  const identity = { sub: String(info.sub), email: String(info.email).toLowerCase(), name: info.name || info.email, picture: info.picture || "" };
+  cacheSet(identityCache, token, identity); return identity;
 }
 export const isAdminEmail = email => Boolean(process.env.ADMIN_EMAIL) && String(email).toLowerCase() === String(process.env.ADMIN_EMAIL).toLowerCase();
 function requireAdmin(user) { if (!isAdminEmail(user.email)) throw apiError("ADMIN_ONLY", "הפעולה זמינה למנהל בלבד."); }
@@ -61,7 +67,7 @@ const rowOfSub = (rows, sub) => { for (let i = 1; i < rows.length; i++) if (Stri
 const userFromRow = r => ({ sub: String(cell(r, 0)), email: String(cell(r, 1)), name: String(cell(r, 2)), picture: String(cell(r, 3)), blocked: isTrue(cell(r, 6)), deletedAt: cell(r, 7) });
 /* בלי LockService: כדי לא ליצור שורה כפולה כששתי בקשות מגיעות יחד, קוראים שוב ממש לפני ההוספה,
    ואחרי ההוספה בודקים שוב — אם בכל זאת נוצרו שתי שורות, מוחקים את המאוחרת. */
-async function upsertUser(identity) {
+async function upsertUser(identity, extraCells) {
   let rows = await usersRows(); let row = rowOfSub(rows, identity.sub); const stamp = now();
   if (!row) {
     rows = await usersRows(); row = rowOfSub(rows, identity.sub);
@@ -74,9 +80,9 @@ async function upsertUser(identity) {
     }
   }
   const r = rows[row - 1];
-  const cells = { 2: identity.email, 3: identity.name, 4: identity.picture, 5: cell(r, 4) || stamp, 6: stamp };
+  const cells = Object.assign({ 2: identity.email, 3: identity.name, 4: identity.picture, 5: cell(r, 4) || stamp, 6: stamp }, extraCells || {});
   if (cell(r, 7)) { cells[8] = ""; const folder = await userFolder(identity.sub, false); if (folder) await S().updateMeta(folder.id, { description: "" }); }
-  await S().updateCells(USERS.tab, row, cells);
+  await S().updateCells(USERS.tab, row, cells);   // עדכון אחד לכל השדות, גם גרסאות התנאים של session
   return Object.assign(userFromRow(r), { email: identity.email, name: identity.name, picture: identity.picture, deletedAt: "" });
 }
 async function findUserRow(sub) { const rows = await usersRows(); const row = rowOfSub(rows, sub); return row ? { row, values: rows[row - 1] } : null; }
@@ -90,21 +96,21 @@ async function rootFolder() {
   if (!found.length) throw google.infra("תיקיית " + ROOT_FOLDER_NAME + " לא משותפת עם חשבון השירות");
   rootCache = { id: found[0].id, at: Date.now() }; return found[0];
 }
+const folderCache = new Map();
 async function userFolder(sub, create) {
+  const hit = cacheGet(folderCache, sub, 600000); if (hit) return hit;   // מזהה התיקייה לא משתנה; חוסך סיבוב Drive בכל בקשה
   const root = await rootFolder(); const name = "user_" + safeId(sub);
   const found = await S().listChildren(root.id, { foldersOnly: true, name });
-  if (found.length) return found[0];
-  return create ? S().createFolder(root.id, name) : null;
+  const folder = found.length ? found[0] : (create ? await S().createFolder(root.id, name) : null);
+  if (folder) cacheSet(folderCache, sub, folder);
+  return folder;
 }
 async function readList(file) { try { return JSON.parse(await S().readFileText(file.id)); } catch (_) { return null; } }
 async function listFiles(folderId) { return (await S().listChildren(folderId, { filesOnly: true })).filter(f => /^list_.*\.json$/.test(f.name)); }
 
 /* ---------- פעולות ---------- */
-async function session(user, payload) {
-  const found = await findUserRow(user.sub);
-  if (found) await S().updateCells(USERS.tab, found.row, { 9: safeText(payload.termsVersion, 40), 10: safeText(payload.privacyVersion, 40) });
-  return { user: { sub: user.sub, email: user.email, name: user.name, picture: user.picture, isAdmin: isAdminEmail(user.email), blocked: user.blocked } };
-}
+// גרסאות התנאים נכתבו כבר ב-upsertUser (handle מעביר אותן), אז session לא קורא את הגיליון שוב
+async function session(user) { return { user: { sub: user.sub, email: user.email, name: user.name, picture: user.picture, isAdmin: isAdminEmail(user.email), blocked: user.blocked } }; }
 async function listLists(user) {
   const folder = await userFolder(user.sub, false); if (!folder) return { lists: [] };
   const items = await Promise.all((await listFiles(folder.id)).map(readList));  // קריאה במקביל: Drive עונה כשנייה לקובץ
@@ -194,7 +200,7 @@ async function adminUserLists(user, payload) {
 /* ---------- מצב השרת (נשמר בלשונית "הגדרות" של אותו גיליון) ---------- */
 let modeCache = { at: 0, mode: "" };
 export async function getServerMode() {
-  if (modeCache.mode && Date.now() - modeCache.at < 60000) return modeCache.mode;
+  if (modeCache.mode && Date.now() - modeCache.at < 300000) return modeCache.mode;
   try { const rows = await S().readTab(SETTINGS.tab, SETTINGS.headers); let mode = "script"; for (let i = 1; i < rows.length; i++) if (String(cell(rows[i], 0)) === "server_mode") mode = String(cell(rows[i], 1)) === "netlify" ? "netlify" : "script"; modeCache = { at: Date.now(), mode }; return mode; }
   catch (_) { return "script"; }
 }
@@ -222,7 +228,8 @@ export async function handle(req) {
     if (!HANDLERS[req.action]) throw apiError("UNKNOWN_ACTION", "הפעולה אינה מוכרת.");
     if (req.action === "ping") return { ok: true, data: ping() };
     const identity = await verifyGoogleToken(req.idToken);
-    const user = await upsertUser(identity);
+    const p = req.payload || {};
+    const user = await upsertUser(identity, req.action === "session" ? { 9: safeText(p.termsVersion, 40), 10: safeText(p.privacyVersion, 40) } : null);
     if (user.blocked && req.action !== "session") throw apiError("ACCOUNT_BLOCKED", "החשבון חסום לסנכרון. עדיין תוכלו לעבוד מקומית ולייצא קבצים.");
     const data = await HANDLERS[req.action](user, req.payload || {});
     return { ok: true, data };
@@ -232,4 +239,4 @@ export async function handle(req) {
     return { ok: false, error: e.code || "SERVER_ERROR", message: e.publicMessage || "השרת לא הצליח להשלים את הפעולה.", data: e.data || null };
   }
 }
-export function _reset() { store = null; verifier = null; rootCache = { id: "", at: 0 }; statsCache = { at: 0, stats: null }; modeCache = { at: 0, mode: "" }; }
+export function _reset() { store = null; verifier = null; rootCache = { id: "", at: 0 }; statsCache = { at: 0, stats: null }; modeCache = { at: 0, mode: "" }; identityCache.clear(); folderCache.clear(); }

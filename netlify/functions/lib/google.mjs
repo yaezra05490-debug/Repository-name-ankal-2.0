@@ -74,14 +74,16 @@ export async function deleteRow(spreadsheetId, tab, rowIndex1) {
 /* יוצר לשונית אם חסרה (עם כותרות ושורה קפואה, כמו sheet_ בסקריפט) ומחזיר את כל הערכים */
 export async function ensureTab(spreadsheetId, tab, headers) {
   const tabs = await listTabs(spreadsheetId);
+  // כתיבת ערכים לטווח היא PUT (values.update); POST לאותה כתובת מחזיר דף HTML של 400
+  const writeHeaders = () => gapi("PUT", SHEETS + enc(spreadsheetId) + "/values/" + enc("'" + tab + "'!A1") + "?valueInputOption=RAW", { values: [headers] });
   if (!tabs[tab]) {
     await gapi("POST", SHEETS + enc(spreadsheetId) + ":batchUpdate", { requests: [{ addSheet: { properties: { title: tab, rightToLeft: true, gridProperties: { frozenRowCount: 1 } } } }] });
-    await gapi("POST", SHEETS + enc(spreadsheetId) + "/values/" + enc("'" + tab + "'!A1") + "?valueInputOption=RAW", { values: [headers] });
+    await writeHeaders();
     await listTabs(spreadsheetId, true);
     return [headers];
   }
   const values = await readAll(spreadsheetId, tab);
-  if (!values.length) { await gapi("POST", SHEETS + enc(spreadsheetId) + "/values/" + enc("'" + tab + "'!A1") + "?valueInputOption=RAW", { values: [headers] }); return [headers]; }
+  if (!values.length) { await writeHeaders(); return [headers]; }
   return values;
 }
 export function colLetter(n) { let s = ""; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
