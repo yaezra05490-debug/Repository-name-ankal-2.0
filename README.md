@@ -9,7 +9,8 @@
 - `src/qualix.js` — פורמט הגיבוי של הטלפון הכשר (קיוליקס): קריאה וכתיבה של כל קובצי `ibphone`, כולל CRC וכותרת. קוד טהור, נבדק ב־`tests/qualix.test.js`.
 - `src/qualix-ui.js`, `src/qualix.css` — עמוד "גיבוי קיוליקס": זיהוי כרטיס (תוכנה) או בחירת תיקייה (אתר), גרסאות, עריכה ושמירה כגרסה חדשה. בדיקת דפדפן: `tests/qualix-smoke.js`.
 - `src/YAEZRA/` — אתר הניהול. עמוד יחיד ועצמאי, מוגש מאותו דומיין בכתובת סודית.
-- `netlify/functions/ankal-api.mjs` — החיבור בין האתר ל־Apps Script.
+- `netlify/functions/ankal-api.mjs` — המנתב: מעביר כל בקשה ל־Apps Script או לשרת בנטליפי לפי הבחירה באתר הניהול (לשונית ⚙ שרת), עם נפילה אוטומטית לסקריפט.
+- `netlify/functions/lib/ankal-server.mjs`, `lib/google.mjs` — השרת בנטליפי: אותו חוזה כמו Code.gs על אותם נתונים (גיליון + Drive דרך חשבון שירות). נבדק ב־`tests/ankal-server.test.js`. הגדרה: מדריך המנהל, סעיף 11.
 - `apps-script/` — קוד השרת.
 - `main.js`, `preload.js` — תוכנת Windows.
 - `scripts/release.ps1` — מעלה את קובץ ההתקנה ל־GitHub Releases.

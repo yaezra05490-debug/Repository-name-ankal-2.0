@@ -229,10 +229,14 @@
       <label class="modal-field full">הערה<textarea id="qx-c-note" rows="3" maxlength="163">${esc(c.note || "")}</textarea></label>
       <label class="modal-field">קבוצת מתקשרים<input id="qx-c-group" list="qx-groups" value="${esc(c.group || "")}" placeholder="ריק = בלי קבוצה"><datalist id="qx-groups">${groups.map(g => `<option value="${esc(g)}">`).join("")}</datalist></label>
       <label class="modal-field">צלצול אישי<select id="qx-c-ring"><option value="0" ${!c.ringtone ? "selected" : ""}>ברירת המחדל של הטלפון</option><option value="${Q.RINGTONE_FILE}" ${c.ringtone === Q.RINGTONE_FILE ? "selected" : ""}>שיר או קובץ מהכרטיס</option><option value="builtin" ${c.ringtone && c.ringtone !== Q.RINGTONE_FILE ? "selected" : ""}>צלצול מובנה של הטלפון</option></select></label>
-      <label class="modal-field">קוד הצלצול המובנה<input id="qx-c-ringcode" type="number" min="1" max="65535" value="${c.ringtone && c.ringtone !== Q.RINGTONE_FILE ? c.ringtone : 201}"></label>
-      <label class="modal-field full">קובץ הצלצול<div class="qx-row"><input id="qx-c-ringpath" value="${esc(c.ringtonePath || "")}" dir="ltr" placeholder="E:\\שיר.mp3" style="flex:1"><button type="button" class="btn btn-quiet btn-sm" data-qx="pick-ring">עיון בכרטיס והשמעה</button></div></label></div>
-      <p class="qx-note">הקבוצה חייבת להיות אחת מעד שמונה; קבוצה חדשה נכתבת לגיבוי ונבדקת בשחזור. צלצול מקובץ דורש שהכרטיס עצמו יהיה מחובר, כי הנתיב נשמר בתיקיית PB. הצלצולים המובנים נשמרים בטלפון כקוד מספרי; שמותיהם עדיין לא ממופים.</p>`;
-    const choice = await A().modal({ kicker: idx >= 0 ? "עריכת איש קשר" : "איש קשר חדש", title: c.name || "איש קשר", html, buttons: [{ id: "save", label: "שמירה", primary: true }, ...(idx >= 0 ? [{ id: "delete", label: "מחיקה" }] : []), { id: "cancel", label: "ביטול" }], enterConfirms: false });
+      <label class="modal-field" id="qx-c-ringcode-row">קוד הצלצול המובנה<input id="qx-c-ringcode" type="number" min="1" max="65535" value="${c.ringtone && c.ringtone !== Q.RINGTONE_FILE ? c.ringtone : 201}"><small class="qx-note">הטלפון שומר צלצול מובנה כמספר; שמות הצלצולים עדיין לא ממופים.</small></label>
+      <label class="modal-field full" id="qx-c-ringpath-row">קובץ הצלצול<div class="qx-row"><input id="qx-c-ringpath" value="${esc(c.ringtonePath || "")}" dir="ltr" placeholder="E:\\שיר.mp3" style="flex:1"><button type="button" class="btn btn-quiet btn-sm" data-qx="pick-ring">עיון בכרטיס והשמעה</button></div><small class="qx-note">דורש שהכרטיס עצמו יהיה מחובר, כי הנתיב נשמר בתיקיית PB.</small></label></div>
+      <p class="qx-note">הקבוצה חייבת להיות אחת מעד שמונה; קבוצה חדשה נכתבת לגיבוי ונבדקת בשחזור.</p>`;
+    const promise = A().modal({ kicker: idx >= 0 ? "עריכת איש קשר" : "איש קשר חדש", title: c.name || "איש קשר", html, buttons: [{ id: "save", label: "שמירה", primary: true }, ...(idx >= 0 ? [{ id: "delete", label: "מחיקה" }] : []), { id: "cancel", label: "ביטול" }], enterConfirms: false });
+    // מציגים רק את מה שרלוונטי לבחירת הצלצול
+    const ringSelect = document.getElementById("qx-c-ring"), syncRing = () => { document.getElementById("qx-c-ringcode-row")?.classList.toggle("hidden", ringSelect.value !== "builtin"); document.getElementById("qx-c-ringpath-row")?.classList.toggle("hidden", ringSelect.value !== String(Q.RINGTONE_FILE)); };
+    ringSelect?.addEventListener("change", syncRing); syncRing();
+    const choice = await promise;
     if (choice === "delete") { if (await A().confirmBox("מחיקה", `למחוק את ${c.name}?`, "מחיקה")) { d.contacts.splice(idx, 1); dirty("phonebook"); render(); } return; }
     if (choice !== "save") return;
     const v = k => (document.getElementById("qx-c-" + k)?.value || "").trim();

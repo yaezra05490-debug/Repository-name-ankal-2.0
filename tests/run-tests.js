@@ -15,6 +15,9 @@ test("כל הסקריפטים נטענים ב-index.html", () => { const h=fs.re
 test("VCF עם קבוצה וצלצול של קיוליקס", () => { const c={name:"דוד",mobile:"0501",home:"",work:"",fax:"",email:"",note:"",group:"משפחה",ringtone:"E:\\שיר.mp3"}; const plain=buildVcf([c]); assert.ok(!plain.includes("CATEGORIES"),"בלי בקשה מפורשת לא מייצאים"); const full=buildVcf([c],{qualix:true}); const r=parseVcfDetailed(full).contacts[0]; assert.equal(r.group,"משפחה"); assert.equal(r.ringtone,"E:\\שיר.mp3"); });
 // ספריית הגיבוי של קיוליקס: סבבי קריאה-כתיבה על נתונים מלאכותיים (הפורמט אומת מול גיבויים אמיתיים).
 test("ספריית גיבוי קיוליקס", () => cp.execFileSync(process.execPath,[path.join(__dirname,"qualix.test.js")],{stdio:"pipe"}));
+// השרת בנטליפי: אותו חוזה כמו Code.gs, על מחסן זיכרון.
+test("השרת בנטליפי", () => cp.execFileSync(process.execPath,[path.join(__dirname,"ankal-server.test.js")],{stdio:"pipe"}));
+test("המנתב מכיר את שני השרתים ונופל לסקריפט", () => { const p=fs.readFileSync(path.join(__dirname,"../netlify/functions/ankal-api.mjs"),"utf8"); assert.ok(p.includes("getServerMode"),"המנתב חייב לקרוא את מצב השרת"); assert.ok(p.includes("script-fallback"),"חסרה נפילה לסקריפט"); assert.ok(p.includes("adminServerMode"),"המתג חייב לרוץ תמיד בנטליפי"); });
 // מנוע הכפולים נבדק בקובץ נפרד, בתהליך משלו, כדי ששקיפות הפלט תישמר.
 test("מנוע הכפולים", () => cp.execFileSync(process.execPath,[path.join(__dirname,"dedupe.test.js")],{stdio:"pipe"}));
 test("חיווט הממשק", () => cp.execFileSync(process.execPath,[path.join(__dirname,"wiring.test.js")],{stdio:"pipe"}));

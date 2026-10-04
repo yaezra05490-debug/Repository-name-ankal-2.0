@@ -63,6 +63,17 @@
   .adm-tabs button:hover{border-color:var(--cyan-2)}
   .adm-tabs button.active{background:hsl(172 60% 45% / .14);border-color:var(--cyan-2);color:var(--cyan-2)}
   .adm-tabs .refresh{margin-right:auto}
+  /* לשונית השרת */
+  .srv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:8px 0 18px}
+  .srv-card{padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--card);display:grid;gap:10px;align-content:start}
+  .srv-card.current{border-color:var(--cyan-2);box-shadow:0 0 0 2px hsl(172 60% 45% / .2)}
+  .srv-card h3{margin:0;font:700 17px var(--display)}
+  .srv-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+  .srv-row .ok{color:#087455;font-weight:700}.srv-row .bad{color:#a72f42;font-weight:700}
+  .srv-card .chip{display:inline-block;padding:4px 10px;border-radius:999px;background:hsl(172 60% 45% / .14);color:var(--cyan-2);font-size:12px;font-weight:700;width:max-content}
+  .srv-config{padding:16px;border:1px dashed var(--line);border-radius:14px}
+  .srv-config h3{margin:0 0 8px;font:700 15px var(--display)}
+  .srv-config ul{margin:0 0 10px;padding-right:18px;line-height:1.8;font-size:13px}
   /* חיפוש מקומי בתוך כל מסך. */
   .adm-search{display:flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--line);
     border-radius:11px;padding:0 12px;height:40px;margin-bottom:14px;color:var(--muted);max-width:420px}
@@ -100,7 +111,8 @@
     { key: "users", label: "משתמשים" },
     { key: "logs", label: "יומן פעולות" },
     { key: "errors", label: "תקלות" },
-    { key: "trash", label: "סל מחזור" }
+    { key: "trash", label: "סל מחזור" },
+    { key: "server", label: "⚙ שרת" }
   ];
   /* היומן שומר קודי פעולה טכניים; כאן הם מתורגמים למשפט עברי שאומר מה קרה. */
   const ACTION_HE = {
@@ -262,9 +274,52 @@
     if (q) q.oninput = () => { state.q = q.value; renderTabContent(); };
   }
 
+  /* ── בחירת השרת ──
+     שני שרתים עם אותו חוזה ואותם נתונים: Google Apps Script והשרת בנטליפי. הבחירה נשמרת
+     בלשונית "הגדרות" של הגיליון דרך הפעולה adminServerMode, שרצה תמיד בנטליפי. */
+  const SERVER_HE = { script: "Google Apps Script", netlify: "Netlify", "script-fallback": "Google Apps Script (נפילה מנטליפי)" };
+  async function pingServer(which) {
+    const started = Date.now();
+    try { const res = await fetch(CFG.API_PATH, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "ping", idToken: token, payload: { forceServer: which } }) }); const body = await res.json(); return { ok: Boolean(body.ok), ms: Date.now() - started, message: body.ok ? "" : (body.message || body.error || "") }; }
+    catch (error) { return { ok: false, ms: Date.now() - started, message: error.message }; }
+  }
+  async function renderServerTab() {
+    view.innerHTML = `${statsHtml()}${tabsHtml()}<div class="panel"><h2>השרת</h2><p id="tab-hint">בודק את שני השרתים…</p><div id="tab-content"><div class="load">טוען…</div></div></div>`;
+    bindShell();
+    const box = document.getElementById("tab-content"), hint = document.getElementById("tab-hint");
+    let info = null, infoError = "";
+    try { info = await api("adminServerMode", {}); } catch (error) { infoError = error.message; }
+    const [script, netlify] = await Promise.all([pingServer("script"), pingServer("netlify")]);
+    const mode = info ? info.mode : "script";
+    const row = (label, ok, ms, message) => `<div class="srv-row"><b>${esc(label)}</b><span class="${ok ? "ok" : "bad"}">${ok ? "פעיל" : "לא זמין"}</span><span class="muted" dir="ltr">${ms} ms</span>${message ? `<small class="muted">${esc(message)}</small>` : ""}</div>`;
+    hint.textContent = infoError ? "לא הצלחנו לקרוא את מצב השרת מהגיליון." : `הבקשות של כל המשתמשים עוברות כרגע דרך ${SERVER_HE[mode] || mode}.`;
+    box.innerHTML = `
+      <div class="srv-grid">
+        <div class="srv-card ${mode === "script" ? "current" : ""}"><h3>Google Apps Script</h3>${row("מצב", script.ok, script.ms, script.message)}<p class="muted">השרת המקורי. גיבויים יומיים וניקוי סל המחזור רצים רק בו.</p>${mode !== "script" ? `<button class="btn btn-secondary" data-mode="script">העבר את המשתמשים לכאן</button>` : `<span class="chip">בשימוש</span>`}</div>
+        <div class="srv-card ${mode === "netlify" ? "current" : ""}"><h3>Netlify</h3>${row("מצב", netlify.ok, netlify.ms, netlify.message)}<p class="muted">אותם נתונים (אותו גיליון ואותה תיקיית Drive) דרך חשבון שירות. מהיר יותר, ואם גוגל לא עונה הבקשות נופלות לבד לסקריפט.</p>${mode !== "netlify" ? `<button class="btn btn-primary" data-mode="netlify" ${netlify.ok ? "" : "disabled"}>העבר את המשתמשים לכאן</button>` : `<span class="chip">בשימוש</span>`}</div>
+      </div>
+      ${info ? `<div class="srv-config"><h3>הגדרת השרת בנטליפי</h3>
+        <ul>
+          <li>${info.serviceAccount ? "✓" : "✗"} מפתח חשבון שירות (GOOGLE_SA_JSON)${info.serviceAccountEmail ? ` — <span dir="ltr">${esc(info.serviceAccountEmail)}</span>` : ""}</li>
+          <li>${info.adminEmail ? "✓" : "✗"} מייל המנהל (ADMIN_EMAIL)</li>
+          <li>גיליון: <span dir="ltr">${esc(info.sheetId)}</span>${info.rootFolderId ? ` · תיקייה: <span dir="ltr">${esc(info.rootFolderId)}</span>` : " · התיקייה ANKAL_DATA מאותרת לפי שם"}</li>
+          ${info.envMode ? `<li>⚠ ANKAL_SERVER_MODE=${esc(info.envMode)} במשתני הסביבה גובר על הבחירה כאן</li>` : ""}
+          ${info.disabled ? "<li>⚠ SERVER_DISABLED=1 — השרת בנטליפי כבוי ממשתני הסביבה</li>" : ""}
+        </ul>
+        <p class="muted">כדי שנטליפי יגיע לנתונים: שתפו את הגיליון ואת תיקיית ANKAL_DATA ב-Drive עם כתובת חשבון השירות (הרשאת עריכה). הפרטים במדריך ההקמה, סעיף 11.</p></div>` : `<div class="err">${esc(infoError)}</div>`}`;
+    box.querySelectorAll("[data-mode]").forEach((el) => el.onclick = async () => {
+      const target = el.dataset.mode;
+      if (!confirm(target === "netlify" ? "להעביר את כל המשתמשים לשרת בנטליפי? אם משהו לא יעבוד, הבקשות ייפלו לבד לסקריפט, ואפשר לחזור מכאן בכל רגע." : "לחזור ל-Google Apps Script?")) return;
+      el.disabled = true;
+      try { await api("adminServerMode", { mode: target }); toast("המצב עודכן. הבקשות הבאות יעברו דרך " + SERVER_HE[target]); renderServerTab(); }
+      catch (error) { toast(error.message); el.disabled = false; }
+    });
+  }
+
   async function openTab(tab) {
     state.tab = tab; state.user = null; state.list = null;
     view.innerHTML = `<div class="load">טוען…</div>`;
+    if (tab === "server") return renderServerTab();
     try {
       const data = await api("adminOverview", { tab });
       state.stats = data.stats || {};
