@@ -1,5 +1,7 @@
 /* ─── גיבוי קיוליקס: עמוד נפרד, אותה שפה עיצובית ─── */
 .qx-root{display:grid;gap:16px}
+/* התפריט נגלל כשיש בו יותר פריטים ממה שנכנס בגובה החלון (פריטי המשנה של הגיבוי) */
+.side-nav{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;padding-left:4px}
 /* פריטי המשנה בתפריט הצד: הקטגוריות של הגרסה הפתוחה, מתחת לכותרת "גיבוי קיוליקס" */
 .nav-sub{display:flex;flex-direction:column;gap:2px;margin:-2px 0 6px;padding-right:22px;position:relative}
 .nav-sub:before{content:"";position:absolute;right:24px;top:4px;bottom:6px;width:2px;border-radius:2px;background:hsl(var(--page) 60% 55% / .3)}

@@ -96,6 +96,10 @@ server.listen(PORT, async () => {
   await wait(300);
   await step("ארבעה כרטיסים אחרי ההוספה", `document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length`, 4);
   await step("סימון שינויים", `document.querySelector(".qx-save .qx-dirty")?.textContent || "אין"`, v => /שינויים/.test(v));
+  await step("לחיצה על הכותרת בתפריט מציגה את הגרסאות", `(() => { document.querySelector('[data-page="qualix"]').click(); return document.querySelector("#qualix-root .qx-versions") ? "versions" : "editor"; })()`, "versions");
+  await step("הגרסה הפתוחה מסומנת עם שינויים", `document.querySelector("#qualix-root .qx-version.current .qx-when b")?.textContent`, v => /שינויים/.test(v));
+  await step("הקטגוריות עדיין בתפריט הצד", `document.querySelectorAll("#qualix-subnav .nav-sub-item").length`, 7);
+  await step("לחיצה על קטגוריה חוזרת לעורך", `(() => { document.querySelector('#qualix-subnav [data-tab="contacts"]').click(); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
   await step("חיפוש מסנן לפי שם", `(() => { const el = document.getElementById("qx-search"); el.value = "שרה"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
   await step("חיפוש מסנן לפי ספרות", `(() => { const el = document.getElementById("qx-search"); el.value = "050-111"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
   await step("ניקוי החיפוש", `(() => { const el = document.getElementById("qx-search"); el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
@@ -200,9 +204,22 @@ server.listen(PORT, async () => {
   })()`, v => v === "4 | 0501112222/חברים/bit2 | 2 | 2 | 2 | E:\\b.mp3,E:\\a.mp3 | אנקל | 7 | crc-ok | folder-ok");
   await step("אין שינויים אחרי השמירה", `document.querySelector(".qx-save .qx-dirty") ? "יש" : "אין"`, "אין");
   await step("שתי גרסאות ברשימה", `(() => { document.querySelector('[data-qx="back"]').click(); return document.querySelectorAll("#qualix-root .qx-version").length; })()`, 2);
+  await step("הגרסה החדשה היא הנוכחית", `document.querySelector("#qualix-root .qx-version.current h3")?.textContent`, v => /2026/.test(v));
 
-  await step("פתיחה מחדש של הגרסה החדשה", click('[data-qx="open"]'));
+  // שינוי בגרסה הפתוחה ואז פתיחת גרסה אחרת — חייב לשאול
+  await step("חזרה לעורך", `(() => { document.querySelector('#qualix-subnav [data-tab="dictionary"]').click(); return document.getElementById("page-title").textContent; })()`, "חיזוי טקסט");
+  await step("שינוי נוסף (מילה)", `(() => { document.getElementById("qx-word").value = "שלום"; document.querySelector('[data-qx="add-word"]').click(); return document.querySelectorAll("#qualix-root .qx-word").length; })()`, 2);
+  await step("לגרסאות", click('[data-page="qualix"]'));
+  await step("פתיחת הגרסה הישנה", `(() => { const btns = [...document.querySelectorAll('#qualix-root [data-qx="open"]')]; btns[btns.length - 1].click(); return btns.length; })()`, 2);
+  await wait(300);
+  await step("נשאלנו על שינויים שלא נשמרו", `document.getElementById("modal-title")?.textContent`, v => /לשמור/.test(v));
+  await step("המשך בלי לשמור", click('[data-modal-choice="discard"]'));
   await wait(500);
+  await step("הגרסה הישנה נפתחה (3 אנשי קשר)", `document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length`, 3);
+  await step("לגרסאות", click('[data-page="qualix"]'));
+  await step("פתיחת הגרסה החדשה בלי שאלה", click('[data-qx="open"]'));
+  await wait(500);
+  await step("אין חלון פתוח", `document.getElementById("modal-backdrop").classList.contains("open") ? "פתוח" : "סגור"`, "סגור");
   await step("העברה לניהול אנשי קשר", click('[data-qx="contacts-to-list"]'));
   await wait(300);
   await step("יצירת הרשימה", click('[data-modal-choice="go"]'));
