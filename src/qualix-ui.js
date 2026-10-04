@@ -273,7 +273,8 @@
   /* ---------- פתקים ---------- */
   function wrapForPhone(text) {
     const table = widths(), lines = [];
-    for (const para of String(text || "").split("\n")) {
+    for (const raw of String(text || "").split("\n")) {
+      const para = raw.replace(/\s+$/, ""); // רווחים בסוף שורה לא תופסים מקום על המסך, והטלפון לא שובר בגללם
       let line = "", w = 0, lastSpace = -1;
       for (const ch of para) { const cw = Q.textWidth(ch, table); if (w + cw > Q.LINE_UNITS && line) { if (lastSpace > 0) { lines.push({ t: line.slice(0, lastSpace), wrap: true }); line = line.slice(lastSpace + 1); w = Q.textWidth(line, table); lastSpace = -1; } else { lines.push({ t: line, wrap: true }); line = ""; w = 0; } } line += ch; w += cw; if (ch === " ") lastSpace = line.length - 1; }
       lines.push({ t: line, wrap: false });
@@ -292,19 +293,44 @@
     qx.widths = Q.calibrateFromMemo(text, widths()); localStorage.setItem(WIDTH_KEY, JSON.stringify(qx.widths)); memoCounter(); A().toast("טבלת הרוחב עודכנה");
   }
 
-  /* ---------- לוח שנה ---------- */
-  async function editEvent(idx) {
-    const d = qx.open.data; const ev = idx >= 0 ? d.events[idx] : { title: "", date: new Date().toISOString().slice(0, 10), time: "09:00", reminder: true };
-    const html = `<div class="qx-form"><label class="modal-field full">כותרת<input id="qx-ev-title" value="${esc(ev.title)}" maxlength="82"></label><label class="modal-field">תאריך<input id="qx-ev-date" type="date" value="${esc(ev.date)}"></label><label class="modal-field">שעה<input id="qx-ev-time" type="time" value="${esc(ev.time)}"></label><label class="check-line full"><input id="qx-ev-rem" type="checkbox" ${ev.reminder ? "checked" : ""}> תזכורת פעילה</label></div>`;
-    const choice = await A().modal({ kicker: idx >= 0 ? "עריכת אירוע" : "אירוע חדש", title: ev.title || "אירוע", html, buttons: [{ id: "save", label: "שמירה", primary: true }, ...(idx >= 0 ? [{ id: "delete", label: "מחיקה" }] : []), { id: "cancel", label: "ביטול" }] });
+  /* ---------- לוח שנה ----------
+     אירוע חוזר נכתב לטלפון כסדרה של אירועים נפרדים (כך גם המשתמש עצמו רשם סדרות בטלפון),
+     ולכן אינו תלוי בשדה החזרה הפנימי של הטלפון, שמשמעותו עדיין לא אומתה. */
+  const localIso = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  const REPEATS = [["none", "בלי חזרה"], ["daily", "כל יום"], ["weekly", "כל שבוע"], ["biweekly", "כל שבועיים"], ["monthly", "כל חודש"], ["yearly", "כל שנה"]];
+  function occurrences(startIso, repeat, untilIso, cap = 400) {
+    const out = []; const [y, m, d] = startIso.split("-").map(Number); const until = untilIso || startIso;
+    for (let n = 0; n < cap; n++) {
+      let dt; if (repeat === "daily") dt = new Date(y, m - 1, d + n); else if (repeat === "weekly") dt = new Date(y, m - 1, d + 7 * n); else if (repeat === "biweekly") dt = new Date(y, m - 1, d + 14 * n);
+      else if (repeat === "monthly") { const last = new Date(y, m - 1 + n + 1, 0).getDate(); dt = new Date(y, m - 1 + n, Math.min(d, last)); } else if (repeat === "yearly") { const last = new Date(y + n, m, 0).getDate(); dt = new Date(y + n, m - 1, Math.min(d, last)); } else dt = new Date(y, m - 1, d);
+      const iso = localIso(dt); if (iso > until) break; out.push(iso); if (repeat === "none") break;
+    }
+    return out;
+  }
+  async function editEvent(idx, presetDate) {
+    const d = qx.open.data; const ev = idx >= 0 ? d.events[idx] : { title: "", date: presetDate || localIso(new Date()), time: "09:00", reminder: true };
+    const inAYear = localIso(new Date(Date.now() + 365 * 86400000));
+    const html = `<div class="qx-form"><label class="modal-field full">כותרת<input id="qx-ev-title" value="${esc(ev.title)}" maxlength="82"></label><label class="modal-field">תאריך<input id="qx-ev-date" type="date" value="${esc(ev.date)}"></label><label class="modal-field">שעה<input id="qx-ev-time" type="time" value="${esc(ev.time)}"></label><label class="check-line full"><input id="qx-ev-rem" type="checkbox" ${ev.reminder ? "checked" : ""}> תזכורת פעילה</label>
+      ${idx < 0 ? `<label class="modal-field">חזרה<select id="qx-ev-repeat">${REPEATS.map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label><label class="modal-field">עד תאריך (לחזרה)<input id="qx-ev-until" type="date" value="${inAYear}"></label><p class="qx-note full">אירוע חוזר נרשם בטלפון כאירועים נפרדים, אחד לכל מועד, עד התאריך שבחרתם (לכל היותר 400).</p>` : `<p class="qx-note full">${ev.seriesId ? "האירוע הזה הוא חלק מסדרה חוזרת. אפשר למחוק את כל הסדרה." : ""}</p>`}</div>`;
+    const buttons = [{ id: "save", label: "שמירה", primary: true }]; if (idx >= 0) { buttons.push({ id: "delete", label: "מחיקה" }); if (ev.seriesId) buttons.push({ id: "delete-series", label: "מחיקת כל הסדרה" }); } buttons.push({ id: "cancel", label: "ביטול" });
+    const choice = await A().modal({ kicker: idx >= 0 ? "עריכת אירוע" : "אירוע חדש", title: ev.title || "אירוע", html, buttons });
     if (choice === "delete") { d.events.splice(idx, 1); dirty("schedule"); render(); return; }
+    if (choice === "delete-series") { const n = d.events.filter(e => e.seriesId === ev.seriesId).length; if (await A().confirmBox("מחיקת סדרה", `למחוק ${n} אירועים של "${ev.title}"?`, "מחיקה")) { d.events = d.events.filter(e => e.seriesId !== ev.seriesId); dirty("schedule"); render(); } return; }
     if (choice !== "save") return;
     const title = document.getElementById("qx-ev-title").value.trim(), date = document.getElementById("qx-ev-date").value, time = document.getElementById("qx-ev-time").value || "00:00", reminder = document.getElementById("qx-ev-rem").checked;
     if (!title || !date) return A().toast("צריך כותרת ותאריך", "warning");
-    if (idx >= 0) Object.assign(ev, { title, date, time, reminder, _dirty: true });
-    else { const maxId = d.events.reduce((m, e) => Math.max(m, e.reminderId || 0), 100); d.events.push({ title, date, time, reminder, reminderId: reminder ? maxId + 1 : 0, _dirty: true }); }
+    if (idx >= 0) { Object.assign(ev, { title, date, time, reminder, _dirty: true }); }
+    else {
+      const repeat = document.getElementById("qx-ev-repeat")?.value || "none", until = document.getElementById("qx-ev-until")?.value || date;
+      const dates = occurrences(date, repeat, until); if (!dates.length) return A().toast("תאריך הסיום קודם לתאריך ההתחלה", "warning");
+      let nextId = d.events.reduce((m, e) => Math.max(m, e.reminderId || 0), 100); const seriesId = dates.length > 1 ? "s" + Date.now() : "";
+      for (const iso of dates) d.events.push({ title, date: iso, time, reminder, reminderId: reminder ? ++nextId : 0, seriesId, _dirty: true });
+      if (dates.length > 1) A().toast(`נוספו ${dates.length} אירועים`);
+      qx.calMonth = date.slice(0, 7);
+    }
     dirty("schedule"); render();
   }
+  function shiftMonth(delta) { const [y, m] = (qx.calMonth || localIso(new Date()).slice(0, 7)).split("-").map(Number); const dt = new Date(y, m - 1 + delta, 1); qx.calMonth = localIso(dt).slice(0, 7); render(); }
 
   /* ---------- רשימות השמעה ---------- */
   async function newPlaylist() { const choice = await A().modal({ kicker: "רשימת השמעה", title: "שם הרשימה", html: `<label class="modal-field">שם<input id="qx-pl-name" maxlength="40" placeholder="לדוגמה: שבת"></label>`, buttons: [{ id: "go", label: "יצירה", primary: true }, { id: "cancel", label: "ביטול" }] }); if (choice !== "go") return; const name = document.getElementById("qx-pl-name").value.trim().replace(/[\\/:*?"<>|]/g, "-"); if (!name) return; const d = qx.open.data; d.playlists.push({ name: name + ".lst", entries: [], _dirty: true }); qx.plIdx = d.playlists.length - 1; dirty("playlist"); render(); }
@@ -319,8 +345,31 @@
   function moveSong(i, dir) { const p = qx.open.data.playlists[qx.plIdx]; const j = i + dir; if (!p || j < 0 || j >= p.entries.length) return; [p.entries[i], p.entries[j]] = [p.entries[j], p.entries[i]]; p._dirty = true; dirty("playlist"); render(); }
   function removeSong(i) { const p = qx.open.data.playlists[qx.plIdx]; if (!p) return; p.entries.splice(i, 1); p._dirty = true; dirty("playlist"); render(); }
 
-  /* ---------- חיזוי טקסט ---------- */
-  function addWord() { const input = document.getElementById("qx-word"); const w = (input?.value || "").trim(); if (!w) return; const d = qx.open.data; if (d.dictionaryWords.includes(w)) return A().toast("המילה כבר קיימת", "warning"); d.dictionaryWords.push(w); d.dictRemove = d.dictRemove.filter(x => x !== w); d.dictAdd.push(w); dirty("udb"); render(); }
+  /* ---------- חיזוי טקסט ----------
+     קובץ המילון הוא 4096 בתים ורובו כותרת, ולכן יש מקום לכמה עשרות מילים בלבד. */
+  const wordCost = w => 16 + w.length * 2;
+  function udbFreeBytes() { const d = qx.open.data; const cache = d.udb?.cardCache; let used = 0; if (cache && cache.length >= 0x828) used = new DataView(cache.buffer, cache.byteOffset, cache.byteLength).getUint32(0x824, true); const pendingAdd = d.dictAdd.reduce((n, w) => n + wordCost(w), 0), pendingRemove = d.dictRemove.reduce((n, w) => n + wordCost(w), 0); return 4096 - 4 - 0x838 - used - pendingAdd + pendingRemove; }
+  function pushWord(w) { const d = qx.open.data; if (d.dictionaryWords.includes(w)) return false; if (udbFreeBytes() < wordCost(w)) return null; d.dictionaryWords.push(w); d.dictRemove = d.dictRemove.filter(x => x !== w); if (!d.dictAdd.includes(w)) d.dictAdd.push(w); return true; }
+  function addWord() { const input = document.getElementById("qx-word"); const w = (input?.value || "").trim().slice(0, 60); if (!w) return; const r = pushWord(w); if (r === false) return A().toast("המילה כבר קיימת", "warning"); if (r === null) return A().toast("אין מקום במילון של הטלפון למילה נוספת", "warning"); dirty("udb"); render(); }
+  function pickAnyFile(accept) { return new Promise(resolve => { const input = document.createElement("input"); input.type = "file"; input.accept = accept; input.onchange = () => resolve(input.files[0] || null); input.oncancel = () => resolve(null); input.click(); }); }
+  async function importWords() {
+    const file = await pickAnyFile(".xlsx,.xls,.csv,.txt"); if (!file) return;
+    setBusy("קורא מילים…");
+    try {
+      let text = "";
+      if (/\.(xlsx|xls)$/i.test(file.name)) { await A().ensureXlsx(); const wb = window.XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: "array", raw: false }); for (const name of wb.SheetNames) text += window.XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "", raw: false }).flat().join("\n") + "\n"; }
+      else { const buf = await file.arrayBuffer(); text = new TextDecoder("utf-8").decode(buf); if (/�/.test(text)) text = new TextDecoder("windows-1255").decode(buf); }
+      const words = [...new Set(text.split(/[\s,;|"'()\[\]{}.!?:]+/).map(w => w.trim()).filter(w => w.length >= 2 && w.length <= 60 && /[א-תA-Za-z]/.test(w)))];
+      const d = qx.open.data; const fresh = words.filter(w => !d.dictionaryWords.includes(w));
+      setBusy("");
+      if (!fresh.length) return A().toast(words.length ? "כל המילים בקובץ כבר במילון" : "לא נמצאו מילים בקובץ", "warning");
+      const room = Math.floor(udbFreeBytes() / 26);
+      const ok = await A().confirmBox("ייבוא מילים לחיזוי", `נמצאו ${fresh.length} מילים חדשות (${words.length} בקובץ). במילון של הטלפון יש מקום לעוד כ-${room} מילים. להוסיף עד שהמקום ייגמר?`, "הוספה");
+      if (!ok) return;
+      let added = 0; for (const w of fresh) { if (pushWord(w) === true) added++; else if (pushWord(w) === null) break; }
+      dirty("udb"); render(); A().toast(added < fresh.length ? `נוספו ${added} מילים; המקום במילון נגמר` : `נוספו ${added} מילים`);
+    } catch (error) { console.error(error); A().toast("לא הצלחנו לקרוא את הקובץ", "error"); } finally { setBusy(""); }
+  }
   function removeWord(w) { const d = qx.open.data; d.dictionaryWords = d.dictionaryWords.filter(x => x !== w); if (d.dictAdd.includes(w)) d.dictAdd = d.dictAdd.filter(x => x !== w); else d.dictRemove.push(w); dirty("udb"); render(); }
 
   /* ---------- ציור ---------- */
@@ -329,7 +378,19 @@
     const root = document.getElementById("qualix-root"); if (!root) return;
     const navCount = document.getElementById("nav-qualix-count"); if (navCount) navCount.textContent = qx.backups.length || "";
     root.innerHTML = sourceBar() + (qx.open ? openView() : (qx.adapter ? versionsView() : introView())) + `<div id="qx-busy" class="qx-warn ${qx.busy ? "" : "hidden"}" style="position:fixed;bottom:18px;right:50%;transform:translateX(50%);z-index:60">${esc(qx.busy)}</div>`;
-    qx.rendered = true; memoCounter();
+    renderSubnav(); qx.rendered = true; memoCounter();
+  }
+  const DIRTY_KEY = { contacts: "phonebook", calls: "callog", memos: "memo", calendar: "schedule", playlists: "playlist", dictionary: "udb", settings: "settings" };
+  function tabCounts(d) { return { contacts: d.contacts.length, calls: d.callog.entries.reduce((n, e) => n + e.calls.length, 0), memos: d.memos.length, calendar: d.events.length, playlists: d.playlists.length, dictionary: d.dictionaryWords.length, settings: d.settings ? 1 : 0 }; }
+  /* הקטגוריות של הגרסה הפתוחה יושבות בתפריט הצד, מתחת לכותרת "גיבוי קיוליקס"; בלי גרסה פתוחה הן מוסתרות. */
+  function renderSubnav() {
+    const nav = document.getElementById("qualix-subnav"); if (!nav) return;
+    const onPage = document.getElementById("app-shell")?.dataset.activePage === "qualix";
+    if (!qx.open) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
+    const counts = tabCounts(qx.open.data);
+    nav.innerHTML = TABS.map(([k, label, icon]) => `<button class="nav-sub-item ${onPage && qx.tab === k ? "active" : ""} ${qx.open.dirty.has(DIRTY_KEY[k]) ? "dirty" : ""}" data-qx="tab" data-tab="${k}"><span class="nav-icon">${icon}</span><span class="nav-label">${label}</span><span class="nav-count">${counts[k]}</span></button>`).join("");
+    nav.classList.remove("hidden");
+    if (onPage) { const kicker = document.getElementById("page-kicker"), title = document.getElementById("page-title"); const tab = TABS.find(t => t[0] === qx.tab); if (kicker && title && tab) { kicker.textContent = "גיבוי קיוליקס · " + (qx.open.isNew ? "גרסה חדשה" : folderDate(qx.open.folder)); title.textContent = tab[1]; } }
   }
   function sourceBar() {
     const on = !!qx.adapter;
@@ -346,21 +407,37 @@
     return `<div class="page-intro"><div><h2>הגרסאות בכרטיס</h2><p>כל גיבוי שהטלפון עשה, וכל גרסה ששמרתם מכאן. הטלפון משחזר מכל אחת מהן.</p></div><div class="intro-actions"><button class="btn btn-primary" data-qx="new-version">＋ גרסה חדשה</button></div></div><div class="qx-versions">${cards}</div>`;
   }
   function openView() {
-    const o = qx.open, d = o.data;
-    const counts = { contacts: d.contacts.length, calls: d.callog.entries.reduce((n, e) => n + e.calls.length, 0), memos: d.memos.length, calendar: d.events.length, playlists: d.playlists.length, dictionary: d.dictionaryWords.length, settings: d.settings ? 1 : 0 };
-    const dirtyMap = { contacts: "phonebook", calls: "callog", memos: "memo", calendar: "schedule", playlists: "playlist", dictionary: "udb" };
-    const tabs = TABS.map(([k, label, icon]) => `<button class="${qx.tab === k ? "active" : ""} ${o.dirty.has(dirtyMap[k]) ? "dirty" : ""}" data-qx="tab" data-tab="${k}">${icon} ${label}<span class="qx-n">${counts[k]}</span></button>`).join("");
+    const o = qx.open;
     const body = { contacts: contactsTab, calls: callsTab, memos: memosTab, calendar: calendarTab, playlists: playlistsTab, dictionary: dictionaryTab, settings: settingsTab }[qx.tab]();
-    const head = `<div class="qx-head"><div><h2>${esc(o.isNew ? "גרסה חדשה (עדיין לא נשמרה)" : folderDate(o.folder))}</h2><div class="qx-sub">${o.isNew ? "בסיום העריכה לחצו שמירה" : esc(o.folder)}</div></div></div>`;
+    const tab = TABS.find(t => t[0] === qx.tab) || TABS[0];
+    const head = `<div class="qx-head"><div><h2>${tab[2]} ${tab[1]}</h2><div class="qx-sub">${o.isNew ? "גרסה חדשה — עדיין לא נשמרה. בסיום העריכה לחצו שמירה." : `גרסה ${esc(folderDate(o.folder))} · ${esc(o.folder)}`}</div></div><div class="spacer"></div><span class="qx-note">הקטגוריות בתפריט הצד</span></div>`;
     const save = `<div class="qx-save"><button class="btn btn-primary" data-qx="save" ${qx.layout.canSave ? "" : "disabled"}>💾 שמירה כגרסה חדשה</button>${o.dirty.size ? `<span class="qx-dirty">יש שינויים שלא נשמרו</span>` : `<span class="qx-note">אין שינויים</span>`}${qx.layout.canSave ? "" : `<span class="qx-note">נבחר גיבוי בודד — כדי לשמור בחרו את הכרטיס או את תיקיית ibphone</span>`}</div>`;
-    return head + `<div class="qx-tabs">${tabs}</div>` + body + save;
+    return head + body + save;
+  }
+  /* אנשי הקשר מוצגים באותם כרטיסים צבעוניים כמו במסך אנשי הקשר הרגיל — אותו גוון לכל שם, אותן שורות. */
+  const FIELD_HE = { mobile: "נייד", home: "בית", work: "עבודה", fax: "פקס" };
+  function filteredQxContacts() {
+    const d = qx.open.data, q = qx.search.trim().toLowerCase(), qDigits = q.replace(/\D/g, "");
+    return d.contacts.map((c, i) => ({ c, i })).filter(({ c }) => !q || [c.name, c.email, c.note, c.group].some(v => String(v || "").toLowerCase().includes(q)) || (qDigits && Q.SLOT_FIELDS.some(f => String(c[f] || "").replace(/\D/g, "").includes(qDigits))));
+  }
+  function contactsListHtml() {
+    const rows = filteredQxContacts(); const d = qx.open.data;
+    const cards = rows.slice(0, 1500).map(({ c, i }) => {
+      const name = c.name || "ללא שם";
+      const phones = Q.SLOT_FIELDS.filter(f => c[f]).map(f => `<div class="contact-line ${f}"><b>${FIELD_HE[f]}</b><span dir="ltr">${esc(c[f])}</span></div>`).join("");
+      const ring = c.ringtone === Q.RINGTONE_FILE ? "♪ " + ((c.ringtonePath || "").split("\\").pop() || "קובץ מהכרטיס") : c.ringtone ? "♪ צלצול מובנה " + c.ringtone : "";
+      return `<article class="contact-card" style="--tint:${A().avatarHue(name)}" data-qx="edit-contact" data-i="${i}" role="button" tabindex="0">`
+        + `<div class="contact-head"><span class="contact-avatar">${esc(A().initialOf(name))}</span><h3>${esc(name)}</h3></div>` + phones
+        + (c.email ? `<div class="contact-line email-line"><b>מייל</b><span dir="auto">${esc(c.email)}</span></div>` : "")
+        + (c.note ? `<div class="contact-line note-line"><b>הערה</b><span class="contact-note">${esc(c.note)}</span></div>` : "")
+        + (c.group || ring ? `<div class="contact-line note-line"><b>קיוליקס</b><span class="contact-note">${esc([c.group, ring].filter(Boolean).join(" · "))}</span></div>` : "")
+        + `<div class="card-actions"><button class="icon-btn" aria-label="עריכה">✎</button></div></article>`;
+    }).join("");
+    return `<p class="qx-note" style="margin:0 0 10px">${rows.length} מתוך ${d.contacts.length}${rows.length > 1500 ? " · מוצגים 1500 הראשונים, השתמשו בחיפוש" : ""}</p><div class="contact-grid">${cards || `<div class="empty-box"><div class="empty-icon">◫</div><h3>אין אנשי קשר</h3></div>`}</div>`;
   }
   function contactsTab() {
-    const d = qx.open.data, q = qx.search.trim().toLowerCase();
-    const rows = d.contacts.map((c, i) => ({ c, i })).filter(({ c }) => !q || [c.name, c.mobile, c.home, c.work, c.fax, c.email, c.note, c.group].some(v => String(v || "").toLowerCase().includes(q)));
-    const groups = [...new Set(d.contacts.map(c => c.group).filter(Boolean))];
-    return `<div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="qx-search" type="search" value="${esc(qx.search)}" placeholder="חיפוש…"></label><button class="btn btn-secondary btn-sm" data-qx="add-contact">＋ איש קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-to-list">⇄ העבר לניהול אנשי קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-list">⇐ מרשימה באנק״ל</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-file">⇐ מקובץ VCF/Excel</button><span class="qx-note">${rows.length} מתוך ${d.contacts.length} · קבוצות: ${groups.map(esc).join(", ") || "אין"}</span></div>
-      <div class="qx-table-wrap"><table class="qx-table"><thead><tr><th>שם</th><th>נייד</th><th>בית</th><th>עבודה</th><th>פקס</th><th>מייל / כתובת</th><th>הערה</th><th>קבוצה</th><th>צלצול</th><th></th></tr></thead><tbody>${rows.slice(0, 1500).map(({ c, i }) => `<tr data-qx="edit-contact" data-i="${i}" style="cursor:pointer"><td>${esc(c.name)}</td><td class="num">${esc(c.mobile)}</td><td class="num">${esc(c.home)}</td><td class="num">${esc(c.work)}</td><td class="num">${esc(c.fax)}</td><td>${esc(c.email)}</td><td>${esc((c.note || "").split("\n")[0].slice(0, 30))}</td><td>${esc(c.group)}</td><td>${c.ringtone === Q.RINGTONE_FILE ? "♪ " + esc((c.ringtonePath || "").split("\\").pop() || "קובץ") : c.ringtone ? "מובנה " + c.ringtone : ""}</td><td class="act"><button class="icon-btn" aria-label="עריכה">✎</button></td></tr>`).join("")}</tbody></table>${rows.length > 1500 ? `<p class="qx-note" style="padding:8px">מוצגים 1500 הראשונים. השתמשו בחיפוש.</p>` : ""}</div>`;
+    const d = qx.open.data; const groups = [...new Set(d.contacts.map(c => c.group).filter(Boolean))];
+    return `<div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="qx-search" type="search" value="${esc(qx.search)}" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn btn-secondary btn-sm" data-qx="add-contact">＋ איש קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-to-list">⇄ העבר לניהול אנשי קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-list">⇐ מרשימה באנק״ל</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-file">⇐ מקובץ VCF/Excel</button><span class="qx-note">קבוצות: ${groups.map(esc).join(", ") || "אין"}</span></div><div id="qx-contacts-list">${contactsListHtml()}</div>`;
   }
   function callsTab() {
     const rows = flatCalls();
@@ -375,8 +452,19 @@
     return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="new-memo">＋ פתק</button><span class="qx-note">${d.memos.length} פתקים · קבצי טקסט פשוטים בתיקיית Memo</span></div><div class="qx-split"><div class="qx-list">${list}</div>${editor}</div>`;
   }
   function calendarTab() {
-    const events = qx.open.data.events.map((e, i) => ({ e, i })).sort((a, b) => (b.e.date + b.e.time).localeCompare(a.e.date + a.e.time));
-    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-event">＋ אירוע</button><span class="qx-note">${events.length} אירועים</span></div><div class="qx-table-wrap"><table class="qx-table"><thead><tr><th>תאריך</th><th>שעה</th><th>כותרת</th><th>תזכורת</th><th></th></tr></thead><tbody>${events.map(({ e, i }) => `<tr data-qx="edit-event" data-i="${i}" style="cursor:pointer"><td class="num">${esc(e.date.split("-").reverse().join("."))}</td><td class="num">${esc(e.time)}</td><td>${esc(e.title)}</td><td>${e.reminder ? "🔔" : ""}</td><td class="act"><button class="icon-btn" aria-label="עריכה">✎</button></td></tr>`).join("")}</tbody></table></div>`;
+    const d = qx.open.data; if (!qx.calMonth) qx.calMonth = localIso(new Date()).slice(0, 7);
+    const [y, m] = qx.calMonth.split("-").map(Number); const first = new Date(y, m - 1, 1), daysInMonth = new Date(y, m, 0).getDate(), startDow = first.getDay();
+    const byDate = {}; d.events.forEach((e, i) => { (byDate[e.date] = byDate[e.date] || []).push({ e, i }); });
+    const monthName = new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(first), todayKey = localIso(new Date());
+    let cells = ""; for (let k = 0; k < startDow; k++) cells += `<div class="qx-day empty"></div>`;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const key = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`; const evs = (byDate[key] || []).sort((a, b) => a.e.time.localeCompare(b.e.time));
+      cells += `<div class="qx-day ${key === todayKey ? "today" : ""}" data-qx="day-add" data-date="${key}" title="הוספת אירוע ב-${key.split("-").reverse().join(".")}"><span class="qx-daynum">${day}</span>${evs.map(({ e, i }) => `<button class="qx-ev ${e.reminder ? "rem" : ""}" data-qx="edit-event" data-i="${i}" title="${esc(e.time + " " + e.title)}">${esc(e.time)} ${esc(e.title)}</button>`).join("")}</div>`;
+    }
+    const monthEvents = d.events.map((e, i) => ({ e, i })).filter(x => x.e.date.startsWith(qx.calMonth)).sort((a, b) => (a.e.date + a.e.time).localeCompare(b.e.date + b.e.time));
+    const list = qx.calView === "list" ? `<div class="qx-table-wrap" style="margin-top:12px"><table class="qx-table"><thead><tr><th>תאריך</th><th>שעה</th><th>כותרת</th><th>תזכורת</th><th></th></tr></thead><tbody>${d.events.map((e, i) => ({ e, i })).sort((a, b) => (b.e.date + b.e.time).localeCompare(a.e.date + a.e.time)).map(({ e, i }) => `<tr data-qx="edit-event" data-i="${i}" style="cursor:pointer"><td class="num">${esc(e.date.split("-").reverse().join("."))}</td><td class="num">${esc(e.time)}</td><td>${esc(e.title)}</td><td>${e.reminder ? "🔔" : ""}</td><td class="act"><button class="icon-btn" aria-label="עריכה">✎</button></td></tr>`).join("")}</tbody></table></div>` : "";
+    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-event">＋ אירוע</button><button class="btn btn-quiet btn-sm" data-qx="cal-prev">‹ חודש קודם</button><button class="btn btn-quiet btn-sm" data-qx="cal-today">היום</button><button class="btn btn-quiet btn-sm" data-qx="cal-next">חודש הבא ›</button><strong style="font-size:15px">${esc(monthName)}</strong><span class="qx-note">${monthEvents.length} אירועים החודש · ${d.events.length} בסך הכל</span><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="cal-toggle">${qx.calView === "list" ? "הסתר רשימה" : "הצג גם כרשימה"}</button></div>
+      <div class="qx-cal-head">${["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"].map(n => `<span>${n}</span>`).join("")}</div><div class="qx-cal">${cells}</div><p class="qx-note" style="margin:8px 0 0">לחיצה על יום מוסיפה אירוע באותו תאריך. לחיצה על אירוע פותחת אותו לעריכה.</p>${list}`;
   }
   function playlistsTab() {
     const d = qx.open.data; const p = d.playlists[qx.plIdx];
@@ -387,7 +475,7 @@
   function dictionaryTab() {
     const d = qx.open.data;
     return `<div class="qx-warn">ניסיוני: המבנה של קובץ חיזוי הטקסט פוענח, אבל ערך הביקורת שלו רק בחלקו. אחרי שחזור של “חיזוי טקסט” מגרסה שנערכה כאן, בדקו בטלפון שהמילים נשמרו.</div>
-      <div class="qx-toolbar" style="margin-top:12px"><input id="qx-word" class="qinline" placeholder="מילה חדשה לחיזוי" style="max-width:260px"><button class="btn btn-secondary btn-sm" data-qx="add-word">＋ הוספה</button><span class="qx-note">${d.dictionaryWords.length} מילים${d.dictAdd.length ? ` · ${d.dictAdd.length} חדשות` : ""}${d.dictRemove.length ? ` · ${d.dictRemove.length} להסרה` : ""}</span></div>
+      <div class="qx-toolbar" style="margin-top:12px"><input id="qx-word" class="qinline" placeholder="מילה חדשה לחיזוי" style="max-width:260px"><button class="btn btn-secondary btn-sm" data-qx="add-word">＋ הוספה</button><button class="btn btn-quiet btn-sm" data-qx="import-words">⇐ מאקסל / מקובץ טקסט</button><span class="qx-note">${d.dictionaryWords.length} מילים${d.dictAdd.length ? ` · ${d.dictAdd.length} חדשות` : ""}${d.dictRemove.length ? ` · ${d.dictRemove.length} להסרה` : ""} · מקום לעוד כ-${Math.max(0, Math.floor(udbFreeBytes() / 26))} מילים</span></div>
       <div class="qx-words">${d.dictionaryWords.map(w => `<span class="qx-word">${esc(w)}<button data-qx="remove-word" data-w="${esc(w)}" aria-label="הסרה">✕</button></span>`).join("") || "<span class='qx-note'>המילון ריק</span>"}</div>`;
   }
   function settingsTab() { const d = qx.open.data; return `<div class="qx-panel"><h3 style="margin:0 0 8px">הגדרות הטלפון</h3><p class="qx-note">${d.settings ? `קובץ ההגדרות (${(d.settings.length / 1024).toFixed(0)} KB) הוא צילום של זיכרון המערכת ואי אפשר לערוך אותו בבטחה. הוא נשמר בגרסה החדשה כמו שהוא, ובטלפון אפשר לבחור אם לשחזר אותו.` : "בגרסה הזו אין קובץ הגדרות."}</p></div>`; }
@@ -401,12 +489,12 @@
         case "detect": return detectCards(false);
         case "choose": return chooseFolder();
         case "refresh": if (qx.adapter) { setBusy("מרענן…"); await loadBackups(); setBusy(""); render(); } return;
-        case "back": if (qx.open?.dirty.size && !(await A().confirmBox("שינויים שלא נשמרו", "לצאת בלי לשמור את השינויים?", "יציאה"))) return; qx.open = null; return render();
+        case "back": if (qx.open?.dirty.size && !(await A().confirmBox("שינויים שלא נשמרו", "לצאת בלי לשמור את השינויים?", "יציאה"))) return; qx.open = null; render(); return A().setPage("qualix");
         case "open": return openBackup(el.dataset.folder);
         case "new-version": return newVersion(el.dataset.folder || "");
         case "delete-version": return deleteVersion(el.dataset.folder);
         case "compare": return compareVersions(el.dataset.folder);
-        case "tab": qx.tab = el.dataset.tab; return render();
+        case "tab": qx.tab = el.dataset.tab; if (document.getElementById("app-shell")?.dataset.activePage !== "qualix") return A().setPage("qualix"); return render();
         case "save": return saveAsNew();
         case "add-contact": return editContact(-1);
         case "edit-contact": return editContact(i);
@@ -424,7 +512,13 @@
         case "center-all": return centerMemo(true);
         case "calibrate": return calibrate();
         case "add-event": return editEvent(-1);
+        case "day-add": return editEvent(-1, el.dataset.date);
         case "edit-event": return editEvent(i);
+        case "cal-prev": return shiftMonth(-1);
+        case "cal-next": return shiftMonth(1);
+        case "cal-today": qx.calMonth = localIso(new Date()).slice(0, 7); return render();
+        case "cal-toggle": qx.calView = qx.calView === "list" ? "month" : "list"; return render();
+        case "import-words": return importWords();
         case "playlist": qx.plIdx = i; return render();
         case "new-playlist": return newPlaylist();
         case "delete-playlist": return deletePlaylist();
@@ -438,8 +532,8 @@
     } catch (error) { console.error(error); setBusy(""); A().toast("משהו השתבש: " + (error.message || error), "error"); }
   });
   document.addEventListener("input", event => {
-    if (event.target.id === "qx-search") { qx.search = event.target.value; const root = document.getElementById("qualix-root"); const wrap = root?.querySelector(".qx-table-wrap"); if (wrap) { const tmp = document.createElement("div"); tmp.innerHTML = contactsTab(); wrap.replaceWith(tmp.querySelector(".qx-table-wrap")); } }
-    if (event.target.id === "qx-memo-text") { const m = qx.open?.data.memos[qx.memoIdx]; if (m) { m.text = event.target.value; m._dirty = true; dirty("memo"); memoCounter(); const save = document.querySelector(".qx-save .qx-note"); if (save) save.outerHTML = `<span class="qx-dirty">יש שינויים שלא נשמרו</span>`; } }
+    if (event.target.id === "qx-search") { qx.search = event.target.value; const list = document.getElementById("qx-contacts-list"); if (list) list.innerHTML = contactsListHtml(); }
+    if (event.target.id === "qx-memo-text") { const m = qx.open?.data.memos[qx.memoIdx]; if (m) { m.text = event.target.value; m._dirty = true; dirty("memo"); memoCounter(); const save = document.querySelector(".qx-save .qx-note"); if (save) { save.outerHTML = `<span class="qx-dirty">יש שינויים שלא נשמרו</span>`; renderSubnav(); } } }
   });
   document.addEventListener("change", event => { if (event.target.id === "qx-memo-limit") { qx.memoLimit = Number(event.target.value) || 1000; localStorage.setItem(LIMIT_KEY, String(qx.memoLimit)); memoCounter(); } });
   document.addEventListener("keydown", event => { if (event.key === "Enter" && event.target.id === "qx-word") { event.preventDefault(); addWord(); } });

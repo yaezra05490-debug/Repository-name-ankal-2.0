@@ -1561,7 +1561,7 @@
   }
   /* גשר למודול גיבוי קיוליקס (qualix-ui.js): הוא חי בקובץ נפרד ומשתמש באותם חלונות, הודעות ורשימות. */
   window.ANKAL_APP = {
-    modal, confirmBox, toast, esc, fmtDate, isDesktopApp, downloadBlob, ensureXlsx, setPage, blankContact,
+    modal, confirmBox, toast, esc, fmtDate, isDesktopApp, downloadBlob, ensureXlsx, setPage, blankContact, avatarHue, initialOf,
     getLists: () => state.lists.filter(list => !list.deletedAt),
     createListWithContacts: (name, contacts) => { const list = blankList(name); list.contacts = contacts.map(c => blankContact(c)); state.lists.push(list); state.activeListId = list.id; resetReview(); persistLocal(); markChanged(list, "create_list"); logAction("create_list", list.id); return list; },
     openList,

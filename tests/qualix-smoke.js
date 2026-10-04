@@ -79,9 +79,13 @@ server.listen(PORT, async () => {
   await step("שבע קטגוריות פעילות", `document.querySelectorAll("#qualix-root .qx-version .qx-chip:not(.off)").length`, 7);
   await step("פתיחת הגרסה", click('[data-qx="open"]'));
   await wait(500);
-  await step("לשונית אנשי קשר פעילה", `document.querySelector(".qx-tabs button.active")?.textContent.trim()`, v => /אנשי קשר/.test(v));
-  await step("שלוש שורות אנשי קשר", `document.querySelectorAll('#qualix-root tr[data-qx="edit-contact"]').length`, 3);
-  await step("מספר בינלאומי מוצג עם פלוס", `[...document.querySelectorAll('#qualix-root tr[data-qx="edit-contact"] td.num')].map(td => td.textContent).join(" ")`, v => v.includes("+972535353151"));
+  await step("הקטגוריות מופיעות בתפריט הצד", `document.querySelectorAll("#qualix-subnav .nav-sub-item").length`, 7);
+  await step("אנשי קשר פעיל בתפריט הצד", `document.querySelector("#qualix-subnav .nav-sub-item.active")?.textContent.trim()`, v => /אנשי קשר/.test(v));
+  await step("כותרת העמוד לפי הקטגוריה", `document.getElementById("page-title").textContent`, "אנשי קשר");
+  await step("שלושה כרטיסי אנשי קשר", `document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length`, 3);
+  await step("כרטיס צבעוני עם עיגול", `(() => { const c = document.querySelector('#qualix-root .contact-card'); return c.style.getPropertyValue("--tint") + " · " + (c.querySelector(".contact-avatar")?.textContent || "אין"); })()`, v => /^\d+ · .+/.test(v) && !v.endsWith("אין"));
+  await step("מספר בינלאומי מוצג עם פלוס", `[...document.querySelectorAll('#qualix-root .contact-card .contact-line span')].map(s => s.textContent).join(" ")`, v => v.includes("+972535353151"));
+  await step("שורת קיוליקס מציגה קבוצה", `[...document.querySelectorAll('#qualix-root .contact-card .contact-line')].filter(l => l.textContent.includes("קיוליקס")).length`, 2);
 
   await step("פתיחת איש קשר חדש", click('[data-qx="add-contact"]'));
   await wait(300);
@@ -90,10 +94,11 @@ server.listen(PORT, async () => {
   await step("מילוי קבוצה חדשה", fill("qx-c-group", "חברים"), "ok");
   await step("שמירת איש הקשר", click('[data-modal-choice="save"]'));
   await wait(300);
-  await step("ארבע שורות אחרי ההוספה", `document.querySelectorAll('#qualix-root tr[data-qx="edit-contact"]').length`, 4);
+  await step("ארבעה כרטיסים אחרי ההוספה", `document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length`, 4);
   await step("סימון שינויים", `document.querySelector(".qx-save .qx-dirty")?.textContent || "אין"`, v => /שינויים/.test(v));
-  await step("חיפוש מסנן", `(() => { const el = document.getElementById("qx-search"); el.value = "שרה"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root tr[data-qx="edit-contact"]').length; })()`, 1);
-  await step("ניקוי החיפוש", `(() => { const el = document.getElementById("qx-search"); el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root tr[data-qx="edit-contact"]').length; })()`, 4);
+  await step("חיפוש מסנן לפי שם", `(() => { const el = document.getElementById("qx-search"); el.value = "שרה"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
+  await step("חיפוש מסנן לפי ספרות", `(() => { const el = document.getElementById("qx-search"); el.value = "050-111"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
+  await step("ניקוי החיפוש", `(() => { const el = document.getElementById("qx-search"); el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
 
   await step("לשונית יומן שיחות", click('[data-qx="tab"][data-tab="calls"]'));
   await wait(200);
@@ -125,14 +130,34 @@ server.listen(PORT, async () => {
 
   await step("לשונית לוח שנה", click('[data-qx="tab"][data-tab="calendar"]'));
   await wait(200);
-  await step("אירוע קיים", `document.querySelectorAll('#qualix-root tr[data-qx="edit-event"]').length`, 1);
-  await step("אירוע חדש", click('[data-qx="add-event"]'));
+  await step("תצוגת חודש", `document.querySelectorAll("#qualix-root .qx-cal .qx-day:not(.empty)").length`, v => v >= 28 && v <= 31);
+  await step("ניווט לאוקטובר 2026", `(() => { window.ANKAL_QUALIX_UI.state.calMonth = "2026-10"; window.ANKAL_QUALIX_UI.render(); return document.querySelector("#qualix-root .qx-toolbar strong").textContent; })()`, v => /2026/.test(v));
+  await step("האירוע הקיים מופיע ביום 5", `document.querySelector('#qualix-root .qx-day[data-date="2026-10-05"] .qx-ev')?.textContent`, v => /רופא שיניים/.test(v));
+  await step("לחיצה על יום פותחת אירוע חדש בתאריך", click('[data-qx="day-add"][data-date="2026-10-12"]'));
+  await wait(300);
+  await step("התאריך מולא מראש", `document.getElementById("qx-ev-date").value`, "2026-10-12");
+  await step("מילוי כותרת", fill("qx-ev-title", "פגישה"), "ok");
+  await step("חזרה שבועית עד סוף אוקטובר", `(() => { document.getElementById("qx-ev-repeat").value = "weekly"; document.getElementById("qx-ev-until").value = "2026-10-31"; return "ok"; })()`, "ok");
+  await step("שמירת האירוע", click('[data-modal-choice="save"]'));
+  await wait(300);
+  await step("שלושה מופעים שבועיים בחודש", `document.querySelectorAll('#qualix-root .qx-ev').length`, 4);
+  await step("הצגה כרשימה", click('[data-qx="cal-toggle"]'));
+  await wait(200);
+  await step("ארבעה אירועים ברשימה", `document.querySelectorAll('#qualix-root tr[data-qx="edit-event"]').length`, 4);
+  await step("פתיחת מופע מהסדרה", click('#qualix-root .qx-day[data-date="2026-10-19"] .qx-ev'));
+  await wait(300);
+  await step("מחיקת כל הסדרה", click('[data-modal-choice="delete-series"]'));
+  await wait(300);
+  await step("אישור המחיקה", click('[data-modal-choice="yes"]'));
+  await wait(300);
+  await step("נשאר רק האירוע המקורי", `document.querySelectorAll('#qualix-root .qx-ev').length`, 1);
+  await step("אירוע בודד חדש", click('[data-qx="add-event"]'));
   await wait(300);
   await step("מילוי כותרת", fill("qx-ev-title", "פגישה"), "ok");
   await step("מילוי תאריך", fill("qx-ev-date", "2026-11-02"), "ok");
   await step("שמירת האירוע", click('[data-modal-choice="save"]'));
   await wait(300);
-  await step("שני אירועים", `document.querySelectorAll('#qualix-root tr[data-qx="edit-event"]').length`, 2);
+  await step("שני אירועים בסך הכל", `window.ANKAL_QUALIX_UI.state.open.data.events.length`, 2);
 
   await step("לשונית רשימות השמעה", click('[data-qx="tab"][data-tab="playlists"]'));
   await wait(200);
@@ -150,6 +175,8 @@ server.listen(PORT, async () => {
   await step("לשונית חיזוי טקסט", click('[data-qx="tab"][data-tab="dictionary"]'));
   await wait(200);
   await step("הוספת מילה", `(() => { document.getElementById("qx-word").value = "אנקל"; document.querySelector('[data-qx="add-word"]').click(); return document.querySelectorAll("#qualix-root .qx-word").length; })()`, 1);
+  await step("כפתור ייבוא מאקסל קיים", `document.querySelector('[data-qx="import-words"]')?.textContent.trim()`, v => /אקסל/.test(v));
+  await step("מקום פנוי מוצג", `document.querySelector("#qualix-root .qx-toolbar .qx-note")?.textContent`, v => /מקום לעוד/.test(v));
 
   await step("שמירה כגרסה חדשה", click('[data-qx="save"]'));
   await wait(300);

@@ -1,5 +1,18 @@
 /* ─── גיבוי קיוליקס: עמוד נפרד, אותה שפה עיצובית ─── */
 .qx-root{display:grid;gap:16px}
+/* פריטי המשנה בתפריט הצד: הקטגוריות של הגרסה הפתוחה, מתחת לכותרת "גיבוי קיוליקס" */
+.nav-sub{display:flex;flex-direction:column;gap:2px;margin:-2px 0 6px;padding-right:22px;position:relative}
+.nav-sub:before{content:"";position:absolute;right:24px;top:4px;bottom:6px;width:2px;border-radius:2px;background:hsl(var(--page) 60% 55% / .3)}
+.nav-sub-item{width:100%;height:36px;border:0;border-radius:9px;background:transparent;color:#8fa0b8;display:flex;align-items:center;gap:9px;padding:0 10px 0 8px;text-align:right;font-weight:600;font-size:12.5px;transition:.16s}
+.nav-sub-item .nav-icon{width:22px;height:22px;font-size:14px;border-radius:7px}
+.nav-sub-item:hover{background:rgba(255,255,255,.05);color:#eef6ff}
+.nav-sub-item.active{background:hsl(var(--page) 60% 50% / .16);color:hsl(var(--page) 80% 80%)}
+.nav-sub-item.dirty .nav-label:after{content:" ●";color:var(--warning);font-size:8px;vertical-align:middle}
+.nav-sub-item .nav-count{font-size:10px;min-width:20px}
+html[data-theme="light"] .nav-sub-item{color:#5f6d84}
+html[data-theme="light"] .nav-sub-item:hover{background:hsl(var(--page) 55% 55% / .08);color:var(--text)}
+html[data-theme="light"] .nav-sub-item.active{color:hsl(var(--page) 50% 32%)}
+.sidebar.collapsed .nav-sub{padding-right:0}.sidebar.collapsed .nav-sub:before{display:none}.sidebar.collapsed .nav-sub-item{justify-content:center;padding:0}
 .qx-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--card);border:1px solid var(--line);border-radius:14px}
 .qx-source .qx-dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
 .qx-source.on .qx-dot{background:var(--ok);box-shadow:0 0 0 4px rgba(49,200,138,.14)}
@@ -56,6 +69,19 @@ html[data-theme="dark"] .qx-tabs button.active,:root:not([data-theme]) .qx-tabs 
 .qx-phone div{white-space:pre;overflow:hidden;min-height:1.35em}
 .qx-phone .qx-wrap{color:#8a5a00}
 .qx-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* לוח שנה: תצוגת חודש, ראשון בצד ימין */
+.qx-cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:11px;font-weight:700;color:var(--muted);text-align:center;margin-bottom:4px}
+.qx-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.qx-day{min-height:92px;border:1px solid var(--line);border-radius:10px;padding:4px 5px;background:var(--card);cursor:pointer;display:flex;flex-direction:column;gap:2px;transition:.14s}
+.qx-day:hover{border-color:hsl(var(--page) 60% 55%)}
+.qx-day.empty{background:transparent;border-color:transparent;cursor:default}
+.qx-day.today{border-color:hsl(var(--page) 60% 55%);box-shadow:inset 0 0 0 1px hsl(var(--page) 60% 55%)}
+.qx-daynum{font-size:11px;color:var(--muted);font-weight:700}
+.qx-day.today .qx-daynum{color:hsl(var(--page) 50% 40%)}
+.qx-ev{display:block;width:100%;text-align:right;border:0;border-radius:6px;padding:2px 6px;font-size:11px;background:hsl(var(--page) 60% 55% / .14);color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.qx-ev:hover{background:hsl(var(--page) 60% 55% / .3)}
+.qx-ev.rem:before{content:"🔔 ";font-size:9px}
+@media(max-width:900px){.qx-day{min-height:64px;font-size:10px}.qx-ev{padding:1px 4px;font-size:10px}}
 .qx-note{font-size:12px;color:var(--muted);line-height:1.6}
 .qx-warn{padding:10px 14px;border-radius:12px;background:#fff3d9;color:#7a5200;font-size:12px;line-height:1.6}
 html[data-theme="dark"] .qx-warn,:root:not([data-theme]) .qx-warn{background:hsl(38 60% 20%);color:#f5c66b}
