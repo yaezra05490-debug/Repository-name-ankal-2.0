@@ -68,6 +68,24 @@ html[data-theme="dark"] .qx-tabs button.active,:root:not([data-theme]) .qx-tabs 
 .qx-table .icon-btn{width:30px;height:30px;font-size:15px}
 .qx-type{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--paper)}
 .qx-type.missed{color:#a72f42;background:#ffe3e7}.qx-type.incoming{color:#087455;background:#dff8ef}.qx-type.outgoing{color:#0b5fa8;background:#e1efff}.qx-type.rejected{color:#9a670a;background:#fff3d9}
+/* יומן שיחות בסגנון הטלפון */
+.qx-phone-panel{max-width:620px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:22px;overflow:hidden}
+.qx-filters{display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--line);background:var(--paper);overflow:auto}
+.qx-filter{border:0;background:transparent;color:var(--muted);padding:7px 11px;border-radius:999px;font-weight:700;font-size:12.5px;white-space:nowrap;display:inline-flex;gap:5px;align-items:center}
+.qx-filter.active{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(2,8,23,.1)}
+.qx-filter .qx-n{font-size:10px;padding:1px 6px;border-radius:999px;background:hsl(var(--page) 60% 55% / .14);color:var(--muted)}
+.qx-calls{max-height:64vh;overflow:auto}
+.qx-call-day{position:sticky;top:0;padding:6px 16px;font-size:11px;font-weight:700;color:var(--muted);background:var(--paper);border-bottom:1px solid var(--line);z-index:1}
+.qx-call{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.qx-call:hover{background:hsl(var(--page) 60% 55% / .06)}
+.qx-call-ico{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:16px;background:var(--paper);color:var(--muted)}
+.qx-call.incoming .qx-call-ico{color:#087455;background:#dff8ef}.qx-call.outgoing .qx-call-ico{color:#0b5fa8;background:#e1efff}.qx-call.missed .qx-call-ico{color:#a72f42;background:#ffe3e7}.qx-call.rejected .qx-call-ico{color:#9a670a;background:#fff3d9}
+.qx-call.missed .qx-call-main b{color:#a72f42}
+.qx-call-main{flex:1;min-width:0;display:grid}
+.qx-call-main b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qx-call-main small{font-size:11px;color:var(--muted);text-align:right;direction:rtl}
+.qx-call-time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+.qx-call .icon-btn{width:30px;height:30px;font-size:13px;opacity:.5}.qx-call:hover .icon-btn{opacity:1}
 .qx-split{display:grid;grid-template-columns:300px 1fr;gap:14px;min-height:420px}
 .qx-list{border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:64vh;background:var(--paper)}
 .qx-list button{display:block;width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;text-align:right;padding:10px 12px;color:var(--text)}

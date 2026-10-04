@@ -113,7 +113,9 @@ server.listen(PORT, async () => {
   await step("לשונית יומן שיחות", click('[data-qx="tab"][data-tab="calls"]'));
   await wait(200);
   await step("שתי שיחות", `document.querySelectorAll('#qualix-root [data-qx="delete-call"]').length`, 2);
-  await step("שם מזוהה לפי מספר", `[...document.querySelectorAll("#qualix-root .qx-table tbody tr")].map(r => r.children[2].textContent).join("|")`, v => v.includes("שרה לוי") && v.includes("דוד כהן"));
+  await step("שם מזוהה לפי מספר", `[...document.querySelectorAll("#qualix-root .qx-call .qx-call-main b")].map(b => b.textContent).join("|")`, v => v.includes("שרה לוי") && v.includes("דוד כהן"));
+  await step("מסנן לא נענו", `(() => { document.querySelector('[data-qx="call-filter"][data-filter="missed"]').click(); return document.querySelectorAll("#qualix-root .qx-call").length; })()`, 1);
+  await step("חזרה להכל", `(() => { document.querySelector('[data-qx="call-filter"][data-filter="all"]').click(); return document.querySelectorAll("#qualix-root .qx-call").length; })()`, 2);
   await step("הוספת שיחה", click('[data-qx="add-call"]'));
   await wait(300);
   await step("מילוי מספר", fill("qx-call-num", "0501234567"), "ok");
@@ -121,7 +123,7 @@ server.listen(PORT, async () => {
   await step("אישור השיחה", click('[data-modal-choice="add"]'));
   await wait(300);
   await step("שלוש שיחות", `document.querySelectorAll('#qualix-root [data-qx="delete-call"]').length`, 3);
-  await step("השיחה החדשה ראשונה", `document.querySelector("#qualix-root .qx-table tbody tr td:nth-child(4)")?.textContent`, v => /26\.09\.2026 08:15/.test(v));
+  await step("השיחה החדשה ראשונה, תחת תאריך היום שלה", `document.querySelector("#qualix-root .qx-call-day")?.textContent + " " + document.querySelector("#qualix-root .qx-call .qx-call-time")?.textContent`, "26.09.2026 08:15");
   await step("מחיקת שיחה", click('[data-qx="delete-call"]'));
   await wait(200);
   await step("שתי שיחות אחרי מחיקה", `document.querySelectorAll('#qualix-root [data-qx="delete-call"]').length`, 2);

@@ -517,11 +517,24 @@
     const d = qx.open.data; const groups = [...new Set(d.contacts.map(c => c.group).filter(Boolean))];
     return `<div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="qx-search" type="search" value="${esc(qx.search)}" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn btn-secondary btn-sm" data-qx="add-contact">＋ איש קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-to-list">⇄ העבר לניהול אנשי קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-list">⇐ מרשימה באנק״ל</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-file">⇐ מקובץ VCF/Excel</button><span class="qx-note">קבוצות: ${groups.map(esc).join(", ") || "אין"}</span></div><div id="qx-contacts-list">${contactsListHtml()}</div>`;
   }
+  /* יומן השיחות כמו בטלפון: רשימה צרה, סמל לכל סוג, שם (או מספר), שעה, ומסננים כמו הלשוניות בטלפון */
+  const CALL_ICON = { incoming: "↙", outgoing: "↗", missed: "✕", rejected: "⊘" };
   function callsTab() {
-    const rows = flatCalls();
-    const fmt = s => Q.phoneTimeToIso(s).replace("T", " ").slice(0, 16).replace(/^(\d{4})-(\d{2})-(\d{2})/, "$3.$2.$1");
-    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-call">＋ שיחה</button><span class="qx-note">${rows.length} שיחות ב-${qx.open.data.callog.entries.length} קבוצות (הטלפון שומר עד 100 קבוצות ועד 10 שיחות בכל אחת)</span></div>
-      <div class="qx-table-wrap"><table class="qx-table"><thead><tr><th>סוג</th><th>מספר</th><th>שם</th><th>זמן</th><th>משך</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><span class="qx-type ${r.e.type}">${Q.CALL_TYPE_HE[r.e.type] || r.e.type}</span></td><td class="num">${esc(r.e.number)}</td><td>${esc(contactName(r.e.number))}</td><td class="num">${fmt(r.call.time)}</td><td class="num">${r.call.duration ? Math.floor(r.call.duration / 60) + ":" + String(r.call.duration % 60).padStart(2, "0") : "—"}</td><td class="act"><button class="icon-btn" data-qx="delete-call" data-ei="${r.ei}" data-ci="${r.ci}" aria-label="מחיקה">✕</button></td></tr>`).join("")}</tbody></table></div>`;
+    const rows = flatCalls(); const filter = qx.callFilter || "all";
+    const counts = { all: rows.length }; for (const r of rows) counts[r.e.type] = (counts[r.e.type] || 0) + 1;
+    const shown = filter === "all" ? rows : rows.filter(r => r.e.type === filter);
+    const todayIso = localIso(new Date()), yIso = localIso(new Date(Date.now() - 86400000));
+    const dayLabel = iso => iso === todayIso ? "היום" : iso === yIso ? "אתמול" : iso.split("-").reverse().join(".");
+    const dur = s => s ? Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") : "";
+    let lastDay = "", html = "";
+    for (const r of shown) {
+      const iso = Q.phoneTimeToIso(r.call.time); const day = iso.slice(0, 10), hm = iso.slice(11, 16); const name = contactName(r.e.number);
+      if (day !== lastDay) { html += `<div class="qx-call-day">${dayLabel(day)}</div>`; lastDay = day; }
+      html += `<div class="qx-call ${r.e.type}"><i class="qx-call-ico" title="${Q.CALL_TYPE_HE[r.e.type] || ""}">${CALL_ICON[r.e.type] || "•"}</i><div class="qx-call-main"><b>${esc(name || r.e.number)}</b><small dir="ltr">${name ? esc(r.e.number) + " · " : ""}${Q.CALL_TYPE_HE[r.e.type] || r.e.type}${r.call.duration ? " · " + dur(r.call.duration) : ""}</small></div><span class="qx-call-time">${hm}</span><button class="icon-btn" data-qx="delete-call" data-ei="${r.ei}" data-ci="${r.ci}" aria-label="מחיקה">✕</button></div>`;
+    }
+    const chips = [["all", "הכל"], ["missed", "לא נענו"], ["outgoing", "יוצאות"], ["incoming", "נכנסות"], ["rejected", "נדחו"]].map(([k, v]) => `<button class="qx-filter ${filter === k ? "active" : ""} ${k}" data-qx="call-filter" data-filter="${k}">${k !== "all" ? CALL_ICON[k] + " " : ""}${v} <span class="qx-n">${counts[k] || 0}</span></button>`).join("");
+    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-call">＋ שיחה</button><span class="qx-note">הטלפון שומר עד 100 מספרים ועד 10 שיחות לכל מספר</span></div>
+      <div class="qx-phone-panel"><div class="qx-filters">${chips}</div><div class="qx-calls">${html || `<p class="qx-note" style="padding:20px;text-align:center">אין שיחות</p>`}</div></div>`;
   }
   function memosTab() {
     const d = qx.open.data; const m = d.memos[qx.memoIdx];
@@ -585,6 +598,7 @@
         case "contacts-from-list": return contactsFromList();
         case "contacts-from-file": return contactsFromFile();
         case "add-call": return addCall();
+        case "call-filter": qx.callFilter = el.dataset.filter; return render();
         case "delete-call": return deleteCall(Number(el.dataset.ei), Number(el.dataset.ci));
         case "memo": qx.memoIdx = i; return render();
         case "new-memo": return newMemo();
