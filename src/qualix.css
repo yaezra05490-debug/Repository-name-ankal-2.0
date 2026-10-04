@@ -93,7 +93,9 @@ html[data-theme="dark"] .qx-tabs button.active,:root:not([data-theme]) .qx-tabs 
 .qx-day:hover{border-color:hsl(var(--page) 60% 55%)}
 .qx-day.empty{background:transparent;border-color:transparent;cursor:default}
 .qx-day.today{border-color:hsl(var(--page) 60% 55%);box-shadow:inset 0 0 0 1px hsl(var(--page) 60% 55%)}
-.qx-daynum{font-size:11px;color:var(--muted);font-weight:700}
+.qx-daynum{font-size:11px;color:var(--muted);font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:4px}
+.qx-daynum .qx-heb{font-size:10px;font-weight:600;color:hsl(var(--page) 45% 48%);white-space:nowrap}
+html[data-theme="dark"] .qx-daynum .qx-heb,:root:not([data-theme]) .qx-daynum .qx-heb{color:hsl(var(--page) 60% 72%)}
 .qx-day.today .qx-daynum{color:hsl(var(--page) 50% 40%)}
 .qx-ev{display:block;width:100%;text-align:right;border:0;border-radius:6px;padding:2px 6px;font-size:11px;background:hsl(var(--page) 60% 55% / .14);color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 .qx-ev:hover{background:hsl(var(--page) 60% 55% / .3)}
@@ -110,8 +112,12 @@ html[data-theme="dark"] .qx-warn,:root:not([data-theme]) .qx-warn{background:hsl
 .qx-word button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:12px}
 .qx-word button:hover{color:var(--danger)}
 .qx-picker{max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:12px}
-.qx-picker button{display:block;width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;text-align:right;padding:9px 12px;color:var(--text);font-size:12.5px;direction:ltr}
-.qx-picker button:hover{background:var(--paper)}
+.qx-crumbs{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:8px;color:var(--muted);font-size:12px}
+.qx-entry{display:flex;align-items:center;gap:10px;width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;text-align:right;padding:9px 12px;color:var(--text);font-size:13px}
+.qx-entry i{font-style:normal;width:22px;text-align:center;flex:none}
+button.qx-entry{cursor:pointer}button.qx-entry:hover{background:var(--paper)}
+.qx-entry.file .qx-entry-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qx-entry.file small{color:var(--muted);flex:none}
 .qx-save{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 -8px 24px rgba(2,8,23,.08)}
 .qx-save .qx-dirty{font-size:12px;color:var(--warning);font-weight:700}
 .modal-field.qx-inline{flex-direction:row;align-items:center;gap:10px}

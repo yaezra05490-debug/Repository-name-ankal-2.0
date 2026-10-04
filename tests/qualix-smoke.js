@@ -66,6 +66,8 @@ server.listen(PORT, async () => {
       playlists: [{ name: "שירים.lst", entries: [{ path: "E:\\\\a.mp3", meta: 0, fileSize: 1000 }] }],
       settings: new Uint8Array(600), udb: { phoneCache: new Uint8Array(0), cardCache: new Uint8Array(4096) } });
     const mem = new Map(); for (const f of files) mem.set("ibphone/" + folder + "/" + f.name, f.bytes); mem.set("PB/.keep", new Uint8Array(0)); mem.set("a.mp3", new Uint8Array(1000)); window.__mem = mem;
+    // הטלפון מרפד פתקים בבתי אפס — מדמים את זה
+    const memoKey = "ibphone/" + folder + "/MEMO_20260925_1200001234567890.txt"; const mb = mem.get(memoKey); const padded = new Uint8Array(mb.length + 20); padded.set(mb); mem.set(memoKey, padded); mem.set("Memo/MEMO_20260925_1200001234567890.txt", padded);
     const adapter = { label: "זיכרון", kind: "mem",
       list: async rel => { const prefix = rel ? rel.replace(/\\/+$/, "") + "/" : ""; const out = new Map(); for (const key of mem.keys()) { if (!key.startsWith(prefix)) continue; const rest = key.slice(prefix.length); const name = rest.split("/")[0]; if (!name) continue; out.set(name, rest.includes("/") ? "directory" : "file"); } return [...out].map(([name, kind]) => ({ name, kind, size: kind === "file" ? mem.get(prefix + name).length : 0 })); },
       read: async rel => { if (!mem.has(rel)) throw new Error("no file " + rel); return mem.get(rel); },
@@ -126,7 +128,7 @@ server.listen(PORT, async () => {
 
   await step("לשונית פתקים", click('[data-qx="tab"][data-tab="memos"]'));
   await wait(200);
-  await step("פתק קיים מוצג", `document.getElementById("qx-memo-text")?.value`, v => /פתק ראשון/.test(v));
+  await step("פתק קיים מוצג בלי ריפוד האפסים", `document.getElementById("qx-memo-text")?.value`, "פתק ראשון\nשורה שנייה");
   await step("פתק חדש", click('[data-qx="new-memo"]'));
   await wait(200);
   await step("הקלדת טקסט", fill("qx-memo-text", "שלום\nעולם גדול"), "ok");
@@ -141,6 +143,8 @@ server.listen(PORT, async () => {
   await step("תצוגת חודש", `document.querySelectorAll("#qualix-root .qx-cal .qx-day:not(.empty)").length`, v => v >= 28 && v <= 31);
   await step("ניווט לאוקטובר 2026", `(() => { window.ANKAL_QUALIX_UI.state.calMonth = "2026-10"; window.ANKAL_QUALIX_UI.render(); return document.querySelector("#qualix-root .qx-toolbar strong").textContent; })()`, v => /2026/.test(v));
   await step("האירוע הקיים מופיע ביום 5", `document.querySelector('#qualix-root .qx-day[data-date="2026-10-05"] .qx-ev')?.textContent`, v => /רופא שיניים/.test(v));
+  await step("תאריך עברי בתא היום", `document.querySelector('#qualix-root .qx-day[data-date="2026-10-05"] .qx-heb')?.textContent`, v => /^כ״ד תשרי$/.test(v));
+  await step("חודשים עבריים בכותרת", `[...document.querySelectorAll("#qualix-root .qx-toolbar .qx-note")].map(e => e.textContent).join(" | ")`, v => /תשרי–חשוון תשפ״ז/.test(v));
   await step("לחיצה על יום פותחת אירוע חדש בתאריך", click('[data-qx="day-add"][data-date="2026-10-12"]'));
   await wait(300);
   await step("התאריך מולא מראש", `document.getElementById("qx-ev-date").value`, "2026-10-12");

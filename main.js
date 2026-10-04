@@ -46,7 +46,7 @@ ipcMain.handle("qualix:choose-folder", async () => {
 });
 ipcMain.handle("qualix:list", (_, root, rel) => {
   const dir = qualixResolve(root, rel);
-  return fs.readdirSync(dir, { withFileTypes: true }).map(e => ({ name: e.name, kind: e.isDirectory() ? "directory" : "file", size: e.isFile() ? (() => { try { return fs.statSync(path.join(dir, e.name)).size; } catch (_) { return 0; } })() : 0 }));
+  return fs.readdirSync(dir, { withFileTypes: true }).map(e => { let size = 0, mtime = 0; if (e.isFile()) { try { const st = fs.statSync(path.join(dir, e.name)); size = st.size; mtime = st.mtimeMs; } catch (_) { } } return { name: e.name, kind: e.isDirectory() ? "directory" : "file", size, mtime }; });
 });
 ipcMain.handle("qualix:read", (_, root, rel) => { const buf = fs.readFileSync(qualixResolve(root, rel)); return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength); });
 ipcMain.handle("qualix:write", (_, root, rel, data) => { const target = qualixResolve(root, rel); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, Buffer.from(data)); return true; });

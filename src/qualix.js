@@ -259,7 +259,8 @@
 
   /* ---------- פתקים: UTF-8 עם BOM, מעברי שורה LF ---------- */
   const BOM = Uint8Array.from([0xEF, 0xBB, 0xBF]);
-  function parseMemo(bytes) { const b = bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF ? bytes.subarray(3) : bytes; return utf8Decode(b).replace(/\r\n?/g, "\n"); }
+  // הטלפון מרפד את סוף הקובץ בבתי אפס; הם אינם חלק מהטקסט
+  function parseMemo(bytes) { const b = bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF ? bytes.subarray(3) : bytes; return utf8Decode(b).replace(/\0/g, "").replace(/\r\n?/g, "\n"); }
   function buildMemo(text) { return concat([BOM, utf8Encode(String(text || "").replace(/\r\n?/g, "\n"))]); }
   function memoFileName(date = new Date()) { let r = ""; while (r.length < 10) r += Math.floor(Math.random() * 10); return `MEMO_${date.getFullYear()}${pad2(date.getMonth() + 1)}${pad2(date.getDate())}_${pad2(date.getHours())}${pad2(date.getMinutes())}${pad2(date.getSeconds())}${r}.txt`; }
   function memoDateFromName(name) { const m = /MEMO_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(name || ""); return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` : ""; }

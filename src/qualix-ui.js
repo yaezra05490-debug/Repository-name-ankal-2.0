@@ -27,7 +27,7 @@
     const split = rel => { const parts = String(rel).split("/").filter(Boolean); return { dir: parts.slice(0, -1).join("/"), name: parts[parts.length - 1] }; };
     return {
       label, kind: "fsa",
-      list: async rel => { const dir = await dirOf(rel, false); const out = []; for await (const [name, h] of dir.entries()) out.push({ name, kind: h.kind, size: 0 }); return out; },
+      list: async rel => { const dir = await dirOf(rel, false); const out = []; for await (const [name, h] of dir.entries()) { let size = 0, mtime = 0; if (h.kind === "file") { try { const f = await h.getFile(); size = f.size; mtime = f.lastModified; } catch (_) { } } out.push({ name, kind: h.kind, size, mtime }); } return out; },
       read: async rel => { const { dir, name } = split(rel); const fh = await (await dirOf(dir, false)).getFileHandle(name); return new Uint8Array(await (await fh.getFile()).arrayBuffer()); },
       write: async (rel, bytes) => { const { dir, name } = split(rel); const fh = await (await dirOf(dir, true)).getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(bytes); await w.close(); return true; },
       mkdir: async rel => { await dirOf(rel, true); return true; },
@@ -102,7 +102,7 @@
       const data = await Q.readBackup({ folder: bk.folder, listFiles: async () => names, readFile: n => qx.adapter.read(join(bk.rel, n)) });
       data.contacts = data.contacts || []; data.events = data.events || []; data.memos = data.memos || []; data.playlists = data.playlists || [];
       data.callog = data.callog || { entries: [] }; data.dictionaryWords = (data.dictionary?.words || []).filter((w, i, arr) => arr.indexOf(w) === i); data.dictAdd = []; data.dictRemove = [];
-      await attachRingtones(data);
+      await attachRingtones(data); await attachMemoTimes(data);
       qx.open = { folder: bk.folder, rel: bk.rel, data, dirty: new Set(), isNew: false };
       qx.view = "editor"; qx.tab = "contacts"; qx.memoIdx = 0; qx.plIdx = 0; qx.search = ""; render();
     } catch (error) { console.error(error); A().toast("הגיבוי לא נקרא: " + (error.message || error), "error"); }
@@ -115,6 +115,15 @@
       const byId = new Map(); for (const f of files) { const id = Q.ringIdFromFileName(f.name); if (id) byId.set(id, f.name); }
       for (const c of data.contacts) { const name = byId.get(c.id); if (!name) continue; try { const ini = Q.parseRingIni(await qx.adapter.read(join(qx.layout.pbRel, name))); if (ini) { c.ringtonePath = ini.path; c.ringtoneSize = ini.fileSize; } } catch (_) { } }
     } catch (_) { }
+  }
+  /* הטלפון מציג את הפתקים לפי זמן העדכון האחרון, מהחדש לישן. העתקי הגיבוי מאבדים את הזמן הזה,
+     ולכן כשהכרטיס מחובר קוראים אותו מתיקיית Memo המקורית; אחרת לפי זמן היצירה שבשם הקובץ. */
+  async function attachMemoTimes(data) {
+    if (!data.memos) return;
+    const times = new Map();
+    if (qx.layout.mode === "card") { try { const rootEntries = await qx.adapter.list(""); const memoDir = rootEntries.find(e => e.kind === "directory" && e.name.toLowerCase() === "memo"); if (memoDir) for (const f of await qx.adapter.list(memoDir.name)) if (f.mtime) times.set(f.name, f.mtime); } catch (_) { } }
+    for (const m of data.memos) { const t = times.get(m.fileName); m.modified = t ? new Date(t).toISOString().slice(0, 19) : (m.created || ""); }
+    data.memos.sort((a, b) => String(b.modified || "").localeCompare(String(a.modified || "")));
   }
   const dirty = key => { if (qx.open) qx.open.dirty.add(key); };
   const contactName = number => { const digits = String(number || "").replace(/\D/g, "").slice(-9); if (!digits) return ""; const c = (qx.open?.data.contacts || []).find(c => Q.SLOT_FIELDS.some(f => String(c[f] || "").replace(/\D/g, "").endsWith(digits))); return c ? c.name : ""; };
@@ -219,36 +228,56 @@
     const html = `<div class="qx-form">${field("name", "שם", 'class="full" maxlength="80"')}${field("mobile", "נייד", 'dir="ltr"')}${field("home", "בית", 'dir="ltr"')}${field("work", "עבודה", 'dir="ltr"')}${field("fax", "פקס", 'dir="ltr"')}${field("email", "מייל / כתובת", 'class="full" maxlength="40"')}
       <label class="modal-field full">הערה<textarea id="qx-c-note" rows="3" maxlength="163">${esc(c.note || "")}</textarea></label>
       <label class="modal-field">קבוצת מתקשרים<input id="qx-c-group" list="qx-groups" value="${esc(c.group || "")}" placeholder="ריק = בלי קבוצה"><datalist id="qx-groups">${groups.map(g => `<option value="${esc(g)}">`).join("")}</datalist></label>
-      <label class="modal-field">צלצול אישי<select id="qx-c-ring"><option value="0" ${!c.ringtone ? "selected" : ""}>ברירת המחדל של הטלפון</option><option value="${Q.RINGTONE_FILE}" ${c.ringtone === Q.RINGTONE_FILE ? "selected" : ""}>קובץ מהכרטיס</option>${c.ringtone && c.ringtone !== Q.RINGTONE_FILE ? `<option value="${c.ringtone}" selected>צלצול מובנה (${c.ringtone})</option>` : ""}</select></label>
-      <label class="modal-field full">קובץ הצלצול<div class="qx-row"><input id="qx-c-ringpath" value="${esc(c.ringtonePath || "")}" dir="ltr" placeholder="E:\\שיר.mp3" style="flex:1"><button type="button" class="btn btn-quiet btn-sm" data-qx="pick-ring">בחירה מהכרטיס</button></div></label></div>
-      <p class="qx-note">הקבוצה חייבת להיות אחת מעד שמונה; קבוצה חדשה נכתבת לגיבוי ונבדקת בשחזור. צלצול אישי דורש שהכרטיס עצמו יהיה מחובר, כי הקובץ נשמר בתיקיית PB.</p>`;
+      <label class="modal-field">צלצול אישי<select id="qx-c-ring"><option value="0" ${!c.ringtone ? "selected" : ""}>ברירת המחדל של הטלפון</option><option value="${Q.RINGTONE_FILE}" ${c.ringtone === Q.RINGTONE_FILE ? "selected" : ""}>שיר או קובץ מהכרטיס</option><option value="builtin" ${c.ringtone && c.ringtone !== Q.RINGTONE_FILE ? "selected" : ""}>צלצול מובנה של הטלפון</option></select></label>
+      <label class="modal-field">קוד הצלצול המובנה<input id="qx-c-ringcode" type="number" min="1" max="65535" value="${c.ringtone && c.ringtone !== Q.RINGTONE_FILE ? c.ringtone : 201}"></label>
+      <label class="modal-field full">קובץ הצלצול<div class="qx-row"><input id="qx-c-ringpath" value="${esc(c.ringtonePath || "")}" dir="ltr" placeholder="E:\\שיר.mp3" style="flex:1"><button type="button" class="btn btn-quiet btn-sm" data-qx="pick-ring">עיון בכרטיס והשמעה</button></div></label></div>
+      <p class="qx-note">הקבוצה חייבת להיות אחת מעד שמונה; קבוצה חדשה נכתבת לגיבוי ונבדקת בשחזור. צלצול מקובץ דורש שהכרטיס עצמו יהיה מחובר, כי הנתיב נשמר בתיקיית PB. הצלצולים המובנים נשמרים בטלפון כקוד מספרי; שמותיהם עדיין לא ממופים.</p>`;
     const choice = await A().modal({ kicker: idx >= 0 ? "עריכת איש קשר" : "איש קשר חדש", title: c.name || "איש קשר", html, buttons: [{ id: "save", label: "שמירה", primary: true }, ...(idx >= 0 ? [{ id: "delete", label: "מחיקה" }] : []), { id: "cancel", label: "ביטול" }], enterConfirms: false });
     if (choice === "delete") { if (await A().confirmBox("מחיקה", `למחוק את ${c.name}?`, "מחיקה")) { d.contacts.splice(idx, 1); dirty("phonebook"); render(); } return; }
     if (choice !== "save") return;
     const v = k => (document.getElementById("qx-c-" + k)?.value || "").trim();
     if (!v("name")) return A().toast("יש להכניס שם", "warning");
-    const ring = Number(document.getElementById("qx-c-ring").value) || 0, ringPath = v("ringpath");
+    const ringSel = document.getElementById("qx-c-ring").value, ringPath = v("ringpath");
+    const ring = ringSel === "builtin" ? (Math.max(1, Math.min(65535, Number(v("ringcode")) || 201))) : (Number(ringSel) || 0);
     const next = { name: v("name"), mobile: v("mobile"), home: v("home"), work: v("work"), fax: v("fax"), email: v("email"), note: v("note"), group: v("group"), ringtone: ring === Q.RINGTONE_FILE && !ringPath ? 0 : ring, ringtonePath: ring === Q.RINGTONE_FILE ? ringPath : "" };
     if (idx >= 0) { const changedRing = next.ringtone !== c.ringtone || next.ringtonePath !== (c.ringtonePath || ""); Object.assign(c, next, { _dirty: true, _ringDirty: c._ringDirty || changedRing }); }
     else d.contacts.push(Object.assign(next, { id: 0, groupBit: 0, _dirty: true, _ringDirty: next.ringtone === Q.RINGTONE_FILE }));
     dirty("phonebook"); render();
   }
+  /* דפדפן תיקיות לכרטיס: תיקיות ושירים כמו בסייר, עם השמעה מקדימה לפני הבחירה */
+  const SKIP_DIRS = /^(ibphone|PB|System|@cstardata|\$RECYCLE\.BIN|System Volume Information|FOUND\.\d+|DRM_LRO|DRM_BRO|Filearray|SysTumbNailRes)$/i;
+  const BROWSE_KEY = "ankal.qualix.browseDir";
+  let previewUrl = null;
   async function pickAudio(targetInputId) {
     if (qx.layout.mode !== "card") return A().toast("בחירת שיר מהכרטיס אפשרית רק כשנבחר הכרטיס עצמו", "warning");
-    setBusy("סורק שירים בכרטיס…");
-    const found = [];
-    try {
-      const walk = async (rel, depth) => { if (found.length > 3000 || depth > 3) return; let entries = []; try { entries = await qx.adapter.list(rel); } catch (_) { return; } for (const e of entries) { if (e.kind === "file" && AUDIO.test(e.name)) found.push({ rel: join(rel, e.name), size: e.size || 0 }); } for (const e of entries) if (e.kind === "directory" && !/^(ibphone|PB|System|@cstardata|\$RECYCLE\.BIN|System Volume Information|FOUND\.\d+)$/i.test(e.name)) await walk(join(rel, e.name), depth + 1); };
-      await walk("", 0);
-    } finally { setBusy(""); }
-    if (!found.length) return A().toast("לא נמצאו קובצי שמע בכרטיס", "warning");
-    const toPath = rel => "E:\\" + rel.replace(/\//g, "\\");
-    const html = `<label class="search-field"><span>⌕</span><input id="qx-audio-q" type="search" placeholder="חיפוש שיר…"></label><div class="qx-picker" id="qx-audio-list">${found.map((f, i) => `<button type="button" data-qx-audio="${i}">${esc(toPath(f.rel))}</button>`).join("")}</div><p class="qx-note">${found.length} קבצים</p>`;
-    const promise = A().modal({ kicker: "שיר מהכרטיס", title: "בחרו קובץ", html, buttons: [{ id: "cancel", label: "ביטול" }] });
-    const list = document.getElementById("qx-audio-list");
-    document.getElementById("qx-audio-q").addEventListener("input", e => { const q = e.target.value.toLowerCase(); list.querySelectorAll("button").forEach(b => b.classList.toggle("hidden", !b.textContent.toLowerCase().includes(q))); });
-    list.addEventListener("click", e => { const b = e.target.closest("[data-qx-audio]"); if (!b) return; const f = found[Number(b.dataset.qxAudio)]; const input = document.getElementById(targetInputId); if (input) { input.value = toPath(f.rel); input.dataset.size = f.size || ""; } document.querySelector("[data-modal-choice='cancel']")?.click(); });
+    let rel = ""; try { rel = localStorage.getItem(BROWSE_KEY) || ""; } catch (_) { }
+    const toPath = r => "E:\\" + r.replace(/\//g, "\\");
+    const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n ? n + " B" : "";
+    const promise = A().modal({ kicker: "שיר מהכרטיס", title: "בחרו קובץ", html: `<div id="qx-browse"></div><audio id="qx-preview" controls style="width:100%;margin-top:10px" class="hidden"></audio>`, buttons: [{ id: "cancel", label: "סגירה" }] });
+    const box = document.getElementById("qx-browse"), player = document.getElementById("qx-preview");
+    async function show(dir) {
+      rel = dir; try { localStorage.setItem(BROWSE_KEY, rel); } catch (_) { }
+      box.innerHTML = `<p class="qx-note">טוען…</p>`;
+      let entries = []; try { entries = await qx.adapter.list(rel); } catch (_) { entries = []; }
+      const dirs = entries.filter(e => e.kind === "directory" && !(rel === "" && SKIP_DIRS.test(e.name))).sort((a, b) => a.name.localeCompare(b.name, "he"));
+      const files = entries.filter(e => e.kind === "file" && AUDIO.test(e.name)).sort((a, b) => a.name.localeCompare(b.name, "he"));
+      const crumbs = rel ? rel.split("/") : [];
+      box.innerHTML = `<div class="qx-crumbs"><button type="button" class="btn btn-quiet btn-sm" data-browse-dir="">E:\\ (הכרטיס)</button>${crumbs.map((c, i) => `<span>›</span><button type="button" class="btn btn-quiet btn-sm" data-browse-dir="${esc(crumbs.slice(0, i + 1).join("/"))}">${esc(c)}</button>`).join("")}</div>
+        <div class="qx-picker">${rel ? `<button type="button" class="qx-entry" data-browse-dir="${esc(crumbs.slice(0, -1).join("/"))}"><i>⬆</i>תיקייה למעלה</button>` : ""}${dirs.map(d => `<button type="button" class="qx-entry" data-browse-dir="${esc(join(rel, d.name))}"><i>📁</i>${esc(d.name)}</button>`).join("")}${files.map(f => `<div class="qx-entry file"><i>♪</i><span class="qx-entry-name">${esc(f.name)}</span><small>${fmtSize(f.size)}</small><button type="button" class="btn btn-quiet btn-sm" data-browse-play="${esc(join(rel, f.name))}">▶ השמעה</button><button type="button" class="btn btn-secondary btn-sm" data-browse-pick="${esc(join(rel, f.name))}" data-size="${f.size || 0}">בחירה</button></div>`).join("")}${!dirs.length && !files.length ? `<p class="qx-note" style="padding:12px">אין כאן תיקיות או קובצי שמע</p>` : ""}</div>`;
+    }
+    box.addEventListener("click", async e => {
+      const dirBtn = e.target.closest("[data-browse-dir]"); if (dirBtn) return show(dirBtn.dataset.browseDir);
+      const play = e.target.closest("[data-browse-play]");
+      if (play) {
+        try { play.textContent = "טוען…"; const bytes = await qx.adapter.read(play.dataset.browsePlay); if (previewUrl) URL.revokeObjectURL(previewUrl); const ext = play.dataset.browsePlay.split(".").pop().toLowerCase(); previewUrl = URL.createObjectURL(new Blob([bytes], { type: ext === "wav" ? "audio/wav" : ext === "amr" ? "audio/amr" : "audio/mpeg" })); player.src = previewUrl; player.classList.remove("hidden"); await player.play().catch(() => { }); } catch (_) { A().toast("לא הצלחנו להשמיע את הקובץ", "warning"); } finally { play.textContent = "▶ השמעה"; }
+        return;
+      }
+      const pick = e.target.closest("[data-browse-pick]");
+      if (pick) { const input = document.getElementById(targetInputId); if (input) { input.value = toPath(pick.dataset.browsePick); input.dataset.size = pick.dataset.size || ""; } document.querySelector("[data-modal-choice='cancel']")?.click(); }
+    });
+    await show(rel);
     await promise;
+    try { player.pause(); } catch (_) { } if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   }
   async function contactsToList() {
     const d = qx.open.data; if (!d.contacts.length) return A().toast("אין אנשי קשר", "warning");
@@ -308,7 +337,7 @@
     return lines;
   }
   function memoCounter() { const m = qx.open?.data.memos[qx.memoIdx]; const el = document.getElementById("qx-memo-counter"); if (!m || !el) return; const len = m.text.length; el.textContent = `${len} / ${qx.memoLimit} תווים`; el.classList.toggle("over", len > qx.memoLimit); const prev = document.getElementById("qx-memo-preview"); if (prev) prev.innerHTML = wrapForPhone(m.text).map(l => `<div class="${l.wrap ? "qx-wrap" : ""}">${esc(l.t) || "&nbsp;"}</div>`).join(""); }
-  function newMemo() { const d = qx.open.data; d.memos.unshift({ fileName: Q.memoFileName(new Date()), text: "", created: new Date().toISOString().slice(0, 19), _dirty: true }); qx.memoIdx = 0; dirty("memo"); render(); setTimeout(() => document.getElementById("qx-memo-text")?.focus(), 50); }
+  function newMemo() { const d = qx.open.data; const now = new Date(); const iso = localIso(now) + "T" + now.toTimeString().slice(0, 8); d.memos.unshift({ fileName: Q.memoFileName(now), text: "", created: iso, modified: iso, _dirty: true }); qx.memoIdx = 0; dirty("memo"); render(); setTimeout(() => document.getElementById("qx-memo-text")?.focus(), 50); }
   async function deleteMemo() { const d = qx.open.data; const m = d.memos[qx.memoIdx]; if (!m) return; if (!(await A().confirmBox("מחיקת פתק", "למחוק את הפתק?", "מחיקה"))) return; d.memos.splice(qx.memoIdx, 1); qx.memoIdx = Math.max(0, qx.memoIdx - 1); dirty("memo"); render(); }
   function centerMemo(all) { const m = qx.open?.data.memos[qx.memoIdx]; const ta = document.getElementById("qx-memo-text"); if (!m || !ta) return; if (all) m.text = Q.centerText(m.text, widths()); else { const pos = ta.selectionStart; const before = m.text.lastIndexOf("\n", pos - 1) + 1; let after = m.text.indexOf("\n", pos); if (after < 0) after = m.text.length; m.text = m.text.slice(0, before) + Q.centerLine(m.text.slice(before, after), widths()) + m.text.slice(after); } m._dirty = true; dirty("memo"); ta.value = m.text; memoCounter(); }
   async function calibrate() {
@@ -323,6 +352,18 @@
      אירוע חוזר נכתב לטלפון כסדרה של אירועים נפרדים (כך גם המשתמש עצמו רשם סדרות בטלפון),
      ולכן אינו תלוי בשדה החזרה הפנימי של הטלפון, שמשמעותו עדיין לא אומתה. */
   const localIso = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  /* תאריך עברי: הלוח העברי של הדפדפן (ICU), והמספרים באותיות */
+  const HEB_FMT = (() => { try { return new Intl.DateTimeFormat("he-u-ca-hebrew", { day: "numeric", month: "long", year: "numeric" }); } catch (_) { return null; } })();
+  function gematria(n) {
+    n = Number(n) || 0; if (n <= 0) return String(n); if (n >= 1000) n %= 1000;
+    const H = [[400, "ת"], [300, "ש"], [200, "ר"], [100, "ק"], [90, "צ"], [80, "פ"], [70, "ע"], [60, "ס"], [50, "נ"], [40, "מ"], [30, "ל"], [20, "כ"], [10, "י"], [9, "ט"], [8, "ח"], [7, "ז"], [6, "ו"], [5, "ה"], [4, "ד"], [3, "ג"], [2, "ב"], [1, "א"]];
+    let s = "", rest = n; if (rest % 100 === 15) { s = "טו"; rest -= 15; } else if (rest % 100 === 16) { s = "טז"; rest -= 16; }
+    let pre = ""; for (const [v, l] of H) while (rest >= v) { pre += l; rest -= v; }
+    s = pre + s; return s.length === 1 ? s + "׳" : s.slice(0, -1) + "״" + s.slice(-1);
+  }
+  function hebParts(dt) { if (!HEB_FMT) return null; try { const p = {}; for (const part of HEB_FMT.formatToParts(dt)) p[part.type] = part.value; return { day: parseInt(p.day, 10), month: String(p.month || "").replace(/^ב/, ""), year: parseInt(p.year, 10) }; } catch (_) { return null; } }
+  const hebDay = dt => { const p = hebParts(dt); return p ? `${gematria(p.day)} ${p.month}` : ""; };
+  const hebRange = (a, b) => { const pa = hebParts(a), pb = hebParts(b); if (!pa || !pb) return ""; return (pa.month === pb.month ? pa.month : `${pa.month}–${pb.month}`) + " " + (pa.year === pb.year ? gematria(pa.year) : `${gematria(pa.year)}–${gematria(pb.year)}`); };
   const REPEATS = [["none", "בלי חזרה"], ["daily", "כל יום"], ["weekly", "כל שבוע"], ["biweekly", "כל שבועיים"], ["monthly", "כל חודש"], ["yearly", "כל שנה"]];
   function occurrences(startIso, repeat, untilIso, cap = 400) {
     const out = []; const [y, m, d] = startIso.split("-").map(Number); const until = untilIso || startIso;
@@ -480,7 +521,8 @@
   }
   function memosTab() {
     const d = qx.open.data; const m = d.memos[qx.memoIdx];
-    const list = d.memos.map((x, i) => `<button class="${i === qx.memoIdx ? "active" : ""}" data-qx="memo" data-i="${i}"><strong>${esc(x.text.split("\n").find(Boolean) || "(פתק ריק)")}</strong><span>${esc((x.created || "").replace("T", " ").slice(0, 16))} · ${x.text.length} תווים</span></button>`).join("");
+    const when = x => { const t = x.modified || x.created || ""; const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(t); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : ""; };
+    const list = d.memos.map((x, i) => `<button class="${i === qx.memoIdx ? "active" : ""}" data-qx="memo" data-i="${i}"><strong>${esc(x.text.split("\n").map(l => l.trim()).find(Boolean) || "(פתק ריק)")}</strong><span>${esc(when(x))} · ${x.text.length} תווים</span></button>`).join("");
     const editor = m ? `<div class="qx-editor"><div class="qx-row"><button class="btn btn-quiet btn-sm" data-qx="center-line">מרכז שורה</button><button class="btn btn-quiet btn-sm" data-qx="center-all">מרכז הכל</button><button class="btn btn-quiet btn-sm" data-qx="calibrate">כיול רוחב</button><div class="spacer"></div><label class="modal-field qx-inline">מגבלת הטלפון<select id="qx-memo-limit"><option value="1000" ${qx.memoLimit === 1000 ? "selected" : ""}>1000 תווים</option><option value="3000" ${qx.memoLimit === 3000 ? "selected" : ""}>3000 תווים</option></select></label><button class="btn btn-danger btn-sm" data-qx="delete-memo">מחיקה</button></div><textarea id="qx-memo-text" dir="auto">${esc(m.text)}</textarea><div id="qx-memo-counter" class="qx-counter"></div><div class="qx-note">כך זה ייראה על מסך הטלפון (הערכה לפי רוחב האותיות; שורות שנשברו מסומנות בחום):</div><div id="qx-memo-preview" class="qx-phone"></div></div>` : `<div class="empty-box"><div class="empty-icon">✎</div><h3>אין פתקים</h3><p>צרו פתק חדש.</p></div>`;
     return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="new-memo">＋ פתק</button><span class="qx-note">${d.memos.length} פתקים · קבצי טקסט פשוטים בתיקיית Memo</span></div><div class="qx-split"><div class="qx-list">${list}</div>${editor}</div>`;
   }
@@ -492,11 +534,11 @@
     let cells = ""; for (let k = 0; k < startDow; k++) cells += `<div class="qx-day empty"></div>`;
     for (let day = 1; day <= daysInMonth; day++) {
       const key = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`; const evs = (byDate[key] || []).sort((a, b) => a.e.time.localeCompare(b.e.time));
-      cells += `<div class="qx-day ${key === todayKey ? "today" : ""}" data-qx="day-add" data-date="${key}" title="הוספת אירוע ב-${key.split("-").reverse().join(".")}"><span class="qx-daynum">${day}</span>${evs.map(({ e, i }) => `<button class="qx-ev ${e.reminder ? "rem" : ""}" data-qx="edit-event" data-i="${i}" title="${esc(e.time + " " + e.title)}">${esc(e.time)} ${esc(e.title)}</button>`).join("")}</div>`;
+      cells += `<div class="qx-day ${key === todayKey ? "today" : ""}" data-qx="day-add" data-date="${key}" title="הוספת אירוע ב-${key.split("-").reverse().join(".")}"><span class="qx-daynum">${day}<small class="qx-heb">${esc(hebDay(new Date(y, m - 1, day)))}</small></span>${evs.map(({ e, i }) => `<button class="qx-ev ${e.reminder ? "rem" : ""}" data-qx="edit-event" data-i="${i}" title="${esc(e.time + " " + e.title)}">${esc(e.time)} ${esc(e.title)}</button>`).join("")}</div>`;
     }
     const monthEvents = d.events.map((e, i) => ({ e, i })).filter(x => x.e.date.startsWith(qx.calMonth)).sort((a, b) => (a.e.date + a.e.time).localeCompare(b.e.date + b.e.time));
     const list = qx.calView === "list" ? `<div class="qx-table-wrap" style="margin-top:12px"><table class="qx-table"><thead><tr><th>תאריך</th><th>שעה</th><th>כותרת</th><th>תזכורת</th><th></th></tr></thead><tbody>${d.events.map((e, i) => ({ e, i })).sort((a, b) => (b.e.date + b.e.time).localeCompare(a.e.date + a.e.time)).map(({ e, i }) => `<tr data-qx="edit-event" data-i="${i}" style="cursor:pointer"><td class="num">${esc(e.date.split("-").reverse().join("."))}</td><td class="num">${esc(e.time)}</td><td>${esc(e.title)}</td><td>${e.reminder ? "🔔" : ""}</td><td class="act"><button class="icon-btn" aria-label="עריכה">✎</button></td></tr>`).join("")}</tbody></table></div>` : "";
-    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-event">＋ אירוע</button><button class="btn btn-quiet btn-sm" data-qx="cal-prev">‹ חודש קודם</button><button class="btn btn-quiet btn-sm" data-qx="cal-today">היום</button><button class="btn btn-quiet btn-sm" data-qx="cal-next">חודש הבא ›</button><strong style="font-size:15px">${esc(monthName)}</strong><span class="qx-note">${monthEvents.length} אירועים החודש · ${d.events.length} בסך הכל</span><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="cal-toggle">${qx.calView === "list" ? "הסתר רשימה" : "הצג גם כרשימה"}</button></div>
+    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-event">＋ אירוע</button><button class="btn btn-quiet btn-sm" data-qx="cal-prev">‹ חודש קודם</button><button class="btn btn-quiet btn-sm" data-qx="cal-today">היום</button><button class="btn btn-quiet btn-sm" data-qx="cal-next">חודש הבא ›</button><strong style="font-size:15px">${esc(monthName)}</strong><span class="qx-note">${esc(hebRange(first, new Date(y, m - 1, daysInMonth)))}</span><span class="qx-note">${monthEvents.length} אירועים החודש · ${d.events.length} בסך הכל</span><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="cal-toggle">${qx.calView === "list" ? "הסתר רשימה" : "הצג גם כרשימה"}</button></div>
       <div class="qx-cal-head">${["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"].map(n => `<span>${n}</span>`).join("")}</div><div class="qx-cal">${cells}</div><p class="qx-note" style="margin:8px 0 0">לחיצה על יום מוסיפה אירוע באותו תאריך. לחיצה על אירוע פותחת אותו לעריכה.</p>${list}`;
   }
   function playlistsTab() {
