@@ -76,8 +76,12 @@ server.listen(PORT, async () => {
   })()`, true);
   await wait(300);
   await step("גרסה אחת ברשת", `document.querySelectorAll("#qualix-root .qx-version").length`, 1);
-  await step("שבע קטגוריות פעילות", `document.querySelectorAll("#qualix-root .qx-version .qx-chip:not(.off)").length`, 7);
-  await step("פתיחת הגרסה", click('[data-qx="open"]'));
+  await step("שבע קטגוריות עם סימן ✓", `document.querySelectorAll("#qualix-root .qx-version .qx-cats li.on").length`, 7);
+  await step("תפריט ⋮ של הגרסה", click('[data-qx="version-menu"]'));
+  await wait(300);
+  await step("התפריט מציע פתיחה, גרסה חדשה, השוואה ומחיקה", `[...document.querySelectorAll("#modal-footer button")].map(b => b.textContent).join("|")`, v => /פתיחה/.test(v) && /השוואה/.test(v) && /מחיקה/.test(v));
+  await step("סגירת התפריט", click('[data-modal-choice="cancel"]'));
+  await step("לחיצה על הכרטיס עצמו פותחת", click('.qx-version .qx-open'));
   await wait(500);
   await step("הקטגוריות מופיעות בתפריט הצד", `document.querySelectorAll("#qualix-subnav .nav-sub-item").length`, 7);
   await step("אנשי קשר פעיל בתפריט הצד", `document.querySelector("#qualix-subnav .nav-sub-item.active")?.textContent.trim()`, v => /אנשי קשר/.test(v));
@@ -97,7 +101,7 @@ server.listen(PORT, async () => {
   await step("ארבעה כרטיסים אחרי ההוספה", `document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length`, 4);
   await step("סימון שינויים", `document.querySelector(".qx-save .qx-dirty")?.textContent || "אין"`, v => /שינויים/.test(v));
   await step("לחיצה על הכותרת בתפריט מציגה את הגרסאות", `(() => { document.querySelector('[data-page="qualix"]').click(); return document.querySelector("#qualix-root .qx-versions") ? "versions" : "editor"; })()`, "versions");
-  await step("הגרסה הפתוחה מסומנת עם שינויים", `document.querySelector("#qualix-root .qx-version.current .qx-when b")?.textContent`, v => /שינויים/.test(v));
+  await step("הגרסה הפתוחה מסומנת עם שינויים", `document.querySelector("#qualix-root .qx-version.current .qx-state")?.textContent`, v => /שינויים/.test(v));
   await step("הקטגוריות עדיין בתפריט הצד", `document.querySelectorAll("#qualix-subnav .nav-sub-item").length`, 7);
   await step("לחיצה על קטגוריה חוזרת לעורך", `(() => { document.querySelector('#qualix-subnav [data-tab="contacts"]').click(); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
   await step("חיפוש מסנן לפי שם", `(() => { const el = document.getElementById("qx-search"); el.value = "שרה"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);

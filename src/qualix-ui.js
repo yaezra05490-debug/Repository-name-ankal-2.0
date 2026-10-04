@@ -178,6 +178,15 @@
   function pickFile() { return new Promise(resolve => { const input = document.createElement("input"); input.type = "file"; input.accept = ".vcf,.xlsx,.xls,.csv"; input.onchange = () => resolve(input.files[0] || null); input.oncancel = () => resolve(null); input.click(); }); }
   function fromAppContact(c) { const out = { id: 0, name: c.name || "", mobile: c.mobile || "", home: c.home || "", work: c.work || "", fax: c.fax || "", email: c.email || "", note: c.note || "", group: c.group || "", groupBit: 0, ringtone: c.ringtone ? Q.RINGTONE_FILE : 0, ringtonePath: c.ringtone || "", _dirty: true, _ringDirty: !!c.ringtone }; return out; }
   function toAppContact(c) { return { name: c.name, mobile: c.mobile, home: c.home, work: c.work, fax: c.fax, email: c.email, note: c.note, group: c.group || "", ringtone: c.ringtone === Q.RINGTONE_FILE ? (c.ringtonePath || "") : "" }; }
+  async function versionMenu(folder) {
+    const bk = qx.backups.find(b => b.folder === folder); if (!bk) return;
+    const isCur = qx.open && !qx.open.isNew && qx.open.folder === folder;
+    const choice = await A().modal({ kicker: "אפשרויות גרסה", title: folderDate(folder), html: `<p dir="ltr" style="text-align:right">${esc(folder)}</p><p class="qx-note">${bk.categories.map(k => CAT_HE[k]).join(" · ")}</p>`, buttons: [{ id: "open", label: isCur ? "המשך עריכה" : "פתיחה", primary: true }, { id: "new", label: "גרסה חדשה מכאן" }, { id: "compare", label: "השוואה לגרסה אחרת" }, ...(qx.layout.mode !== "single" ? [{ id: "delete", label: "מחיקה מהכרטיס" }] : []), { id: "cancel", label: "סגירה" }] });
+    if (choice === "open") return openBackup(folder);
+    if (choice === "new") return newVersion(folder);
+    if (choice === "compare") return compareVersions(folder);
+    if (choice === "delete") return deleteVersion(folder);
+  }
   async function deleteVersion(folder) {
     const bk = qx.backups.find(b => b.folder === folder); if (!bk || qx.layout.mode === "single") return;
     if (!(await A().confirmBox("מחיקת גיבוי", `למחוק לצמיתות את הגיבוי ${folderDate(folder)} מהכרטיס? אי אפשר לשחזר מחיקה.`, "מחיקה"))) return;
@@ -423,10 +432,12 @@
   }
   function versionsView() {
     if (!qx.backups.length) return `<div class="empty-box"><div class="empty-icon">☏</div><h3>אין גיבויים בתיקייה</h3><p>עשו גיבוי בטלפון (גיבוי ושחזור ← גיבוי) ונסו שוב.</p><button class="btn btn-primary" data-qx="new-version">גרסה חדשה מרשימה או מקובץ</button></div>`;
+    // כרטיס גרסה כמו כרטיס רשימה: לחיצה על הכרטיס פותחת, ⋮ לשאר הפעולות, ו-✓/✕ לכל קטגוריה
     const cur = qx.open && !qx.open.isNew ? qx.open.folder : null;
-    const cards = qx.backups.map(b => { const isCur = cur === b.folder; return `<article class="qx-version ${isCur ? "current" : ""}"><h3>${esc(folderDate(b.folder))}</h3><div class="qx-when" dir="ltr">${esc(b.folder)}${isCur ? ` · <b>${qx.open.dirty.size ? "פתוחה, עם שינויים שלא נשמרו" : "פתוחה לעריכה"}</b>` : ""}</div><div class="qx-chips">${Object.keys(CAT_HE).map(k => `<span class="qx-chip ${b.categories.includes(k) ? "" : "off"}">${CAT_HE[k]}</span>`).join("")}</div><footer><button class="btn btn-primary btn-sm" data-qx="open" data-folder="${esc(b.folder)}">${isCur ? "המשך עריכה" : "פתיחה"}</button><button class="btn btn-quiet btn-sm" data-qx="new-version" data-folder="${esc(b.folder)}">גרסה חדשה מכאן</button><button class="btn btn-quiet btn-sm" data-qx="compare" data-folder="${esc(b.folder)}">השוואה</button>${qx.layout.mode !== "single" ? `<button class="btn btn-quiet btn-sm" data-qx="delete-version" data-folder="${esc(b.folder)}">מחיקה</button>` : ""}</footer></article>`; }).join("");
-    const unsavedNew = qx.open?.isNew ? `<article class="qx-version current"><h3>גרסה חדשה</h3><div class="qx-when"><b>${qx.open.dirty.size ? "עדיין לא נשמרה" : "ריקה"}</b></div><div class="qx-chips">${Object.keys(CAT_HE).map(k => `<span class="qx-chip ${hasCategory(qx.open.data, k) ? "" : "off"}">${CAT_HE[k]}</span>`).join("")}</div><footer><button class="btn btn-primary btn-sm" data-qx="resume">המשך עריכה</button></footer></article>` : "";
-    return `<div class="page-intro"><div><h2>הגרסאות בכרטיס</h2><p>כל גיבוי שהטלפון עשה, וכל גרסה ששמרתם מכאן. פתיחת גרסה מציגה את הקטגוריות שלה בתפריט הצד.</p></div><div class="intro-actions"><button class="btn btn-primary" data-qx="new-version">＋ גרסה חדשה</button></div></div><div class="qx-versions">${unsavedNew}${cards}</div>`;
+    const cats = has => `<ul class="qx-cats">${Object.keys(CAT_HE).map(k => `<li class="${has(k) ? "on" : "off"}"><i>${has(k) ? "✓" : "✕"}</i>${CAT_HE[k]}</li>`).join("")}</ul>`;
+    const cards = qx.backups.map(b => { const isCur = cur === b.folder; return `<article class="qx-version ${isCur ? "current" : ""}"><button class="qx-open" data-qx="open" data-folder="${esc(b.folder)}" aria-label="פתיחת ${esc(folderDate(b.folder))}"></button><button class="icon-btn qx-menu" data-qx="version-menu" data-folder="${esc(b.folder)}" aria-label="אפשרויות">⋮</button><h3>${esc(folderDate(b.folder))}</h3><div class="qx-when" dir="ltr">${esc(b.folder)}</div>${isCur ? `<div class="qx-state">${qx.open.dirty.size ? "● פתוחה, עם שינויים שלא נשמרו" : "● פתוחה לעריכה"}</div>` : ""}${cats(k => b.categories.includes(k))}</article>`; }).join("");
+    const unsavedNew = qx.open?.isNew ? `<article class="qx-version current"><button class="qx-open" data-qx="resume" aria-label="המשך עריכה"></button><h3>גרסה חדשה</h3><div class="qx-state">● ${qx.open.dirty.size ? "עדיין לא נשמרה" : "ריקה"}</div>${cats(k => hasCategory(qx.open.data, k))}</article>` : "";
+    return `<div class="page-intro"><div><h2>הגרסאות בכרטיס</h2><p>כל גיבוי שהטלפון עשה, וכל גרסה ששמרתם מכאן. לחיצה על גרסה פותחת אותה, והקטגוריות שלה מופיעות בתפריט הצד.</p></div><div class="intro-actions"><button class="btn btn-primary" data-qx="new-version">＋ גרסה חדשה</button></div></div><div class="qx-versions">${unsavedNew}${cards}</div>`;
   }
   function openView() {
     const o = qx.open;
@@ -514,6 +525,7 @@
         case "back": qx.view = "versions"; return render();
         case "resume": qx.view = "editor"; return render();
         case "open": return openBackup(el.dataset.folder);
+        case "version-menu": return versionMenu(el.dataset.folder);
         case "new-version": return newVersion(el.dataset.folder || "");
         case "delete-version": return deleteVersion(el.dataset.folder);
         case "compare": return compareVersions(el.dataset.folder);
