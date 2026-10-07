@@ -102,7 +102,8 @@ html[data-theme="light"]{--bg:#eaf0f7;--shell:#f5f7fb;--side:#fff;--panel:#fff;-
 @media(max-width:760px){.qsummary,.qstep,.qitem,.qdone{padding:18px}.qcards{grid-template-columns:1fr 1fr}.qphone{flex-wrap:wrap}}
 
 /* ─── כרטיסי אנשי קשר: גובה לפי תוכן, וצבע מזהה לכל שם ─── */
-.contact-grid{grid-template-columns:repeat(auto-fill,minmax(232px,1fr));align-items:start}
+/* הכרטיסים בשורה אחת שווים בגובהם (stretch): עם align-items:start כרטיס עם הערה היה גבוה ושכניו קצרים, והרשת נראתה עקומה */
+.contact-grid{grid-template-columns:repeat(auto-fill,minmax(232px,1fr));align-items:stretch}
 .contact-grid.compact{grid-template-columns:repeat(auto-fill,minmax(196px,1fr))}
 /* בלי min-height: כרטיס עם שם ומספר אחד לא יתפח לגובה של כרטיס מלא. */
 .contact-card{min-height:0;padding:14px 15px;border-right:3px solid hsl(var(--tint) 62% 55%)}

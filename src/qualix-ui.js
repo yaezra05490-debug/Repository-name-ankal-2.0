@@ -1166,7 +1166,7 @@
     if (data && Array.isArray(data.ankalQx)) moveContacts(data.ankalQx, t.dataset.dropGroup);
   });
   document.addEventListener("input", event => {
-    if (event.target.id === "qx-search") { qx.search = event.target.value; const list = document.getElementById("qx-contacts-list"); if (list) list.innerHTML = contactsBodyHtml(); }
+    if (event.target.id === "qx-search") { qx.search = event.target.value; clearTimeout(qx.searchTimer); qx.searchTimer = setTimeout(() => { const list = document.getElementById("qx-contacts-list"); if (list) list.innerHTML = contactsBodyHtml(); }, 160); }
     if (event.target.id === "qx-settings-find") settingsFind(event.target.value);
     if (event.target.id === "qx-memo-text") { const st = memoStore(); const m = st.memos[st.idx]; if (m) { m.text = event.target.value; m._dirty = true; st.mark(); memoCounter(); markUnsaved(); } }
   });

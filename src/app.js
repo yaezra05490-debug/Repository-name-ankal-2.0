@@ -1654,7 +1654,9 @@
       if (group) { const radio = event.target.closest("label")?.querySelector(`input[name="${group}"]`); if (radio) radio.checked = true; }
     });
     document.getElementById("file-picker").addEventListener("change", event => { const file = event.target.files[0]; event.target.value = ""; if (file) handleFile(file); });
-    document.getElementById("contact-search").addEventListener("input", event => { state.search = event.target.value; renderContacts(); });
+    /* חיפוש: בניית 1,500 כרטיסים בכל הקשה הייתה מה שהאט את ההקלדה. ממתינים רגע אחרי ההקשה האחרונה. */
+    let searchTimer = null;
+    document.getElementById("contact-search").addEventListener("input", event => { state.search = event.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(renderContacts, 160); });
     document.getElementById("list-search").addEventListener("input", event => { state.listSearch = event.target.value; renderLists(); });
     document.getElementById("contact-form").addEventListener("input", () => { clearTimeout(state.drawerTimer); document.getElementById("drawer-save-state").textContent = "ממתין לשמירה"; state.drawerTimer = setTimeout(() => saveDrawer(false), 900); });
     const drop = document.getElementById("drop-zone"); ["dragenter", "dragover"].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add("dragging"); })); ["dragleave", "drop"].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.remove("dragging"); })); drop.addEventListener("drop", event => { const file = event.dataTransfer.files[0]; if (file) handleFile(file); });

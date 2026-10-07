@@ -48,7 +48,8 @@ function doPost(e) {
       qualixList: qualixList_,
       qualixPut: qualixPut_,
       qualixGet: qualixGet_,
-      qualixDelete: qualixDelete_
+      qualixDelete: qualixDelete_,
+      adminQualixGet: adminQualixGet_
     };
     // בדיקת הפעולה לפני יצירת המשתמש: בקשה עם פעולה לא מוכרת לא מוסיפה שורה לגיליון.
     if (!handlers[req.action]) {
@@ -477,7 +478,7 @@ function adminUserLists_(user, payload) {
       if (!QUALIX_NAME_RE.test(v.getName())) continue;
       var vf = v.getFiles(); var count = 0, bytes = 0, names = [];
       while (vf.hasNext()) { var f = vf.next(); count++; bytes += f.getSize(); names.push(f.getName()); }
-      backups.push({ folder: v.getName(), files: count, bytes: bytes, storage: formatBytes_(bytes), updatedAt: v.getLastUpdated().toISOString(), categories: names.filter(function (n) { return /\.ib$/.test(n); }).map(function (n) { return n.replace(/\.ib$/, ""); }) });
+      backups.push({ folder: v.getName(), files: count, bytes: bytes, storage: formatBytes_(bytes), updatedAt: v.getLastUpdated().toISOString(), names: names, categories: names.filter(function (n) { return /\.ib$/.test(n); }).map(function (n) { return n.replace(/\.ib$/, ""); }) });
     }
   }
   backups.sort(function (a, b) { return String(b.folder).localeCompare(String(a.folder)); });
@@ -550,9 +551,17 @@ function qualixPut_(user, payload) {
 }
 
 function qualixGet_(user, payload) {
-  var folderName = qualixFolderName_(payload.folder);
-  var fileName = qualixFileName_(payload.name);
-  var folder = qualixVersionFolder_(user.sub, folderName, false);
+  return qualixReadFile_(user.sub, payload.folder, payload.name);
+}
+/* המנהל מוריד קובץ מגיבוי של משתמש אחר (אתר הניהול: "הורדת הגיבוי") */
+function adminQualixGet_(user, payload) {
+  requireAdmin_(user);
+  return qualixReadFile_(String(payload.sub || ""), payload.folder, payload.name);
+}
+function qualixReadFile_(sub, folderValue, nameValue) {
+  var folderName = qualixFolderName_(folderValue);
+  var fileName = qualixFileName_(nameValue);
+  var folder = qualixVersionFolder_(sub, folderName, false);
   if (!folder) throw apiError_("NOT_FOUND", "הגיבוי לא נמצא בשרת.");
   var files = folder.getFilesByName(fileName);
   if (!files.hasNext()) throw apiError_("NOT_FOUND", "הקובץ לא נמצא בשרת.");

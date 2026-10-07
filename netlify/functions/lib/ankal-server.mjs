@@ -222,7 +222,7 @@ async function adminUserLists(user, payload) {
     if (qualix) {
       const versions = (await S().listChildren(qualix.id, { foldersOnly: true })).filter(v => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(v.name));
       const files = await Promise.all(versions.map(v => S().listChildren(v.id, { filesOnly: true }).catch(() => [])));
-      backups = versions.map((v, k) => { const bytes = files[k].reduce((n, f) => n + (f.size || 0), 0); return { folder: v.name, files: files[k].length, bytes, storage: formatBytes(bytes), updatedAt: v.modifiedTime || "", categories: files[k].filter(f => /\.ib$/.test(f.name)).map(f => f.name.replace(/\.ib$/, "")) }; }).sort((a, b) => b.folder.localeCompare(a.folder));
+      backups = versions.map((v, k) => { const bytes = files[k].reduce((n, f) => n + (f.size || 0), 0); return { folder: v.name, files: files[k].length, bytes, storage: formatBytes(bytes), updatedAt: v.modifiedTime || "", names: files[k].map(f => f.name), categories: files[k].filter(f => /\.ib$/.test(f.name)).map(f => f.name.replace(/\.ib$/, "")) }; }).sort((a, b) => b.folder.localeCompare(a.folder));
     }
   } catch (_) { backups = []; }
   return { lists: items.filter(item => item && !item.deletedAt), backups };
@@ -256,7 +256,7 @@ export const ACTIONS = Object.keys(HANDLERS);
 /* נקודת הכניסה: אותו מבנה תשובה כמו doPost בסקריפט. תקלת תשתית (e.infra) נזרקת החוצה כדי שהמנתב יפול לסקריפט. */
 /* קובצי גיבוי קיוליקס נשמרים בדרייב, ולחשבון השירות אין מכסת אחסון ליצירת קבצים — הפעולות האלה
    שייכות לסקריפט, ונזרקות למנתב עוד לפני אימות הטוקן כדי לא לשלם פעמיים. */
-const SCRIPT_ONLY = new Set(["qualixList", "qualixPut", "qualixGet", "qualixDelete"]);
+const SCRIPT_ONLY = new Set(["qualixList", "qualixPut", "qualixGet", "qualixDelete", "adminQualixGet"]);
 export async function handle(req) {
   try {
     if (SCRIPT_ONLY.has(req.action)) throw forwardToScript("QUALIX_FILES");

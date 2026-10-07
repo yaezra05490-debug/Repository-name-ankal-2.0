@@ -111,9 +111,10 @@ server.listen(PORT, async () => {
   await step("הגרסה הפתוחה מסומנת עם שינויים", `document.querySelector("#qualix-root .qx-version.current .qx-state")?.textContent`, v => /שינויים/.test(v));
   await step("הקטגוריות עדיין בתפריט הצד", `document.querySelectorAll('#qualix-subnav [data-qx="tab"]').length`, 7);
   await step("לחיצה על קטגוריה חוזרת לעורך", `(() => { document.querySelector('#qualix-subnav [data-tab="contacts"]').click(); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
-  await step("חיפוש מסנן לפי שם", `(() => { const el = document.getElementById("qx-search"); el.value = "שרה"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
-  await step("חיפוש מסנן לפי ספרות", `(() => { const el = document.getElementById("qx-search"); el.value = "050-111"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
-  await step("ניקוי החיפוש", `(() => { const el = document.getElementById("qx-search"); el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
+  // החיפוש ממתין רגע אחרי ההקשה (debounce) לפני שהוא בונה את הכרטיסים
+  await step("חיפוש מסנן לפי שם", `(async () => { const el = document.getElementById("qx-search"); el.value = "שרה"; el.dispatchEvent(new Event("input", { bubbles: true })); await new Promise(r => setTimeout(r, 300)); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
+  await step("חיפוש מסנן לפי ספרות", `(async () => { const el = document.getElementById("qx-search"); el.value = "050-111"; el.dispatchEvent(new Event("input", { bubbles: true })); await new Promise(r => setTimeout(r, 300)); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
+  await step("ניקוי החיפוש", `(async () => { const el = document.getElementById("qx-search"); el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); await new Promise(r => setTimeout(r, 300)); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
 
   // תצוגה לפי קבוצות: לשוניות מימין, כרטיסים משמאל, סימון, העברה וגרירה
   await step("תצוגה לפי קבוצות", click('[data-qx="contacts-view"][data-view="groups"]'));

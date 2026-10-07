@@ -103,6 +103,7 @@
 
 <script src="/config.js"></script>
 <script src="/vcard.js"></script>
+<script src="/qualix.js"></script>
 <script>
 (() => {
   "use strict";
@@ -218,11 +219,13 @@
 
   function statsHtml() {
     const s = state.stats || {};
+    // בזמן שהסטטיסטיקה מחושבת ברקע מוצג "מחשב…" ולא קו ריק
+    const v = (x) => x ?? (s.pending ? `<small class="muted" title="מחשב ברקע">מחשב…</small>` : "—");
     return `<div class="stats">
       <div class="stat"><b>${s.users ?? "—"}</b><span>משתמשים</span></div>
-      <div class="stat"><b>${s.lists ?? "—"}</b><span>רשימות</span></div>
-      <div class="stat"><b>${s.contacts ?? "—"}</b><span>אנשי קשר</span></div>
-      <div class="stat"><b dir="ltr">${esc(s.storage ?? "—")}</b><span>נפח אחסון</span></div>
+      <div class="stat"><b>${v(s.lists)}</b><span>רשימות</span></div>
+      <div class="stat"><b>${v(s.contacts)}</b><span>אנשי קשר</span></div>
+      <div class="stat"><b dir="ltr">${s.storage != null ? esc(s.storage) : v(undefined)}</b><span>נפח אחסון</span></div>
     </div>`;
   }
   function tabsHtml() {
@@ -287,7 +290,12 @@
   const CACHE_KEY = "yaezra.cache";
   function cacheRead(tab) { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}")[tab] || null; } catch (_) { return null; } }
   function cacheWrite(tab, data) { try { const all = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); all[tab] = { at: new Date().toISOString(), data }; localStorage.setItem(CACHE_KEY, JSON.stringify(all)); } catch (_) { } }
-  function applyTabData(tab, data) { state.stats = data.stats || {}; state.items = data.items || []; state.total = data.total ?? state.items.length; if (tab === "users") state.users = state.items; }
+  function applyTabData(tab, data) {
+    // תשובה עם סטטיסטיקה "בהמתנה" לא מוחקת מספרים שכבר יש במטמון — רק מעדכנת את מספר המשתמשים
+    const cachedStats = (cacheRead("users") || {}).data?.stats;
+    state.stats = data.stats?.pending && cachedStats && !cachedStats.pending ? Object.assign({}, cachedStats, { users: data.stats.users }) : (data.stats || {});
+    state.items = data.items || []; state.total = data.total ?? state.items.length; if (tab === "users") state.users = state.items;
+  }
   function setFreshness(text) { const el = document.getElementById("tab-fresh"); if (el) el.textContent = text; }
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
   /* הסטטיסטיקה (סריקת דרייב של כל המשתמשים) מגיעה בבקשה נפרדת ברקע ומתמזגת למסך: שורת המספרים
@@ -444,16 +452,17 @@
           </div>
           <h3 class="sub-h">גיבויי קיוליקס בשרת</h3>
           <div class="grid">${state.backups.map((b) => `
-            <div class="u" style="--tint:${hue(b.folder)}">
+            <button class="u" style="--tint:${hue(b.folder)}" data-backup="${esc(b.folder)}">
               <span class="u-pic">☏</span>
               <span class="u-copy"><strong>${esc(folderDate(b.folder))}</strong><span dir="ltr">${esc(b.folder)}</span>
                 <span>${b.files} קבצים · ${esc(b.storage || "")} · ${esc((b.categories || []).map((c) => CAT_HE[c] || c).join(", "))}</span></span>
-            </div>`).join("") || '<p class="muted">אין גיבויים בשרת. גיבוי עולה מהתוכנה אחרי כניסה עם Google.</p>'}
+            </button>`).join("") || '<p class="muted">אין גיבויים בשרת. גיבוי עולה מהתוכנה אחרי כניסה עם Google.</p>'}
           </div>
         </div>`;
       bindCrumbs();
       document.getElementById("block-btn").onclick = toggleBlock;
       view.querySelectorAll("[data-list]").forEach((el) => el.onclick = () => openList(el.dataset.list));
+      view.querySelectorAll("[data-backup]").forEach((el) => el.onclick = () => openBackup(el.dataset.backup));
     } catch (error) {
       view.innerHTML = `${crumbs([{ label: "משתמשים", go: "users" }])}<div class="panel"><div class="err">${esc(error.message)}</div></div>`;
       bindCrumbs();
@@ -474,6 +483,86 @@
       toast(blocking ? "הסנכרון נחסם" : "החסימה בוטלה");
       openLists(state.user.sub);
     } catch (error) { toast("הפעולה נכשלה: " + error.message); }
+  }
+
+  /* ───────── גיבוי קיוליקס של משתמש: צפייה והורדה ─────────
+     הקבצים נמשכים ישירות מהסקריפט עם קוד המנהל (קובץ גדול דרך הפונקציה בנטליפי נופל במגבלת 10 השניות)
+     ונארזים ל-ZIP בדפדפן. תצוגה מקדימה: ספר הטלפונים והיומן מפוענחים עם qualix.js. */
+  async function apiBig(action, payload) {
+    const url = String(CFG.APPS_SCRIPT_URL || "");
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) return api(action, payload);
+    let res;
+    try { res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, adminCode: code, payload }), redirect: "follow" }); }
+    catch (_) { return api(action, payload); }
+    const body = await res.json().catch(() => ({ ok: false, message: "תשובה לא תקינה מהסקריפט" }));
+    if (!body.ok) throw new Error(body.message || body.error || "הפעולה נכשלה");
+    return body.data;
+  }
+  const fromBase64 = (t) => { const s = atob(t); const out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i); return out; };
+  const gunzip = async (bytes) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+  async function fetchBackupFile(sub, folder, name) { const got = await apiBig("adminQualixGet", { sub, folder, name }); let bytes = fromBase64(got.data); if (got.gzip) bytes = await gunzip(bytes); return bytes; }
+  /* ZIP בלי דחיסה (הקבצים ממילא קטנים, וחלקם כבר דחוסים): כותרת מקומית לכל קובץ, ספריית מרכז, וסיומת. */
+  const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(bytes) { let c = 0xFFFFFFFF; for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  function makeZip(entries) {
+    const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+    const u16 = (n) => [n & 255, (n >> 8) & 255], u32 = (n) => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+    for (const e of entries) {
+      const name = enc.encode(e.name), crc = crc32(e.bytes), size = e.bytes.length;
+      const local = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(size), ...u32(size), ...u16(name.length), ...u16(0)]);
+      parts.push(local, name, e.bytes);
+      central.push(Uint8Array.from([0x50, 0x4b, 0x01, 0x02, ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(size), ...u32(size), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), name);
+      offset += local.length + name.length + size;
+    }
+    const cdSize = central.reduce((n, p) => n + p.length, 0);
+    const end = Uint8Array.from([0x50, 0x4b, 0x05, 0x06, ...u16(0), ...u16(0), ...u16(entries.length), ...u16(entries.length), ...u32(cdSize), ...u32(offset), ...u16(0)]);
+    return new Blob([...parts, ...central, end], { type: "application/zip" });
+  }
+  const folderDateHe = (f) => { const m = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/.exec(f); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : f; };
+  function openBackup(folder) {
+    const b = (state.backups || []).find((x) => x.folder === folder); if (!b) return;
+    const userName = state.user.name || state.user.email || "משתמש";
+    view.innerHTML = `
+      ${crumbs([{ label: "משתמשים", go: "users" }, { label: userName, go: "lists" }, { label: "גיבוי " + folderDateHe(folder) }])}
+      <div class="panel">
+        <h2>גיבוי קיוליקס · ${esc(folderDateHe(folder))}</h2>
+        <p dir="ltr" style="text-align:right">${esc(folder)}</p>
+        <p>${b.files} קבצים · ${esc(b.storage || "")} · של ${esc(userName)}</p>
+        <div class="row-actions">
+          <button class="btn btn-primary" id="bk-download">⤓ הורדת הגיבוי (ZIP)</button>
+          <button class="btn btn-secondary" id="bk-preview">תצוגה מקדימה של התוכן</button>
+        </div>
+        <p id="bk-status" class="muted" style="margin-top:10px"></p>
+        <div id="bk-preview-box"></div>
+        <h3 class="sub-h">הקבצים</h3>
+        <div class="tbl-wrap"><table><thead><tr><th>קובץ</th></tr></thead><tbody>${(b.names || []).map((n) => `<tr><td dir="ltr" style="text-align:right">${esc(n)}</td></tr>`).join("") || '<tr><td class="muted">רשימת הקבצים לא התקבלה מהשרת — רעננו אחרי הפריסה החדשה.</td></tr>'}</tbody></table></div>
+      </div>`;
+    bindCrumbs();
+    document.getElementById("bk-download").onclick = () => downloadBackup(b);
+    document.getElementById("bk-preview").onclick = () => previewBackup(b);
+  }
+  async function downloadBackup(b) {
+    const status = document.getElementById("bk-status"), names = b.names || [];
+    if (!names.length) { status.textContent = "אין רשימת קבצים — רעננו את העמוד אחרי הפריסה החדשה."; return; }
+    const entries = []; let i = 0;
+    try {
+      for (const name of names) { i++; status.textContent = `מוריד ${i}/${names.length}: ${name}`; entries.push({ name: `${b.folder}/${name}`, bytes: await fetchBackupFile(state.user.sub, b.folder, name) }); }
+      const a = document.createElement("a"); a.href = URL.createObjectURL(makeZip(entries)); a.download = `ankal-backup-${b.folder}.zip`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      status.textContent = `הורדו ${names.length} קבצים. להחזרה לכרטיס: לחלץ את התיקייה ${b.folder} לתוך ibphone בכרטיס, ובטלפון שחזור.`;
+    } catch (error) { status.textContent = "ההורדה נכשלה: " + error.message; }
+  }
+  async function previewBackup(b) {
+    const box = document.getElementById("bk-preview-box"), status = document.getElementById("bk-status"), Q = window.ANKAL_QUALIX;
+    if (!Q) { status.textContent = "ספריית הפענוח (qualix.js) לא נטענה."; return; }
+    const names = b.names || [], has = (n) => names.includes(n), parts = [];
+    try {
+      status.textContent = "קורא את הגיבוי…";
+      if (has("phonebook.ib")) { const pb = Q.parsePhonebook(await fetchBackupFile(state.user.sub, b.folder, "phonebook.ib")); parts.push(`<h3 class="sub-h">אנשי קשר (${pb.contacts.length})</h3><div class="tbl-wrap"><table><thead><tr><th>שם</th><th>נייד</th><th>בית</th><th>קבוצה</th></tr></thead><tbody>${pb.contacts.slice(0, 300).map((c) => `<tr><td>${esc(c.name)}</td><td dir="ltr">${esc(c.mobile)}</td><td dir="ltr">${esc(c.home)}</td><td>${esc(c.group)}</td></tr>`).join("")}</tbody></table></div>${pb.contacts.length > 300 ? '<p class="muted">מוצגים 300 הראשונים.</p>' : ""}`); }
+      if (has("schedule.ib")) { const ev = Q.parseSchedule(await fetchBackupFile(state.user.sub, b.folder, "schedule.ib")).events; parts.push(`<h3 class="sub-h">לוח שנה (${ev.length})</h3><div class="tbl-wrap"><table><thead><tr><th>תאריך</th><th>שעה</th><th>כותרת</th></tr></thead><tbody>${ev.slice().sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).slice(0, 300).map((e) => `<tr><td dir="ltr">${esc(e.date)}</td><td dir="ltr">${esc(e.time)}</td><td>${esc(e.title)}</td></tr>`).join("")}</tbody></table></div>`); }
+      const memoNames = names.filter((n) => /^MEMO_.*\.txt$/i.test(n));
+      if (memoNames.length) parts.push(`<h3 class="sub-h">פתקים (${memoNames.length})</h3><p class="muted">${memoNames.slice(0, 20).map(esc).join(" · ")}${memoNames.length > 20 ? " …" : ""}</p>`);
+      box.innerHTML = parts.join("") || '<p class="muted">אין בגיבוי קבצים שאפשר להציג.</p>'; status.textContent = "";
+    } catch (error) { status.textContent = "התצוגה המקדימה נכשלה: " + error.message; }
   }
 
   /* ───────── אנשי הקשר ברשימה ───────── */
