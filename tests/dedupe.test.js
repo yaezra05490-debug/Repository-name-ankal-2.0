@@ -299,6 +299,23 @@ test("מזהה סוגי סימונים בשמות", () => {
   assert.equal(D.symbolsInName('ד"ר דני כהן-לוי').size, 0);
 });
 
+test("רווח מיותר בשם הוא סימון להסרה", () => {
+  const K = D.SPACE_KEY;
+  assert.ok(D.symbolsInName(" דני כהן").has(K), "רווח בהתחלה");
+  assert.ok(D.symbolsInName("דני כהן ").has(K), "רווח בסוף");
+  assert.ok(D.symbolsInName("דני  כהן").has(K), "רווח כפול");
+  assert.ok(D.symbolsInName(" דני").has(K), "רווח קשיח");
+  assert.equal(D.symbolsInName("דני כהן").size, 0, "רווח רגיל בין שם למשפחה אינו סימון");
+  assert.equal(D.applyPatternRemove("  דני  כהן ", K), "דני כהן");
+  // המילה "רווח" בתוך שם אינה הסימון — המפתח הוא מילה מוסכמת, לא התו.
+  assert.equal(D.applyPatternRemove("רווח גדול", K), "רווח גדול");
+  const regex = D.patternRegex(K);
+  assert.ok(regex.test(" דני")); regex.lastIndex = 0;
+  assert.ok(!regex.test("רווח גדול"));
+  const groups = D.findSymbolGroups([contact({ name: " דני" }), contact({ name: "רון_1" })]);
+  assert.ok(groups.some((g) => g.key === K && g.contacts.length === 1));
+});
+
 test("הסרת סימון לא משאירה רווחים כפולים", () => {
   assert.equal(D.applyPatternRemove("דני _1 כהן", "_מספר"), "דני כהן");
   assert.equal(D.applyPatternRemove("דני★כהן", "★"), "דניכהן");

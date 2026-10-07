@@ -552,8 +552,8 @@
     const isSymbol = step.kind === "symbol";
     const shown = isSymbol ? 6 : 4;
     const chips = items.slice(0, shown).map((item) => {
-      const label = isSymbol ? item.name : item.contacts.map((c) => c.name).filter(Boolean)[0] || "ללא שם";
-      return `<span class="qchip">${esc(label)}</span>`;
+      if (isSymbol) return `<span class="qchip">${symbolNameHtml(step, item.name)}</span>`;
+      return `<span class="qchip">${esc(item.contacts.map((c) => c.name).filter(Boolean)[0] || "ללא שם")}</span>`;
     }).join("");
     const canBulk = isSymbol || ENGINE.canBulkApply(step.key);
     return `
@@ -607,6 +607,13 @@
     return `<p class="qdetails">${parts.join("")}</p>`;
   }
 
+  /* רווח בתחילת השם או בסופו נבלע בתצוגת HTML, ולכן "השם היום" ו"אחרי ההסרה"
+     היו נראים זהים. בשלב הרווחים כל רווח מיותר מסומן בתו ␣ כדי שרואים מה יוסר. */
+  function symbolNameHtml(step, name) {
+    if (step.key !== ENGINE.SPACE_KEY) return esc(name);
+    return esc(name).replace(/^\s+|\s+$|\s{2,}/gu, (m) => `<span class="qspace" title="רווח מיותר">${"␣".repeat(m.length)}</span>`);
+  }
+
   function symbolItemHtml(step, contact, position) {
     const after = ENGINE.applyPatternRemove(contact.name, step.key);
     return `
@@ -614,7 +621,7 @@
       <div class="qitem">
         <p class="qitem-pos">${position} · ${esc(step.title)}</p>
         <div class="qrename">
-          <div><span class="qlabel">השם היום</span><div class="qname">${esc(contact.name)}<button class="qclear qedit" data-review-edit-contact="${esc(contact.id)}" data-edit-field="name" title="עריכת השם ידנית" aria-label="עריכת השם">✎</button></div></div>
+          <div><span class="qlabel">השם היום</span><div class="qname">${symbolNameHtml(step, contact.name)}<button class="qclear qedit" data-review-edit-contact="${esc(contact.id)}" data-edit-field="name" title="עריכת השם ידנית" aria-label="עריכת השם">✎</button></div></div>
           <div class="qarrow">←</div>
           <div><span class="qlabel">אחרי ההסרה</span><div class="qname qname-new">${esc(after)}</div></div>
         </div>

@@ -479,9 +479,17 @@
 
   /* ---------------- סימונים בשמות ---------------- */
 
+  /* רווח בתחילת השם, בסופו, או רווח כפול בתוכו. ייבוא ועריכה כבר מנקים את זה,
+     אבל רשימות שנשמרו לפני כן עדיין נושאות אותו, והוא לא נראה בעין: " דני"
+     נראה כמו "דני" אבל ממוין בנפרד ונכנס לטלפון עם הרווח. המפתח הוא מילה
+     ולא התו עצמו, כי מפתח של רווח בודד היה מוחק גם את הרווח שבין שם למשפחה. */
+  const SPACE_KEY = "רווח";
+  const SPACE_REGEX = /^\s+|\s+$|\s{2,}/u;
+
   function symbolsInName(name) {
     const value = String(name == null ? "" : name);
     const found = new Map();
+    if (SPACE_REGEX.test(value)) found.set(SPACE_KEY, { label: "רווח מיותר בתחילת השם, בסופו או כפול" });
     if (/_\d+/.test(value)) found.set("_מספר", { label: "סיומת מספר (כגון _1, _2)" });
     if (/_/.test(value.replace(/_\d+/gu, ""))) found.set("_", { label: "קו תחתון (_)" });
     // כל תו שאינו עברית, ניקוד, אנגלית, ספרה, רווח או גרש/מקף לגיטימיים.
@@ -492,13 +500,17 @@
   }
 
   function patternRegex(key) {
+    if (key === SPACE_KEY) return new RegExp(SPACE_REGEX.source, "gu");
     if (key === "_מספר") return /_\d+/gu;
     if (key === "_") return /_/gu;
     return new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gu");
   }
 
   function applyPatternRemove(name, key) {
-    return String(name == null ? "" : name).replace(patternRegex(key), "").replace(/\s{2,}/gu, " ").trim();
+    const value = String(name == null ? "" : name);
+    // רווח כפול בתוך השם מצטמצם לאחד ולא נמחק — מחיקה הייתה מדביקה שם למשפחה.
+    if (key === SPACE_KEY) return value.replace(/\s+/gu, " ").trim();
+    return value.replace(patternRegex(key), "").replace(/\s{2,}/gu, " ").trim();
   }
 
   /* כל סוגי הסימונים ברשימה, הנפוץ קודם, עם אנשי הקשר שנושאים כל אחד. */
@@ -522,7 +534,7 @@
     compareKey, fieldValues, scoreGroup, pairKey,
     findDuplicateGroups, categorize, buildQueue, canBulkApply,
     proposeMerge, mergeContacts,
-    symbolsInName, patternRegex, applyPatternRemove, findSymbolGroups
+    symbolsInName, patternRegex, applyPatternRemove, findSymbolGroups, SPACE_KEY
   };
 
   root.ANKAL_DEDUPE = api;

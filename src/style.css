@@ -92,6 +92,8 @@ html[data-theme="light"]{--bg:#eaf0f7;--shell:#f5f7fb;--side:#fff;--panel:#fff;-
 .qrename{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:16px 0 4px}
 .qname{font:600 19px var(--display)}
 .qname-new{color:var(--cyan-2)}
+/* רווח מיותר שמוצג כ-␣: בלי הסימון הוא בלתי נראה והמסך "לפני/אחרי" נראה זהה. */
+.qspace{color:var(--danger);background:hsl(351 72% 63% / .12);border-radius:4px;padding:0 3px;font-family:monospace;font-weight:400}
 .qarrow{font-size:20px;color:var(--muted);padding-bottom:2px}
 .qdone{text-align:center}
 .qdone-mark{width:62px;height:62px;margin:0 auto 12px;border-radius:20px;background:#dff8ef;color:#087455;display:grid;place-items:center;font-size:31px}
