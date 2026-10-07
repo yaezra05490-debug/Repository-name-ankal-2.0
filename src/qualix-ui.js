@@ -885,7 +885,7 @@
     const strings = Q.settingsStrings(d.settings);
     const rows = strings.map(s => `<tr><td class="num">0x${s.offset.toString(16).padStart(6, "0")}</td><td class="num">${s.kind}</td><td dir="auto">${esc(s.text)}</td></tr>`).join("");
     return `<div class="qx-panel"><h3 style="margin:0 0 8px">הגדרות הטלפון — צפייה בלבד</h3><p class="qx-note">קובץ ההגדרות (${(d.settings.length / 1024).toFixed(0)} KB) הוא צילום של זיכרון המערכת ואי אפשר לערוך אותו בבטחה. הוא נשמר בגרסה החדשה כמו שהוא, ובטלפון אפשר לבחור אם לשחזר אותו. למטה כל מה שקריא בו: שמות SIM, הגדרות גלישה (APN), מספרי חירום ועותקים של אירועי יומן.</p>
-      <div class="qx-toolbar" style="margin-top:12px"><label class="search-field"><span>⌕</span><input id="qx-settings-find" type="search" placeholder="חיפוש ערך בקובץ, למשל קוד נעילה (1234)…"></label><span class="qx-note">מחפש כטקסט, כ-UTF-16, כ-BCD וכמספר. הקוד אינו טקסט גלוי — חפשו קוד ידוע כדי לאתר את מקומו.</span></div>
+      <div class="qx-toolbar" style="margin-top:12px"><label class="search-field"><span>⌕</span><input id="qx-settings-find" type="search" placeholder="חיפוש ערך בקובץ, למשל קוד נעילה (1234)…"></label><span class="qx-note">מחפש כטקסט, כ-UTF-16, כ-BCD וכמספר. בבדיקה על גיבוי אמיתי (אוקטובר 2026) קוד הנעילה לא נמצא באף קידוד — ככל הנראה הטלפון לא כולל אותו בגיבוי.</span></div>
       <div id="qx-settings-hits" class="qx-note"></div>
       <div class="qx-table-wrap" style="margin-top:10px;max-height:50vh"><table class="qx-table"><thead><tr><th>היסט</th><th>קידוד</th><th>ערך</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="qx-note">לא נמצא טקסט קריא</td></tr>`}</tbody></table></div></div>`;
   }
