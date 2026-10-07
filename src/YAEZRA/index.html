@@ -559,8 +559,18 @@
       status.textContent = "קורא את הגיבוי…";
       if (has("phonebook.ib")) { const pb = Q.parsePhonebook(await fetchBackupFile(state.user.sub, b.folder, "phonebook.ib")); parts.push(`<h3 class="sub-h">אנשי קשר (${pb.contacts.length})</h3><div class="tbl-wrap"><table><thead><tr><th>שם</th><th>נייד</th><th>בית</th><th>קבוצה</th></tr></thead><tbody>${pb.contacts.slice(0, 300).map((c) => `<tr><td>${esc(c.name)}</td><td dir="ltr">${esc(c.mobile)}</td><td dir="ltr">${esc(c.home)}</td><td>${esc(c.group)}</td></tr>`).join("")}</tbody></table></div>${pb.contacts.length > 300 ? '<p class="muted">מוצגים 300 הראשונים.</p>' : ""}`); }
       if (has("schedule.ib")) { const ev = Q.parseSchedule(await fetchBackupFile(state.user.sub, b.folder, "schedule.ib")).events; parts.push(`<h3 class="sub-h">לוח שנה (${ev.length})</h3><div class="tbl-wrap"><table><thead><tr><th>תאריך</th><th>שעה</th><th>כותרת</th></tr></thead><tbody>${ev.slice().sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time)).slice(0, 300).map((e) => `<tr><td dir="ltr">${esc(e.date)}</td><td dir="ltr">${esc(e.time)}</td><td>${esc(e.title)}</td></tr>`).join("")}</tbody></table></div>`); }
-      const memoNames = names.filter((n) => /^MEMO_.*\.txt$/i.test(n));
-      if (memoNames.length) parts.push(`<h3 class="sub-h">פתקים (${memoNames.length})</h3><p class="muted">${memoNames.slice(0, 20).map(esc).join(" · ")}${memoNames.length > 20 ? " …" : ""}</p>`);
+      // הפתקים עצמם, לא רק השמות: נמשכים בקבוצות של שישה במקביל (כל קובץ הוא בקשה לסקריפט)
+      const memoNames = names.filter((n) => /^MEMO_.*\.txt$/i.test(n)).sort().reverse();
+      if (memoNames.length) {
+        const memos = []; let done = 0;
+        for (let i = 0; i < memoNames.length; i += 6) {
+          const batch = memoNames.slice(i, i + 6);
+          memos.push(...await Promise.all(batch.map(async (n) => { try { return { name: n, text: Q.parseMemo(await fetchBackupFile(state.user.sub, b.folder, n)) }; } catch (e) { return { name: n, text: "(לא נקרא: " + e.message + ")" }; } })));
+          done += batch.length; status.textContent = `קורא פתקים… ${done}/${memoNames.length}`;
+        }
+        const memoDate = (n) => { const m = /MEMO_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(n); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : n; };
+        parts.push(`<h3 class="sub-h">פתקים (${memos.length})</h3><div class="grid">${memos.map((m) => `<div class="u" style="--tint:${hue(m.name)};align-items:flex-start"><span class="u-copy" style="min-width:0"><strong>${esc(memoDate(m.name))}</strong><span dir="auto" style="white-space:pre-wrap;overflow:visible;text-overflow:clip;color:var(--text);font-size:13px;line-height:1.5">${esc(m.text) || "(ריק)"}</span></span></div>`).join("")}</div>`);
+      }
       box.innerHTML = parts.join("") || '<p class="muted">אין בגיבוי קבצים שאפשר להציג.</p>'; status.textContent = "";
     } catch (error) { status.textContent = "התצוגה המקדימה נכשלה: " + error.message; }
   }
