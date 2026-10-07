@@ -79,16 +79,14 @@ test("קיימת כתובת ייעודית שמובילה לאתר הניהול"
   assert.ok(route, "הכתובת חייבת להיות מחרוזת אקראית ארוכה, לא מילה שאפשר לנחש");
 });
 
-test("קוד הכניסה קיים, ניתן להחלפה, ואינו מוצג כהגנה אמיתית", () => {
-  assert.ok(/DEFAULT_CODE\s*=\s*"\d{4,12}"/.test(admin), "חסר קוד ברירת מחדל");
-  assert.ok(admin.includes("function changeCode"), "חסרה אפשרות להחליף את הקוד");
+test("אתר הניהול נכנס בקוד בלבד, שנשמר לסשן ונבדק בשרת", () => {
   assert.ok(admin.includes("renderCodeGate"), "חסר מסך הקוד");
-  // מסך הקוד חייב לחסום את מסך ה-Google, אחרת הוא קישוט בלבד.
-  assert.ok(/codeOk[\s\S]{0,80}renderGate[\s\S]{0,40}renderCodeGate/.test(admin),
-    "הכניסה חייבת להתחיל במסך הקוד כשעדיין לא הוזן");
-  // התיעוד חייב לומר במפורש שזו נוחות ולא אבטחה, כדי שאיש לא יסתמך על זה.
-  assert.ok(/אינו הגנה|אינה הגנה|ולא אבטחה|אינם הגנה/.test(admin + netlify),
-    "חסרה הבהרה שהקוד והכתובת אינם הגנה אמיתית");
+  // בלי קוד שמור — מסך הקוד; עם קוד שמור — ישר לבדיקה מול השרת. אין שלב Google באמצע.
+  assert.ok(/if\s*\(code\)\s*signInWithCode\(\);\s*else\s*renderCodeGate\(""\);/.test(admin), "ההתחלה: קוד שמור → בדיקה בשרת, אחרת מסך הקוד");
+  assert.ok(/sessionStorage\.getItem\("yaezra\.code"\)/.test(admin), "הקוד נשמר לסשן בלבד");
+  assert.ok(!admin.includes("renderGate(") && !admin.includes("function changeCode"), "לא נשאר מסך Google או החלפת קוד בצד הלקוח");
+  // מטמון: לשונית שנטענה מוצגת מיד מהעותק האחרון והשרת מרענן
+  assert.ok(/cacheRead\(tab\)[\s\S]*?renderTab\(\)[\s\S]*?await api\("adminOverview"/.test(admin), "חסר מטמון בדפדפן ללשוניות");
 });
 
 test("אתר הניהול אינו מוגש לאינדוקס", () => {
@@ -106,8 +104,16 @@ test("אתר הניהול מייצא בשלושת הפורמטים", () => {
 });
 
 test("אתר הניהול לא מציג נתונים בלי אישור מנהל", () => {
-  // ההגנה האמיתית היא בשרת, אבל גם הדף עצמו חייב לחסום לפני שהוא מבקש נתונים.
-  assert.ok(/if\s*\(!me\.isAdmin\)/.test(admin), "חסרה בדיקת isAdmin לפני הצגת המסך");
+  // הכניסה בקוד: הדף לא מכיר את הקוד — הוא נשלח לשרת עם כל בקשה (adminCode) ונבדק שם מול ADMIN_CODE.
+  // המסך נבנה רק אחרי שהבקשה הראשונה (adminOverview) חזרה עם נתונים; קוד שגוי מחזיר למסך הקוד.
+  assert.ok(/adminCode:\s*code/.test(admin), "הקוד חייב להישלח לשרת עם כל בקשה");
+  assert.ok(!/DEFAULT_CODE/.test(admin) && !/accounts\.google\.com\/gsi/.test(admin), "לא נשאר קוד בצד הלקוח ולא כניסת Google");
+  assert.ok(/async function signInWithCode[\s\S]*?await api\("adminOverview"[\s\S]*?renderTab\(\)/.test(admin), "המסך נבנה רק אחרי שהשרת קיבל את הקוד");
+  assert.ok(/catch[\s\S]{0,200}renderCodeGate/.test(admin.slice(admin.indexOf("async function signInWithCode"))), "קוד שגוי מחזיר למסך הקוד");
+  for (const file of ["apps-script/Code.gs", "netlify/functions/lib/ankal-server.mjs"]) {
+    const src = fs.readFileSync(path.join(root, "..", file), "utf8");
+    assert.ok(/ADMIN_CODE/.test(src) && /\^admin/.test(src), file + ": הקוד נבדק בשרת ורק לפעולות admin*");
+  }
 });
 
 /* ---------------- הכניסה ומעבר בין רשימות ---------------- */

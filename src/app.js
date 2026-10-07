@@ -1390,7 +1390,7 @@
     /* ברשומת יומן הכותרת היא הפעולה ומתחתיה מי ומתי; בשורת משתמש הכותרת היא
        המשתמש עצמו. בלי ההבחנה הזו השם היה מסתיר את הפעולה שהתרחשה. */
     const rowTitle = item => item.action ? (ACTION_HE[item.action] || item.action) : (item.area || item.name || item.email || "פריט");
-    const rowSub = item => [item.action || item.area ? (item.name || item.email) : item.email, item.at ? fmtDate(item.at) : item.updatedAt ? fmtDate(item.updatedAt) : ""].filter(Boolean).join(" · ");
+    const rowSub = item => [item.action || item.area ? (item.name || item.email) : item.email, item.at ? fmtDate(item.at) : item.updatedAt ? fmtDate(item.updatedAt) : "", item.lists != null ? `${item.lists} רשימות · ${item.backups || 0} גיבויים · ${item.storage || ""}` : ""].filter(Boolean).join(" · ");
     content.innerHTML = `<div class="modal-list">${items.map(item => `<div class="modal-list-row"><span><b>${esc(rowTitle(item))}</b><small>${esc(rowSub(item))}</small></span><span>${item.blocked !== undefined ? `<button class="btn btn-quiet" data-admin-lists="${esc(item.sub)}">רשימות</button> <button class="btn btn-quiet" data-admin-block="${esc(item.sub)}">${item.blocked ? "ביטול חסימה" : "חסימה"}</button>` : esc(item.message || item.status || "")}</span></div>`).join("")}</div>`;
   }
   async function adminBlock(sub) { try { await api("adminToggleBlock", { sub }); toast("מצב המשתמש עודכן"); loadAdmin(); } catch (error) { toast(error.message, "error"); } }

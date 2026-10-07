@@ -53,10 +53,16 @@ function doPost(e) {
     if (!handlers[req.action]) {
       throw apiError_("UNKNOWN_ACTION", "הפעולה אינה מוכרת.");
     }
-    var identity = verifyGoogleToken_(req.idToken);
-    var user = upsertUser_(identity);
-    if (user.blocked && req.action !== "session") {
-      throw apiError_("ACCOUNT_BLOCKED", "החשבון חסום לסנכרון. עדיין תוכלו לעבוד מקומית ולייצא קבצים.");
+    var user;
+    if (req.adminCode && /^admin/.test(String(req.action))) {
+      // אתר הניהול נכנס עם קוד במקום Google; הקוד נבדק מול ADMIN_CODE במאפייני הסקריפט
+      user = adminByCode_(req.adminCode);
+    } else {
+      var identity = verifyGoogleToken_(req.idToken);
+      user = upsertUser_(identity);
+      if (user.blocked && req.action !== "session") {
+        throw apiError_("ACCOUNT_BLOCKED", "החשבון חסום לסנכרון. עדיין תוכלו לעבוד מקומית ולייצא קבצים.");
+      }
     }
     var data = handlers[req.action](user, req.payload || {});
     return output_({ ok: true, data: data });
@@ -107,6 +113,16 @@ function verifyGoogleToken_(token) {
     throw apiError_("UNVERIFIED_ACCOUNT", "חשבון Google אינו מאומת.");
   }
   return { sub: String(info.sub), email: String(info.email).toLowerCase(), name: info.name || info.email, picture: info.picture || "" };
+}
+
+/* כניסת מנהל בקוד (אתר הניהול, בלי Google): הקוד נבדק מול ADMIN_CODE במאפייני הסקריפט, וזהות המנהל
+   היא ADMIN_EMAIL. בלי ADMIN_CODE מוגדר אין כניסה בקוד. המנהל בקוד אינו נרשם בגיליון המשתמשים. */
+function adminByCode_(code) {
+  var properties = getAppService(["P", "r", "o", "p", "e", "r", "t", "i", "e", "s", "S", "e", "r", "v", "i", "c", "e"]);
+  var props = properties.getScriptProperties();
+  var expected = String(props.getProperty("ADMIN_CODE") || "");
+  if (!expected || String(code) !== expected) throw apiError_("ADMIN_ONLY", "קוד הניהול שגוי.");
+  return { sub: "admin-code", email: String(props.getProperty("ADMIN_EMAIL") || "").toLowerCase(), name: "מנהל", picture: "", blocked: false };
 }
 
 function findRowBySub_(rows, sub) {
@@ -341,25 +357,41 @@ function adminOverview_(user, payload) {
     var listCount = 0;
     var contacts = 0;
     var bytes = 0;
+    var perUser = {}; // לפי sub: כמה רשימות (לא מחוקות), כמה גיבויי קיוליקס, וכמה נפח
     var root = rootFolder_();
     var folders = root.getFolders();
     while (folders.hasNext()) {
       var folder = folders.next();
+      var folderName = folder.getName();
+      var sub = /^user_/.test(folderName) ? folderName.slice(5) : "";
+      var mine = { lists: 0, backups: 0, bytes: 0 };
       var files = folder.getFiles();
       while (files.hasNext()) {
         var file = files.next();
         bytes += file.getSize();
+        mine.bytes += file.getSize();
         if (/^list_/.test(file.getName())) {
-          listCount++;
           try {
-            contacts += JSON.parse(file.getBlob().getDataAsString("UTF-8")).contacts.length;
+            var parsed = JSON.parse(file.getBlob().getDataAsString("UTF-8"));
+            if (parsed.deletedAt) continue;
+            listCount++;
+            mine.lists++;
+            contacts += (parsed.contacts || []).length;
           } catch (_) {}
         }
       }
+      var qualixFolders = folder.getFoldersByName(QUALIX_FOLDER);
+      if (qualixFolders.hasNext()) {
+        var versions = qualixFolders.next().getFolders();
+        while (versions.hasNext()) { var v = versions.next(); if (QUALIX_NAME_RE.test(v.getName())) mine.backups++; }
+      }
+      if (sub) perUser[sub] = mine;
     }
-    stats = { lists: listCount, contacts: contacts, storage: formatBytes_(bytes) };
+    stats = { lists: listCount, contacts: contacts, storage: formatBytes_(bytes), perUser: perUser };
     try { cache.put("ADMIN_STATS", JSON.stringify(stats), 600); } catch (_) {}
   }
+  var perUserMap = stats.perUser || {};
+  delete stats.perUser;
   stats.users = users.length;
   /* היומן מוחזר במלואו כברירת מחדל (עד תקרה שמונעת תשובה ענקית), כדי שהמנהל
      יראה את כל ההיסטוריה ולא רק את הסוף. total אומר כמה באמת קיימות. */
@@ -378,7 +410,10 @@ function adminOverview_(user, payload) {
     items = users.filter(r => r[7]).map(r => ({ sub:r[0], email:r[1], name:r[2], deletedAt:r[7], status:"יימחק לאחר 30 יום" }));
     total = items.length;
   } else {
-    items = users.map(r => ({ sub:r[0], email:r[1], name:r[2], createdAt:r[4], lastSeen:r[5], blocked:String(r[6]).toLowerCase()==="true", deletedAt:r[7], termsVersion:r[8], privacyVersion:r[9] }));
+    items = users.map(function (r) {
+      var mine = perUserMap[safeId_(r[0])] || {};
+      return { sub:r[0], email:r[1], name:r[2], picture:r[3], createdAt:r[4], lastSeen:r[5], blocked:String(r[6]).toLowerCase()==="true", deletedAt:r[7], termsVersion:r[8], privacyVersion:r[9], lists: mine.lists || 0, backups: mine.backups || 0, storage: formatBytes_(mine.bytes || 0) };
+    });
     total = items.length;
   }
   return { stats: stats, items: items, total: total };

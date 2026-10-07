@@ -144,9 +144,8 @@
      הדף רץ בדפדפן, וכל מי שיפתח את קוד המקור יראה את קוד ברירת המחדל.
      ההגנה האמיתית היא בדיקת ADMIN_EMAIL בשרת, שרצה על כל בקשה בנפרד.
      קוד שהוחלף נשמר בדפדפן הזה בלבד — החלפה במחשב אחד לא משפיעה על אחר. */
-  const DEFAULT_CODE = "329422";
-  const CODE_KEY = "yaezra.code";
-  const currentCode = () => localStorage.getItem(CODE_KEY) || DEFAULT_CODE;
+  /* הקוד נשלח עם כל בקשה ונבדק בשרת (ADMIN_CODE); הדף עצמו לא מכיר אותו. נשמר לסשן הדפדפן בלבד. */
+  let code = sessionStorage.getItem("yaezra.code") || "";
 
   /* צבע יציב לכל שם — אותה שיטה כמו באפליקציה, כדי ששני המסכים יראו כמו
      מערכת אחת ולא כמו שני מוצרים. */
@@ -161,7 +160,7 @@
     const res = await fetch(CFG.API_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, idToken: token, payload })
+      body: JSON.stringify({ action, idToken: token, adminCode: code, payload })
     });
     const body = await res.json().catch(() => ({ ok: false, message: "תשובה לא תקינה מהשרת" }));
     if (!body.ok) throw new Error(body.message || body.error || "הפעולה נכשלה");
@@ -170,7 +169,7 @@
 
   /* ───────── כניסה ───────── */
 
-  /* שלב ראשון: קוד הכניסה. רק אחריו מוצג כפתור Google. */
+  /* הכניסה: קוד הניהול בלבד. הוא נבדק בשרת עם הבקשה הראשונה (adminOverview), ובלי קוד נכון אין נתונים. */
   function renderCodeGate(message) {
     view.innerHTML = `<div class="gate">
       <div class="gate-mark">🔒</div>
@@ -188,64 +187,26 @@
     input.focus();
     form.onsubmit = (event) => {
       event.preventDefault();
-      if (input.value.trim() !== currentCode()) {
-        input.value = "";
-        renderCodeGate("הקוד שגוי.");
-        return;
-      }
-      sessionStorage.setItem("yaezra.codeOk", "1");
-      renderGate("");
+      code = input.value.trim();
+      if (!code) return;
+      signInWithCode();
     };
   }
 
-  function renderGate(message) {
-    view.innerHTML = `<div class="gate">
-      <h1>ניהול מערכת</h1>
-      <p>הכניסה מוגבלת לחשבון המנהל בלבד. גם מי שהגיע לכתובת הזו לא יראה נתונים בלי הרשאה.</p>
-      ${message ? `<div class="err">${esc(message)}</div>` : ""}
-      <div id="gbtn" style="display:flex;justify-content:center"></div>
-    </div>`;
-    const mount = () => {
-      google.accounts.id.initialize({ client_id: CFG.GOOGLE_WEB_CLIENT_ID, callback: (r) => signIn(r.credential) });
-      google.accounts.id.renderButton(document.getElementById("gbtn"), { theme: "filled_black", size: "large", text: "signin_with", locale: "he", width: 280 });
-    };
-    if (window.google?.accounts?.id) mount();
-    else {
-      const s = document.createElement("script");
-      s.src = "https://accounts.google.com/gsi/client";
-      s.async = true; s.onload = mount;
-      document.head.appendChild(s);
-    }
-  }
-
-  async function signIn(idToken) {
-    token = idToken;
-    view.innerHTML = `<div class="load">בודק הרשאה…</div>`;
+  /* הבקשה הראשונה היא גם הבדיקה: אם השרת מחזיר נתונים, הקוד נכון. */
+  async function signInWithCode() {
+    view.innerHTML = `<div class="load">בודק את הקוד…</div>`;
     try {
-      const session = await api("session", { termsVersion: CFG.TERMS_VERSION, privacyVersion: CFG.PRIVACY_VERSION });
-      me = session.user;
-      if (!me.isAdmin) { token = ""; renderGate("החשבון הזה אינו חשבון מנהל."); return; }
-      sessionStorage.setItem("yaezra.token", idToken);
-      document.getElementById("who").innerHTML =
-        `${me.picture ? `<img src="${esc(me.picture)}" alt="" referrerpolicy="no-referrer">` : ""}<span>${esc(me.name || me.email)}</span>`
-        + `<button class="linkish" id="change-code">שינוי קוד</button>`;
-      document.getElementById("change-code").onclick = changeCode;
-      openTab("users");
+      const data = await api("adminOverview", { tab: "users" });
+      sessionStorage.setItem("yaezra.code", code);
+      me = { name: "מנהל" };
+      document.getElementById("who").innerHTML = `<span>מנהל</span><button class="linkish" id="sign-out">יציאה</button>`;
+      document.getElementById("sign-out").onclick = () => { code = ""; sessionStorage.removeItem("yaezra.code"); renderCodeGate(""); };
+      state.tab = "users"; cacheWrite("users", data); applyTabData("users", data); renderTab(); setFreshness(`עודכן ${fmtDate(new Date().toISOString())}`);
     } catch (error) {
-      token = "";
-      renderGate(error.message);
+      code = ""; sessionStorage.removeItem("yaezra.code");
+      renderCodeGate(/שגוי|ADMIN_ONLY/.test(error.message) ? "הקוד שגוי." : error.message);
     }
-  }
-
-  /* החלפת קוד הכניסה. נשמר בדפדפן הזה בלבד; מחיקת נתוני האתר מחזירה את קוד
-     ברירת המחדל, ולכן זו נוחות ולא מנעול. */
-  function changeCode() {
-    const next = prompt("קוד כניסה חדש (4 עד 12 ספרות):", "");
-    if (next === null) return;
-    const clean = next.trim();
-    if (!/^\d{4,12}$/.test(clean)) { alert("הקוד חייב להיות בין 4 ל-12 ספרות."); return; }
-    localStorage.setItem(CODE_KEY, clean);
-    alert("הקוד הוחלף. הוא נשמר בדפדפן הזה בלבד — במחשב אחר עדיין יעבוד קוד ברירת המחדל.");
   }
 
   /* ───────── מעטפת: סטטיסטיקות + לשוניות ───────── */
@@ -316,19 +277,27 @@
     });
   }
 
+  /* מטמון בדפדפן: לשונית שכבר נטענה מוצגת מיד מהעותק האחרון, והשרת (שלוקח כמה שניות) מרענן
+     כשהוא עונה. בלי זה כל חזרה ללשונית הציגה "טוען…" על מסך ריק. */
+  const CACHE_KEY = "yaezra.cache";
+  function cacheRead(tab) { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}")[tab] || null; } catch (_) { return null; } }
+  function cacheWrite(tab, data) { try { const all = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); all[tab] = { at: new Date().toISOString(), data }; localStorage.setItem(CACHE_KEY, JSON.stringify(all)); } catch (_) { } }
+  function applyTabData(tab, data) { state.stats = data.stats || {}; state.items = data.items || []; state.total = data.total ?? state.items.length; if (tab === "users") state.users = state.items; }
+  function setFreshness(text) { const el = document.getElementById("tab-fresh"); if (el) el.textContent = text; }
   async function openTab(tab) {
     state.tab = tab; state.user = null; state.list = null;
-    view.innerHTML = `<div class="load">טוען…</div>`;
-    if (tab === "server") return renderServerTab();
+    if (tab === "server") { view.innerHTML = `<div class="load">טוען…</div>`; return renderServerTab(); }
+    const cached = cacheRead(tab);
+    if (cached) { applyTabData(tab, cached.data); renderTab(); setFreshness(`מוצגים נתונים מ-${fmtDate(cached.at)} · מעדכן מהשרת…`); }
+    else view.innerHTML = `<div class="load">טוען מהשרת…</div>`;
     try {
       const data = await api("adminOverview", { tab });
-      state.stats = data.stats || {};
-      state.items = data.items || [];
-      state.total = data.total ?? state.items.length;
-      if (tab === "users") state.users = state.items;
-      renderTab();
+      if (state.tab !== tab) return; // עברו ללשונית אחרת בזמן ההמתנה
+      cacheWrite(tab, data); applyTabData(tab, data); renderTab(); setFreshness(`עודכן ${fmtDate(new Date().toISOString())}`);
     } catch (error) {
-      view.innerHTML = `<div class="panel"><div class="err">${esc(error.message)}</div>
+      if (state.tab !== tab) return;
+      if (cached) setFreshness(`השרת לא ענה (${error.message}) — מוצגים הנתונים מ-${fmtDate(cached.at)}`);
+      else view.innerHTML = `<div class="panel"><div class="err">${esc(error.message)}</div>
         <button class="btn btn-secondary" onclick="location.reload()">נסה שוב</button></div>`;
     }
   }
@@ -338,6 +307,7 @@
     view.innerHTML = `${statsHtml()}${tabsHtml()}
       <div class="panel">
         <h2>${esc(meta.label)}</h2>
+        <p id="tab-fresh" class="muted" style="font-size:11px;margin:-4px 0 8px"></p>
         <p id="tab-hint"></p>
         ${searchHtml(state.tab === "users" ? "חיפוש לפי שם או מייל…" : "סינון…")}
         <div id="tab-content"></div>
@@ -407,7 +377,8 @@
     return `<button class="u" style="--tint:${hue(name)}" data-sub="${esc(user.sub)}">
       ${pic}
       <span class="u-copy"><strong>${esc(name)}</strong><span dir="ltr">${esc(user.email || "")}</span>
-        <span>נראה לאחרונה: ${esc(fmtDate(user.lastSeen))}</span></span>
+        <span>נראה לאחרונה: ${esc(fmtDate(user.lastSeen))}</span>
+        ${user.lists != null ? `<span class="u-counts">${user.lists} רשימות · ${user.backups || 0} גיבויי קיוליקס · ${esc(user.storage || "")}</span>` : ""}</span>
       ${user.blocked ? '<span class="u-tag">חסום</span>' : ""}
     </button>`;
   }
@@ -572,15 +543,7 @@
 
   /* ───────── התחלה ───────── */
 
-  if (!CFG.GOOGLE_WEB_CLIENT_ID || String(CFG.GOOGLE_WEB_CLIENT_ID).includes("PASTE_")) {
-    view.innerHTML = `<div class="gate"><h1>ניהול מערכת</h1>
-      <div class="err">כניסת Google עדיין לא הוגדרה ב-src/config.js.</div></div>`;
-  } else {
-    const saved = sessionStorage.getItem("yaezra.token");
-    if (saved) signIn(saved);
-    else if (sessionStorage.getItem("yaezra.codeOk")) renderGate("");
-    else renderCodeGate("");
-  }
+  if (code) signInWithCode(); else renderCodeGate("");
 })();
 </script>
 </body>

@@ -170,13 +170,19 @@ async function adminOverview(user, payload) {
     const root = await rootFolder();
     const folders = (await S().listChildren(root.id, { foldersOnly: true })).filter(f => f.name !== "backups");
     const perFolder = await Promise.all(folders.map(f => S().listChildren(f.id, { filesOnly: true })));
+    // לכל משתמש: כמה רשימות (לא מחוקות), כמה גיבויי קיוליקס (תיקיות בתוך qualix), וכמה נפח
+    const perUser = {};
     const listFilesAll = [];
-    for (const files of perFolder) for (const f of files) { bytes += f.size || 0; if (/^list_/.test(f.name)) { listCount++; listFilesAll.push(f); } }
+    folders.forEach((folder, k) => { const sub = /^user_/.test(folder.name) ? folder.name.slice(5) : ""; const mine = { lists: 0, backups: 0, bytes: 0 }; for (const f of perFolder[k]) { bytes += f.size || 0; mine.bytes += f.size || 0; if (/^list_/.test(f.name)) listFilesAll.push(Object.assign(f, { _sub: sub })); } if (sub) perUser[sub] = mine; });
     const items = await Promise.all(listFilesAll.map(readList));
-    for (const item of items) if (item && Array.isArray(item.contacts)) contacts += item.contacts.length;
-    stats = { lists: listCount, contacts, storage: formatBytes(bytes) }; statsCache = { at: Date.now(), stats };
+    items.forEach((item, k) => { if (!item || item.deletedAt) return; listCount++; if (Array.isArray(item.contacts)) contacts += item.contacts.length; const sub = listFilesAll[k]._sub; if (perUser[sub]) perUser[sub].lists++; });
+    const qualixDirs = await Promise.all(folders.map(f => S().listChildren(f.id, { foldersOnly: true }).then(subs => subs.find(s => s.name === "qualix") || null).catch(() => null)));
+    const versionLists = await Promise.all(qualixDirs.map(q => q ? S().listChildren(q.id, { foldersOnly: true }).catch(() => []) : []));
+    folders.forEach((folder, k) => { const sub = folder.name.slice(5); if (perUser[sub]) perUser[sub].backups = versionLists[k].filter(v => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(v.name)).length; });
+    stats = { lists: listCount, contacts, storage: formatBytes(bytes), perUser }; statsCache = { at: Date.now(), stats };
   }
-  stats = Object.assign({}, stats, { users: users.length, server: "netlify" });
+  const perUserMap = stats.perUser || {};
+  stats = Object.assign({}, stats, { users: users.length, server: "netlify" }); delete stats.perUser;
   const limit = Math.max(1, Math.min(Number(payload.limit || 20000), 50000));
   const names = Object.fromEntries(users.map(r => [String(cell(r, 0)), String(cell(r, 2) || "")]));
   const withNames = items => items.map(it => Object.assign(it, { name: names[String(it.sub)] || "" }));
@@ -184,7 +190,7 @@ async function adminOverview(user, payload) {
   if (payload.tab === "logs") { const rows = await S().readTab(LOGS.tab, LOGS.headers); total = Math.max(0, rows.length - 1); items = withNames(rowsAsObjects(rows, limit)); }
   else if (payload.tab === "errors") { const rows = await S().readTab(ERRORS.tab, ERRORS.headers); total = Math.max(0, rows.length - 1); items = withNames(rowsAsObjects(rows, limit)); }
   else if (payload.tab === "trash") { items = users.filter(r => cell(r, 7)).map(r => ({ sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), deletedAt: cell(r, 7), status: "יימחק לאחר 30 יום" })); total = items.length; }
-  else { items = users.map(r => ({ sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), createdAt: cell(r, 4), lastSeen: cell(r, 5), blocked: isTrue(cell(r, 6)), deletedAt: cell(r, 7), termsVersion: cell(r, 8), privacyVersion: cell(r, 9) })); total = items.length; }
+  else { items = users.map(r => { const mine = perUserMap[String(cell(r, 0)).replace(/[^A-Za-z0-9_-]/g, "")] || {}; return { sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), picture: cell(r, 3), createdAt: cell(r, 4), lastSeen: cell(r, 5), blocked: isTrue(cell(r, 6)), deletedAt: cell(r, 7), termsVersion: cell(r, 8), privacyVersion: cell(r, 9), lists: mine.lists || 0, backups: mine.backups || 0, storage: formatBytes(mine.bytes || 0) }; }); total = items.length; }
   return { stats, items, total };
 }
 async function adminToggleBlock(user, payload) {
@@ -231,10 +237,18 @@ export async function handle(req) {
     if (SCRIPT_ONLY.has(req.action)) throw forwardToScript("QUALIX_FILES");
     if (!HANDLERS[req.action]) throw apiError("UNKNOWN_ACTION", "הפעולה אינה מוכרת.");
     if (req.action === "ping") return { ok: true, data: ping() };
-    const identity = await verifyGoogleToken(req.idToken);
     const p = req.payload || {};
-    const user = await upsertUser(identity, req.action === "session" ? { 9: safeText(p.termsVersion, 40), 10: safeText(p.privacyVersion, 40) } : null);
-    if (user.blocked && req.action !== "session") throw apiError("ACCOUNT_BLOCKED", "החשבון חסום לסנכרון. עדיין תוכלו לעבוד מקומית ולייצא קבצים.");
+    let user;
+    if (req.adminCode && /^admin/.test(String(req.action))) {
+      // אתר הניהול נכנס עם קוד במקום Google: נבדק מול ADMIN_CODE במשתני הסביבה; בלעדיו אין כניסה בקוד
+      const expected = String(process.env.ADMIN_CODE || "");
+      if (!expected || String(req.adminCode) !== expected) throw apiError("ADMIN_ONLY", "קוד הניהול שגוי.");
+      user = { sub: "admin-code", email: String(process.env.ADMIN_EMAIL || "").toLowerCase(), name: "מנהל", picture: "", blocked: false };
+    } else {
+      const identity = await verifyGoogleToken(req.idToken);
+      user = await upsertUser(identity, req.action === "session" ? { 9: safeText(p.termsVersion, 40), 10: safeText(p.privacyVersion, 40) } : null);
+      if (user.blocked && req.action !== "session") throw apiError("ACCOUNT_BLOCKED", "החשבון חסום לסנכרון. עדיין תוכלו לעבוד מקומית ולייצא קבצים.");
+    }
     const data = await HANDLERS[req.action](user, req.payload || {});
     return { ok: true, data };
   } catch (e) {
