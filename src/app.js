@@ -1354,11 +1354,28 @@
   async function deleteSelected() { const list = currentList(); if (!list || !state.selected.size) return; const ok = await confirmBox("מחיקת אנשי קשר", `למחוק ${state.selected.size} אנשי קשר שנבחרו?`, "מחיקה", { enterConfirms: false }); if (!ok) return; const removed = list.contacts.filter(c => state.selected.has(c.id)); list.contacts = list.contacts.filter(c => !state.selected.has(c.id)); recordChange(list, "מחיקת אנשי קשר", removed.map(clone), removed.map(() => null)); state.selected.clear(); markChanged(list, "bulk_delete"); renderAll(); }
 
   function showHelp(topic) { document.querySelectorAll("[data-help]").forEach(x => x.classList.toggle("active", x.dataset.help === topic)); document.getElementById("help-content").innerHTML = HELP[topic] || HELP.start; }
+  /* מסך הניהול: הנתונים האחרונים שהתקבלו נשמרים בדפדפן ומוצגים מיד, והשרת (שלוקח לו כמה שניות — יומן
+     של אלפי שורות וספירת רשימות בדרייב) מרענן אותם כשהוא עונה. בלי זה כל פתיחה הציגה "טוען…" ריק. */
+  const ADMIN_CACHE_KEY = "ankal.adminCache";
+  function adminCacheRead(tab) { try { return JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY) || "{}")[tab] || null; } catch (_) { return null; } }
+  function adminCacheWrite(tab, data) { try { const all = JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY) || "{}"); all[tab] = { at: now(), data }; localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(all)); } catch (_) { /* מכסה — מוותרים על המטמון, לא על המסך */ } }
+  function adminFreshness(text, pending) { const el = document.getElementById("admin-freshness"); if (el) { el.textContent = text; el.classList.toggle("pending", !!pending); } }
   async function loadAdmin() {
     if (!state.user?.isAdmin) { document.getElementById("admin-content").innerHTML = "<p>המסך זמין למנהל בלבד.</p>"; return; }
-    document.getElementById("admin-content").innerHTML = "<p>טוען נתונים…</p>";
-    try { const data = await api("adminOverview", { tab: state.adminTab }); renderAdmin(data); }
-    catch (error) { document.getElementById("admin-content").innerHTML = `<p>לא הצלחנו לטעון את נתוני הניהול: ${esc(error.message)}</p>`; }
+    const tab = state.adminTab, cached = adminCacheRead(tab);
+    if (cached) { renderAdmin(cached.data); adminFreshness(`מוצגים נתונים מ-${fmtDate(cached.at)} · מעדכן מהשרת…`, true); }
+    else { document.getElementById("admin-content").innerHTML = "<p>טוען נתונים מהשרת…</p>"; adminFreshness("", true); }
+    const requested = tab;
+    try {
+      const data = await api("adminOverview", { tab });
+      adminCacheWrite(tab, data);
+      if (state.adminTab !== requested) return; // המנהל כבר עבר ללשונית אחרת בזמן ההמתנה
+      renderAdmin(data); adminFreshness(`עודכן ${fmtDate(now())}`, false);
+    } catch (error) {
+      if (state.adminTab !== requested) return;
+      if (cached) adminFreshness(`השרת לא ענה (${error.message}) — מוצגים הנתונים מ-${fmtDate(cached.at)}`, false);
+      else document.getElementById("admin-content").innerHTML = `<p>לא הצלחנו לטעון את נתוני הניהול: ${esc(error.message)}</p>`;
+    }
   }
   function renderAdmin(data = {}) {
     const stats = data.stats || {}; document.getElementById("admin-stats").innerHTML = `<article><strong>${stats.users || 0}</strong><span>משתמשים</span></article><article><strong>${stats.lists || 0}</strong><span>רשימות</span></article><article><strong>${stats.contacts || 0}</strong><span>אנשי קשר</span></article><article><strong>${esc(stats.storage || "0 MB")}</strong><span>אחסון</span></article>`;
