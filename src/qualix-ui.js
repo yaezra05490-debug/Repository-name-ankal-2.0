@@ -6,7 +6,9 @@
   const Q = window.ANKAL_QUALIX;
   const A = () => window.ANKAL_APP;
   const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const LIMIT_KEY = "ankal.qualix.memoLimit", WIDTH_KEY = "ankal.qualix.widths", FILL_KEY = "ankal.qualix.memoFill";
+  /* הכיול נשמר כהפרשים בלבד מעל טבלת ברירת המחדל (מפתח v2), כדי שתיקון בטבלה יגיע גם למי שכייל.
+     המפתח הישן החזיק עותק מלא של הטבלה הישנה (הנוסחה המוטה) ודרס את התיקון — הוא נמחק. */
+  const LIMIT_KEY = "ankal.qualix.memoLimit", WIDTH_KEY = "ankal.qualix.widths.v2", OLD_WIDTH_KEY = "ankal.qualix.widths", FILL_KEY = "ankal.qualix.memoFill";
   /* מה שהמשתמש גילה בטלפון (אוקטובר 2026): בשחזור, אירוע ביומן שכבר קיים בדיוק כזה לא מתווסף שוב — אבל
      פתק מזוהה לפי שם הקובץ בלבד, ולכן פתק שנערך כאן ושמו לא השתנה לא מתעדכן בטלפון. */
   const MEMO_RESTORE_NOTE = "בשחזור, הטלפון מזהה פתק לפי שם הקובץ ולא לפי התוכן: פתק שערכתם כאן לא יתעדכן בטלפון כל עוד הפתק הישן קיים בו. לפני השחזור מחקו בטלפון את הפתקים שערכתם (או את כל הפתקים), ורק אז שחזרו את “הפתקים שלי”. לשינוי שנכנס מיד, בלי שחזור, השתמשו ב“ניהול פתקים” שבתפריט הצד.";
@@ -18,9 +20,9 @@
   /* view: "versions" = רשימת הגרסאות (כמו "הרשימות שלי"), "editor" = הקטגוריות של הגרסה הפתוחה (כמו "אנשי קשר") */
   /* direct: הפתקים של תיקיית Memo בכרטיס ("ניהול פתקים", בלי גרסה). cloud: הגרסאות ששמורות בשרת (דרייב). */
   const qx = { adapter: null, layout: null, backups: [], open: null, view: "versions", tab: "contacts", busy: "", search: "", memoLimit: 1000, widths: null, memoFill: "space", memoIdx: 0, plIdx: 0, rendered: false, keepView: false, direct: null, contactView: "list", groupSel: null, selected: new Set(), cloud: { loaded: false, versions: [], uploading: "", error: "" } };
-  try { qx.memoLimit = Number(localStorage.getItem(LIMIT_KEY)) || 1000; qx.widths = JSON.parse(localStorage.getItem(WIDTH_KEY) || "null"); qx.memoFill = localStorage.getItem(FILL_KEY) || "space"; } catch (_) { }
+  try { qx.memoLimit = Number(localStorage.getItem(LIMIT_KEY)) || 1000; qx.widths = JSON.parse(localStorage.getItem(WIDTH_KEY) || "null"); qx.memoFill = localStorage.getItem(FILL_KEY) || "space"; localStorage.removeItem(OLD_WIDTH_KEY); } catch (_) { }
   const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n ? n + " B" : "";
-  const widths = () => qx.widths || Q.WIDTHS;
+  const widths = () => qx.widths ? Object.assign({}, Q.WIDTHS, qx.widths) : Q.WIDTHS;
 
   /* ---------- גישה לקבצים: התוכנה למחשב (IPC) או הדפדפן (File System Access) ---------- */
   function electronAdapter(root, label) {
@@ -88,6 +90,17 @@
     qx.backups = list;
   }
   function folderDate(folder) { const m = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/.exec(folder); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : folder; }
+  /* שם לגרסה: הטלפון מכיר רק את שם התיקייה (תאריך ושעה), ולכן השם נשמר בדפדפן הזה לפי שם התיקייה
+     (לא בתוך תיקיית הגיבוי — לא מסתכנים בקובץ זר שהטלפון לא מצפה לו). */
+  const NAMES_KEY = "ankal.qualix.versionNames";
+  function versionNames() { try { return JSON.parse(localStorage.getItem(NAMES_KEY) || "{}"); } catch (_) { return {}; } }
+  function versionName(folder) { return versionNames()[folder] || ""; }
+  function setVersionName(folder, name) { const all = versionNames(); if (name) all[folder] = name; else delete all[folder]; try { localStorage.setItem(NAMES_KEY, JSON.stringify(all)); } catch (_) { } }
+  function versionLabel(folder) { const n = versionName(folder); return n ? `${n} · ${folderDate(folder)}` : folderDate(folder); }
+  async function renameVersion(folder) {
+    const choice = await A().modal({ kicker: "שם לגרסה", title: folderDate(folder), html: `<label class="modal-field">שם (ריק = בלי שם)<input id="qx-version-name" maxlength="60" value="${esc(versionName(folder))}" placeholder="לדוגמה: לפני הניקוי הגדול"></label><p class="qx-note">השם נשמר במחשב הזה; בטלפון הגרסה מזוהה לפי התאריך והשעה.</p>`, buttons: [{ id: "save", label: "שמירה", primary: true }, { id: "cancel", label: "ביטול" }] });
+    if (choice !== "save") return; setVersionName(folder, (document.getElementById("qx-version-name")?.value || "").trim()); render();
+  }
 
   /* ---------- מעבר בין גרסאות: שינויים שלא נשמרו ---------- */
   async function confirmLeave() {
@@ -145,8 +158,9 @@
     if (!qx.layout.canSave) { A().toast("כדי לשמור בחרו את הכרטיס עצמו או את תיקיית ibphone", "warning"); return false; }
     const d = qx.open.data;
     if (!skipConfirm) {
-      const choice = await A().modal({ kicker: "שמירה", title: "לשמור כגרסה חדשה?", html: `<p>הגיבוי המקורי לא ישתנה. תיווצר תיקייה חדשה עם השעה הנוכחית, ובטלפון תוכלו לבחור אותה בשחזור.</p><p class="qx-note">הקטגוריות שייכתבו: ${Object.keys(CAT_HE).filter(k => hasCategory(d, k)).map(k => CAT_HE[k]).join(", ")}</p>${d.dictAdd.length || d.dictRemove.length ? `<div class="qx-warn">שינוי במילון חיזוי הטקסט נכתב בפורמט שפוענח חלקית. אחרי השחזור בדקו בטלפון שהמילון שלם.</div>` : ""}`, buttons: [{ id: "save", label: "שמירה", primary: true }, { id: "cancel", label: "ביטול" }] });
+      const choice = await A().modal({ kicker: "שמירה", title: "לשמור כגרסה חדשה?", html: `<p>הגיבוי המקורי לא ישתנה. תיווצר תיקייה חדשה עם השעה הנוכחית, ובטלפון תוכלו לבחור אותה בשחזור.</p><label class="modal-field">שם לגרסה (לא חובה)<input id="qx-save-name" maxlength="60" placeholder="לדוגמה: אחרי ניקוי הכפולים"></label><p class="qx-note">הקטגוריות שייכתבו: ${Object.keys(CAT_HE).filter(k => hasCategory(d, k)).map(k => CAT_HE[k]).join(", ")}</p>${d.dictAdd.length || d.dictRemove.length ? `<div class="qx-warn">שינוי במילון חיזוי הטקסט נכתב בפורמט שפוענח חלקית. אחרי השחזור בדקו בטלפון שהמילון שלם.</div>` : ""}`, buttons: [{ id: "save", label: "שמירה", primary: true }, { id: "cancel", label: "ביטול" }] });
       if (choice !== "save") return false;
+      qx.pendingName = (document.getElementById("qx-save-name")?.value || "").trim();
     }
     setBusy("כותב את הגיבוי…");
     try {
@@ -166,6 +180,7 @@
         await qx.adapter.write(join(qx.layout.pbRel, Q.ringFileName(c.id)), Q.buildRingIni(c.ringtonePath, size)); rings++;
       }
       const memosChanged = qx.open.dirty.has("memo") && hasCategory(d, "memo");
+      if (qx.pendingName) { setVersionName(folder, qx.pendingName); qx.pendingName = ""; }
       await loadBackups(); qx.open.dirty.clear(); qx.open.folder = folder; qx.open.rel = rel; qx.open.isNew = false; d.contacts.forEach(c => { c._ringDirty = false; });
       render();
       syncCloud(); // הגרסה החדשה עולה לשרת ברקע, כמו כל גיבוי שבכרטיס
@@ -207,8 +222,9 @@
     const bk = qx.backups.find(b => b.folder === folder); if (!bk) return;
     const isCur = qx.open && !qx.open.isNew && qx.open.folder === folder;
     const onCloud = qx.cloud.versions.some(v => v.folder === folder);
-    const choice = await A().modal({ kicker: "אפשרויות גרסה", title: folderDate(folder), html: `<p dir="ltr" style="text-align:right">${esc(folder)}</p><p class="qx-note">${bk.categories.map(k => CAT_HE[k]).join(" · ")}</p><p class="qx-note">${onCloud ? "☁ שמורה גם בשרת" : cloudUser() ? "לא שמורה בשרת" : "נשמרת רק בכרטיס (בלי כניסה עם Google)"}</p>`, buttons: [{ id: "open", label: isCur ? "המשך עריכה" : "פתיחה", primary: true }, { id: "new", label: "גרסה חדשה מכאן" }, { id: "compare", label: "השוואה לגרסה אחרת" }, ...(cloudUser() && isBackupName(folder) ? [{ id: "upload", label: onCloud ? "העלאה מחדש לשרת" : "העלאה לשרת" }] : []), ...(qx.layout.mode !== "single" ? [{ id: "delete", label: "מחיקה מהכרטיס" }] : []), { id: "cancel", label: "סגירה" }] });
+    const choice = await A().modal({ kicker: "אפשרויות גרסה", title: versionLabel(folder), html: `<p dir="ltr" style="text-align:right">${esc(folder)}</p><p class="qx-note">${bk.categories.map(k => CAT_HE[k]).join(" · ")}</p><p class="qx-note">${onCloud ? "☁ שמורה גם בשרת" : cloudUser() ? "לא שמורה בשרת" : "נשמרת רק בכרטיס (בלי כניסה עם Google)"}</p>`, buttons: [{ id: "open", label: isCur ? "המשך עריכה" : "פתיחה", primary: true }, { id: "rename", label: versionName(folder) ? "שינוי השם" : "שם לגרסה" }, { id: "new", label: "גרסה חדשה מכאן" }, { id: "compare", label: "השוואה לגרסה אחרת" }, ...(cloudUser() && isBackupName(folder) ? [{ id: "upload", label: onCloud ? "העלאה מחדש לשרת" : "העלאה לשרת" }] : []), ...(qx.layout.mode !== "single" ? [{ id: "delete", label: "מחיקה מהכרטיס" }] : []), { id: "cancel", label: "סגירה" }] });
     if (choice === "open") return openBackup(folder);
+    if (choice === "rename") return renameVersion(folder);
     if (choice === "upload") return uploadVersion(folder);
     if (choice === "new") return newVersion(folder);
     if (choice === "compare") return compareVersions(folder);
@@ -439,7 +455,9 @@
     if (choice === "reset") { qx.widths = null; localStorage.removeItem(WIDTH_KEY); return A().toast("טבלת הרוחב חזרה לברירת המחדל"); }
     if (choice !== "go") return;
     const pick = document.getElementById("qx-cal-pick").value; const text = pick !== "" ? memoStore().memos[Number(pick)].text : document.getElementById("qx-cal").value;
-    qx.widths = Q.calibrateFromMemo(text, widths()); localStorage.setItem(WIDTH_KEY, JSON.stringify(qx.widths)); memoCounter(); A().toast("טבלת הרוחב עודכנה");
+    const full = Q.calibrateFromMemo(text, widths()), over = {}; for (const ch of Object.keys(full)) if (full[ch] !== Q.WIDTHS[ch]) over[ch] = full[ch];
+    qx.widths = Object.keys(over).length ? over : null; if (qx.widths) localStorage.setItem(WIDTH_KEY, JSON.stringify(qx.widths)); else localStorage.removeItem(WIDTH_KEY);
+    memoCounter(); A().toast(qx.widths ? `טבלת הרוחב עודכנה (${Object.keys(qx.widths).length} תווים כוילו)` : "לא נמצאו שורות כיול בפתק");
   }
 
   /* ---------- לוח שנה ----------
@@ -713,7 +731,8 @@
     const row = (a, b) => `<div class="modal-list-row"><span>${esc(a)}</span><b dir="auto">${esc(b)}</b></div>`;
     if (cat === "phonebook") return items.map(c => row(c.name || "ללא שם", [c.mobile, c.home, c.work].filter(Boolean).join(" · ") + (c.group ? " · " + c.group : "")));
     if (cat === "callog") return items.map(e => row((Q.CALL_TYPE_HE[e.type] || e.type) + ` (${e.calls.length})`, e.number));
-    if (cat === "memo") return items.map(m => row(m.created ? m.created.slice(0, 10).split("-").reverse().join(".") : "", m.text.split("\n").map(l => l.trim()).find(Boolean) || "(ריק)"));
+    // פתק מוצג במלואו (לא רק השורה הראשונה) — זו המטרה של התצוגה המקדימה
+    if (cat === "memo") return items.map(m => `<div class="modal-list-row qx-memo-preview"><span>${esc(m.created ? m.created.slice(0, 10).split("-").reverse().join(".") : "")}<br><small>${m.text.length} תווים</small></span><b dir="auto" style="white-space:pre-wrap;font-weight:500">${esc(m.text) || "(ריק)"}</b></div>`);
     if (cat === "schedule") return items.slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map(e => row(e.date.split("-").reverse().join(".") + " " + e.time, e.title));
     if (cat === "playlist") return items.map(p => row(p.entries.length + " שירים", p.name.replace(/\.lst$/i, "")));
     if (cat === "udb") return [row("מילים", items.join(", "))];
@@ -766,8 +785,9 @@
   /* "ניהול פתקים" (תיקיית Memo של הכרטיס) מופיע ברגע שנבחר כרטיס, גם בלי גרסה פתוחה; מתחתיו הקטגוריות של הגרסה. */
   function renderSubnav() {
     const nav = document.getElementById("qualix-subnav"); if (!nav) return;
-    const onPage = document.getElementById("app-shell")?.dataset.activePage === "qualix";
-    if (!qx.open) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
+    const page = document.getElementById("app-shell")?.dataset.activePage, onPage = page === "qualix";
+    // הקטגוריות מוצגות רק באזור הגיבוי (גיבוי קיוליקס / ניהול פתקים) — בשאר העמודים הן רק מעמיסות על התפריט
+    if (!qx.open || (page !== "qualix" && page !== "memos")) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
     const counts = tabCounts(qx.open.data), editing = onPage && qx.view === "editor";
     nav.innerHTML = TABS.map(([k, label, icon]) => `<button class="nav-sub-item ${editing && qx.tab === k ? "active" : ""} ${qx.open.dirty.has(DIRTY_KEY[k]) ? "dirty" : ""}" data-qx="tab" data-tab="${k}"><span class="nav-icon">${icon}</span><span class="nav-label">${label}</span><span class="nav-count">${counts[k]}</span></button>`).join("");
     nav.classList.remove("hidden");
@@ -792,7 +812,7 @@
     const cats = has => `<ul class="qx-cats">${Object.keys(CAT_HE).map(k => `<li class="${has(k) ? "on" : "off"}"><i>${has(k) ? "✓" : "✕"}</i>${CAT_HE[k]}</li>`).join("")}</ul>`;
     // מאיפה הגרסה — הכרטיס, השרת או שניהם — כדי שיהיה ברור מה שמור איפה
     const where = (card, cloud) => `<div class="qx-where">${card ? `<span class="qx-badge card">▮ בכרטיס</span>` : ""}${cloud ? `<span class="qx-badge cloud">☁ בשרת</span>` : cloudUser() && qx.cloud.loaded ? `<span class="qx-badge off">לא בשרת</span>` : ""}</div>`;
-    const cards = qx.backups.map(b => { const isCur = cur === b.folder; return `<article class="qx-version ${isCur ? "current" : ""}"><button class="qx-open" data-qx="open" data-folder="${esc(b.folder)}" aria-label="פתיחת ${esc(folderDate(b.folder))}"></button><button class="icon-btn qx-menu" data-qx="version-menu" data-folder="${esc(b.folder)}" aria-label="אפשרויות">⋮</button><h3>${esc(folderDate(b.folder))}</h3><div class="qx-when" dir="ltr">${esc(b.folder)}</div>${where(true, cloudBy.has(b.folder))}${isCur ? `<div class="qx-state">${qx.open.dirty.size ? "● פתוחה, עם שינויים שלא נשמרו" : "● פתוחה לעריכה"}</div>` : ""}${cats(k => b.categories.includes(k))}</article>`; }).join("");
+    const cards = qx.backups.map(b => { const isCur = cur === b.folder; return `<article class="qx-version ${isCur ? "current" : ""}"><button class="qx-open" data-qx="open" data-folder="${esc(b.folder)}" aria-label="פתיחת ${esc(folderDate(b.folder))}"></button><button class="icon-btn qx-menu" data-qx="version-menu" data-folder="${esc(b.folder)}" aria-label="אפשרויות">⋮</button>${versionName(b.folder) ? `<h3 class="qx-vname">${esc(versionName(b.folder))}</h3><div class="qx-when">${esc(folderDate(b.folder))}</div>` : `<h3>${esc(folderDate(b.folder))}</h3>`}<div class="qx-when" dir="ltr">${esc(b.folder)}</div>${where(true, cloudBy.has(b.folder))}${isCur ? `<div class="qx-state">${qx.open.dirty.size ? "● פתוחה, עם שינויים שלא נשמרו" : "● פתוחה לעריכה"}</div>` : ""}${cats(k => b.categories.includes(k))}</article>`; }).join("");
     const remote = cloudOnly.map(v => `<article class="qx-version cloud-only"><button class="icon-btn qx-menu" data-qx="cloud-menu" data-folder="${esc(v.folder)}" aria-label="אפשרויות">⋮</button><h3>${esc(folderDate(v.folder))}</h3><div class="qx-when" dir="ltr">${esc(v.folder)}</div>${where(false, true)}<p class="qx-note" style="margin:0">${v.files.length} קבצים · ${fmtSize(v.files.reduce((n, f) => n + (f.size || 0), 0))} · רק בשרת</p><div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="cloud-download" data-folder="${esc(v.folder)}">⇩ הורדה לכרטיס</button></div></article>`).join("");
     const unsavedNew = qx.open?.isNew ? `<article class="qx-version current"><button class="qx-open" data-qx="resume" aria-label="המשך עריכה"></button><h3>גרסה חדשה</h3><div class="qx-state">● ${qx.open.dirty.size ? "עדיין לא נשמרה" : "ריקה"}</div>${cats(k => hasCategory(qx.open.data, k))}</article>` : "";
     return bar + `<div class="page-intro"><div><h2>הגרסאות</h2><p>כל גיבוי שהטלפון עשה, כל גרסה ששמרתם מכאן, וכל גיבוי ששמור בשרת. לחיצה על גרסה פותחת אותה, והקטגוריות שלה מופיעות בתפריט הצד.</p></div><div class="intro-actions"><button class="btn btn-primary" data-qx="new-version">＋ גרסה חדשה</button></div></div><div class="qx-versions">${unsavedNew}${cards}${remote}</div>`;
@@ -801,7 +821,7 @@
     const o = qx.open;
     const body = { contacts: contactsTab, calls: callsTab, memos: memosTab, calendar: calendarTab, playlists: playlistsTab, dictionary: dictionaryTab, settings: settingsTab }[qx.tab]();
     const tab = TABS.find(t => t[0] === qx.tab) || TABS[0];
-    const head = `<div class="qx-head"><div><h2>${tab[2]} ${tab[1]}</h2><div class="qx-sub">${o.isNew ? "גרסה חדשה — עדיין לא נשמרה. בסיום העריכה לחצו שמירה." : `גרסה ${esc(folderDate(o.folder))} · ${esc(o.folder)}`}</div></div><div class="spacer"></div><span class="qx-note">הקטגוריות בתפריט הצד</span></div>`;
+    const head = `<div class="qx-head"><div><h2>${tab[2]} ${tab[1]}</h2><div class="qx-sub">${o.isNew ? "גרסה חדשה — עדיין לא נשמרה. בסיום העריכה לחצו שמירה." : `גרסה ${esc(versionLabel(o.folder))} · ${esc(o.folder)}`}</div></div><div class="spacer"></div><span class="qx-note">הקטגוריות בתפריט הצד</span></div>`;
     const save = `<div class="qx-save"><button class="btn btn-primary" data-qx="save" ${qx.layout.canSave ? "" : "disabled"}>💾 שמירה כגרסה חדשה</button><span id="qx-save-state" class="${o.dirty.size ? "qx-dirty" : "qx-note"}">${o.dirty.size ? "יש שינויים שלא נשמרו" : "אין שינויים"}</span>${qx.layout.canSave ? "" : `<span class="qx-note">נבחר גיבוי בודד — כדי לשמור בחרו את הכרטיס או את תיקיית ibphone</span>`}</div>`;
     return head + body + save;
   }
@@ -944,7 +964,7 @@
     // הסדר ברשימה הוא הסדר בטלפון: העליון מוצג ראשון. ▲/▼ מזיזים, והסדר נכתב בשמירה דרך זמני הקבצים.
     const list = st.memos.map((x, i) => `<div class="qx-memo-row ${i === st.idx ? "active" : ""}" draggable="true" data-memo-drag="${i}" data-memo-drop="${i}" title="גררו כדי לשנות את הסדר"><button class="qx-memo-pick" data-qx="memo" data-i="${i}"><strong>${esc(x.text.split("\n").map(l => l.trim()).find(Boolean) || "(פתק ריק)")}</strong><span>${esc(when(x))} · ${x.text.length} תווים${x._dirty ? " · לא נשמר" : ""}</span></button><span class="qx-memo-move"><button class="icon-btn" data-qx="memo-up" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="למעלה">▲</button><button class="icon-btn" data-qx="memo-down" data-i="${i}" ${i === st.memos.length - 1 ? "disabled" : ""} aria-label="למטה">▼</button></span></div>`).join("");
     const align = `<div class="qx-align"><div class="qx-align-head"><strong>יישור למרכז מסך הטלפון</strong><span class="qx-note">שורה שארוכה מהמסך נשברת קודם לכמה שורות מאוזנות (כמו שהטלפון היה שובר), ואז כל שורה ממורכזת ברווחים. מירכוז חוזר לא מצטבר.</span></div>
-      <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="center-line">מרכז את השורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="center-all">מרכז את כל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="uncenter-line">בטל מירכוז לשורה</button><button class="btn btn-quiet btn-sm" data-qx="uncenter-all">בטל מירכוז לכל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="calibrate">כיול רוחב</button></div>
+      <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="center-line">מרכז את השורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="center-all">מרכז את כל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="uncenter-line">בטל מירכוז לשורה</button><button class="btn btn-quiet btn-sm" data-qx="uncenter-all">בטל מירכוז לכל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="calibrate">כיול רוחב${qx.widths ? ` (פעיל: ${Object.keys(qx.widths).length} תווים)` : ""}</button></div>
       <div class="qx-align-head"><strong>נקודה וטאב</strong><span class="qx-note">השורה מתחילה בנקודה, טאב ואז המשפט — כמו סעיף ברשימה. לחיצה נוספת על אותה שורה מסירה.</span></div>
       <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="bullet-line">נקודה וטאב לשורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="bullet-all">לכל השורות בפתק</button><button class="btn btn-quiet btn-sm" data-qx="unbullet-all">הסר נקודה וטאב מכל הפתק</button><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="memo-undo" ${m && m._history?.length ? "" : "disabled"}>↶ בטל את הפעולה האחרונה</button></div></div>`;
     const editor = m ? `<div class="qx-editor">${align}<div class="qx-row"><label class="modal-field qx-inline">מגבלת הטלפון<select id="qx-memo-limit"><option value="1000" ${qx.memoLimit === 1000 ? "selected" : ""}>1000 תווים</option><option value="3000" ${qx.memoLimit === 3000 ? "selected" : ""}>3000 תווים</option></select></label><div class="spacer"></div><button class="btn btn-danger btn-sm" data-qx="delete-memo">מחיקה</button></div><textarea id="qx-memo-text" dir="auto">${esc(m.text)}</textarea><div id="qx-memo-counter" class="qx-counter"></div><div class="qx-note">כך זה ייראה על מסך הטלפון (הערכה לפי רוחב האותיות; שורות שהטלפון שובר בעצמו מסומנות בחום):</div><div id="qx-memo-preview" class="qx-phone"></div></div>` : `<div class="empty-box"><div class="empty-icon">✎</div><h3>אין פתקים</h3><p>צרו פתק חדש.</p></div>`;
@@ -1147,5 +1167,5 @@
 
   // connect מאפשר לבדיקות דפדפן להזרים מתאם בזיכרון במקום כרטיס אמיתי
   // לחיצה על "גיבוי קיוליקס" בתפריט מציגה את הגרסאות (כמו "הרשימות שלי"); מעבר מקטגוריה בתפריט שומר על העורך.
-  window.ANKAL_QUALIX_UI = { show: () => { if (!qx.keepView) qx.view = "versions"; qx.keepView = false; render(); if (!qx.adapter && window.electronAPI?.qualix) detectCards(true); if (qx.adapter && cloudUser() && !qx.cloud.loaded && !qx.cloud.uploading) syncCloud(); }, showMemos, state: qx, connect, render, importList };
+  window.ANKAL_QUALIX_UI = { show: () => { if (!qx.keepView) qx.view = "versions"; qx.keepView = false; render(); if (!qx.adapter && window.electronAPI?.qualix) detectCards(true); if (qx.adapter && cloudUser() && !qx.cloud.loaded && !qx.cloud.uploading) syncCloud(); }, showMemos, pageChanged: renderSubnav, state: qx, connect, render, importList };
 })();

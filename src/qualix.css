@@ -30,6 +30,8 @@ html[data-theme="light"] .nav-sub-item.active{color:hsl(var(--page) 50% 32%)}
 .qx-version.current{border-color:hsl(var(--page) 60% 55%);box-shadow:0 0 0 2px hsl(var(--page) 60% 55% / .25)}
 .qx-version h3{font:600 17px var(--display);margin:0;direction:ltr;text-align:right;padding-left:34px}
 .qx-version .qx-when{font-size:12px;color:var(--muted)}
+.qx-version h3.qx-vname{direction:rtl;font-size:16px}
+.qx-memo-preview b{display:block;line-height:1.5;font-size:13px}
 .qx-version .qx-open{position:absolute;inset:0;border:0;background:transparent;border-radius:inherit;cursor:pointer;z-index:1}
 .qx-version .qx-menu{position:absolute;top:12px;left:12px;z-index:2}
 .qx-version:hover{cursor:pointer;border-color:hsl(var(--page) 60% 55% / .6)}

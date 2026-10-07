@@ -337,6 +337,7 @@ server.listen(PORT, async () => {
   await step("יצירת הרשימה", click('[data-modal-choice="go"]'));
   await wait(500);
   await step("עברנו לעמוד אנשי קשר", `document.getElementById("page-title").textContent`, "אנשי קשר");
+  await step("מחוץ לעמוד הגיבוי קטגוריות הגיבוי לא מעמיסות על התפריט", `document.getElementById("qualix-subnav").classList.contains("hidden") ? "hidden" : "shown"`, "hidden");
   await step("ארבעה אנשי קשר ברשימה", `document.getElementById("nav-contact-count").textContent`, "4");
   await step("הקבוצה נשמרה ברשימה (3 עם קבוצה)", `JSON.stringify(JSON.parse(localStorage.getItem("ankal.v2.workspace") || "{}").lists?.map(l => l.contacts.filter(c => c.group).length))`, v => /3/.test(v));
   await step("עריכת איש קשר מציגה שדה קבוצה", `(() => { document.querySelector("[data-open-contact]").click(); return document.getElementById("contact-group") ? document.getElementById("contact-group").value : "אין שדה"; })()`, v => v !== "אין שדה");

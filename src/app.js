@@ -172,6 +172,7 @@
     if (page === "admin") loadAdmin();
     if (page === "qualix") window.ANKAL_QUALIX_UI?.show();
     if (page === "memos") window.ANKAL_QUALIX_UI?.showMemos();
+    window.ANKAL_QUALIX_UI?.pageChanged?.(); // קטגוריות הגיבוי בתפריט הצד מוצגות רק בעמוד הגיבוי
     renderAll();
   }
   const ENTRY_CHOICE_KEY = "ankal.entryChoice";
