@@ -339,7 +339,7 @@
        בכל לחיצה, וזה כבר לא קורה. כרטיסים מחוץ למסך מקבלים content-visibility
        ב-CSS, ולכן הדפדפן מדלג על הפריסה והציור שלהם. */
     const shown = all;
-    grid.innerHTML = shown.map(c => {
+    const cardHtml = c => {
       const phones = PHONE_FIELDS.filter(f => c[f]).map(f => `<div class="contact-line ${f}"><b>${LABELS[f]}</b><span dir="ltr">${esc(c[f])}</span></div>`).join("");
       const name = c.name || "ללא שם";
       // לחיצה על הכרטיס מסמנת; העיפרון פותח עריכה. שתי הפעולות הנפוצות,
@@ -353,7 +353,19 @@
         + (c.note ? `<div class="contact-line note-line"><b>הערה</b><span class="contact-note">${esc(c.note)}</span></div>` : "")
         + (c.group || c.ringtone ? `<div class="contact-line note-line"><b>קיוליקס</b><span class="contact-note">${esc([c.group, c.ringtone ? "♪ " + c.ringtone.split("\\").pop() : ""].filter(Boolean).join(" · "))}</span></div>` : "")
         + `<div class="card-actions"><button class="icon-btn" data-open-contact="${esc(c.id)}" aria-label="עריכה">✎</button></div></article>`;
-    }).join("");
+    };
+    /* בניית ה-HTML עצמה מהירה (1,600 כרטיסים ≈ 150 מילישניות במדידה), אבל אצל חלק מהמשתמשים תוספים
+       בדפדפן (סינון, חסימת פרסומות) סורקים כל רכיב חדש, ואלף כרטיסים בבת אחת תקעו את הדף לשניות.
+       לכן המסך מקבל מיד את 250 הראשונים, והשאר מתווספים בנתחים ברקע; בנייה חדשה מבטלת נתחים ממתינים. */
+    const CHUNK = 250, token = (state.renderToken = (state.renderToken || 0) + 1);
+    grid.innerHTML = shown.slice(0, CHUNK).map(cardHtml).join("");
+    let next = CHUNK;
+    const appendMore = () => {
+      if (token !== state.renderToken || !grid.isConnected || next >= shown.length) return;
+      grid.insertAdjacentHTML("beforeend", shown.slice(next, next + CHUNK).map(cardHtml).join(""));
+      next += CHUNK; setTimeout(appendMore, 0);
+    };
+    if (shown.length > CHUNK) setTimeout(appendMore, 0);
     document.getElementById("contacts-empty").classList.toggle("hidden", !!shown.length || !currentList());
     updateSelectionUi();
   }
