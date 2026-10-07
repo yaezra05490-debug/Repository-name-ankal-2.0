@@ -68,6 +68,32 @@ test("יומן שיחות: 100 כניסות, סוגים, סדר לפי השיח�
   assert.deepEqual(back.entries[2].calls, [{ time: 100, duration: 49 }, { time: 200, duration: 7 }]);
   const many = Array.from({ length: 130 }, (_, i) => ({ number: "05000000" + String(i).padStart(2, "0"), type: "incoming", calls: [{ time: i, duration: 1 }] }));
   assert.equal(Q.parseCallog(Q.buildCallog(many)).entries.length, 100, "לא יותר ממאה כניסות");
+  // המונה בכותרת = הכניסות החיות, לא 100: הטלפון משחזר "count" כניסות, וחריץ ריק הפך אצלו ל"לא נענתה" בלי מספר
+  const partial = Q.buildCallog(entries), ib = Q.parseIb(partial);
+  assert.equal(ib.count, 4, "count בכותרת"); assert.equal(ib.records[0][12] | (ib.records[0][13] << 8), 4, "המונה בתת-הכותרת");
+  assert.equal(ib.records[0].length, 16 + 100 * 136, "אורך הרשומה נשאר כמו בטלפון");
+  const empty = Q.parseIb(Q.buildCallog([])); assert.equal(empty.count, 0, "יומן ריק = אפס כניסות");
+  assert.equal(Q.parseIb(Q.buildCallog(many)).count, 100);
+});
+
+test("שבירת שורות ומירכוז: פסקה ארוכה נשברת מאוזן, ותו מילוי לבחירה", () => {
+  const long = Array.from({ length: 14 }, (_, i) => ["שלום", "עולם", "גדול", "ורחב"][i % 4]).join(" ");
+  assert.ok(Q.textWidth(long) > 2 * Q.LINE_UNITS, "הפסקה רחבה מכמה מסכים");
+  const greedy = Q.wrapParagraph(long); assert.ok(greedy.length >= 3); assert.ok(greedy.slice(0, -1).every(l => l.wrap) && !greedy[greedy.length - 1].wrap);
+  const lines = Q.balancedWrap(long);
+  assert.equal(lines.length, greedy.length, "אותו מספר שורות כמו שהטלפון שובר");
+  for (const l of lines) assert.ok(Q.textWidth(l) <= Q.LINE_UNITS, "כל שורה נכנסת במסך");
+  const widths = lines.map(l => Q.textWidth(l)); assert.ok(Math.max(...widths) - Math.min(...widths) < 320, "השורות קרובות ברוחבן: " + widths.join("/"));
+  assert.equal(lines.join(" "), long, "שום מילה לא אבדה");
+  const centered = Q.centerText(long); const cl = centered.split("\n");
+  assert.equal(cl.length, lines.length); for (const l of cl) { assert.ok(l.startsWith(" "), "ריפוד ברווח"); assert.ok(Q.textWidth(l) <= Q.LINE_UNITS); }
+  assert.equal(Q.centerText(centered), centered, "מירכוז חוזר לא מצטבר");
+  assert.equal(Q.centerText("א\n\nב").split("\n").length, 3, "שורה ריקה נשמרת");
+  const dots = Q.centerLine("שלום", null, { fill: "dot" }); assert.ok(/^\.+שלום\.+$/.test(dots), dots); assert.ok(Q.textWidth(dots) <= Q.LINE_UNITS && Q.textWidth(dots) > 880);
+  assert.equal(Q.centerLine(dots, null, { fill: "dot" }), dots, "מירכוז חוזר בנקודות לא מצטבר");
+  const tab = Q.centerLine("שלום", null, { fill: "tab" }); assert.ok(tab.startsWith("\t") && tab.endsWith("שלום"), "טאב רק בהתחלה");
+  assert.ok(Q.centerLine("שלום.", null, { fill: "space" }).endsWith("שלום."), "נקודה בודדת בסוף משפט נשארת");
+  assert.deepEqual(Q.wrapLines("א\nב").map(l => l.t), ["א", "ב"]);
 });
 
 test("יומן פגישות: כותרת, תאריך, שעה ותזכורת", () => {

@@ -43,7 +43,11 @@ function doPost(e) {
       error: error_,
       adminOverview: adminOverview_,
       adminToggleBlock: adminToggleBlock_,
-      adminUserLists: adminUserLists_
+      adminUserLists: adminUserLists_,
+      qualixList: qualixList_,
+      qualixPut: qualixPut_,
+      qualixGet: qualixGet_,
+      qualixDelete: qualixDelete_
     };
     // בדיקת הפעולה לפני יצירת המשתמש: בקשה עם פעולה לא מוכרת לא מוסיפה שורה לגיליון.
     if (!handlers[req.action]) {
@@ -414,6 +418,90 @@ function adminUserLists_(user, payload) {
     } catch (_) {}
   }
   return { lists: lists };
+}
+
+/* ---------- גיבוי קיוליקס בדרייב ----------
+   כל גרסה מהכרטיס נשמרת כתיקייה user_<sub>/qualix/<YYYY-MM-DD_HH-MM-SS>/ עם הקבצים כמו שהם
+   (phonebook.ib, callog.ib, הפתקים, …). קובץ מגיע ב-base64, בדרך כלל דחוס ב-gzip — ספר טלפונים
+   של אלפי אנשי קשר הוא כמה מגה-בייט של אפסים ברובו, והדחיסה מכניסה אותו מתחת למגבלת הבקשה. */
+var QUALIX_FOLDER = "qualix";
+var QUALIX_NAME_RE = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/;
+var QUALIX_MAX_FILE = 25000000;
+
+function qualixFolderName_(value) {
+  var name = String(value || "");
+  if (!QUALIX_NAME_RE.test(name)) throw apiError_("INVALID_BACKUP", "שם הגיבוי אינו תקין.");
+  return name;
+}
+function qualixFileName_(value) {
+  var name = String(value || "").slice(0, 150);
+  if (!name || /[\\\/\x00-\x1f]/.test(name) || name === "." || name === "..") throw apiError_("INVALID_FILE", "שם הקובץ אינו תקין.");
+  return name;
+}
+function qualixRoot_(sub, create) {
+  var user = userFolder_(sub, create);
+  if (!user) return null;
+  var folders = user.getFoldersByName(QUALIX_FOLDER);
+  return folders.hasNext() ? folders.next() : (create ? user.createFolder(QUALIX_FOLDER) : null);
+}
+function qualixVersionFolder_(sub, folderName, create) {
+  var root = qualixRoot_(sub, create);
+  if (!root) return null;
+  var folders = root.getFoldersByName(folderName);
+  return folders.hasNext() ? folders.next() : (create ? root.createFolder(folderName) : null);
+}
+
+function qualixList_(user) {
+  var root = qualixRoot_(user.sub, false);
+  var versions = [];
+  if (!root) return { versions: versions };
+  var folders = root.getFolders();
+  while (folders.hasNext()) {
+    var folder = folders.next();
+    if (!QUALIX_NAME_RE.test(folder.getName())) continue;
+    var files = folder.getFiles();
+    var list = [];
+    while (files.hasNext()) {
+      var file = files.next();
+      list.push({ name: file.getName(), size: file.getSize() });
+    }
+    versions.push({ folder: folder.getName(), files: list, updatedAt: folder.getLastUpdated().toISOString() });
+  }
+  versions.sort(function (a, b) { return String(b.folder).localeCompare(String(a.folder)); });
+  return { versions: versions };
+}
+
+function qualixPut_(user, payload) {
+  var folderName = qualixFolderName_(payload.folder);
+  var fileName = qualixFileName_(payload.name);
+  var utilitiesApp = getAppService(["U", "t", "i", "l", "i", "t", "i", "e", "s"]);
+  var bytes = utilitiesApp.base64Decode(String(payload.data || ""));
+  if (payload.gzip) bytes = utilitiesApp.ungzip(utilitiesApp.newBlob(bytes, "application/x-gzip", fileName + ".gz")).getBytes();
+  if (bytes.length > QUALIX_MAX_FILE) throw apiError_("FILE_TOO_LARGE", "הקובץ גדול מדי לשמירה בשרת.");
+  var folder = qualixVersionFolder_(user.sub, folderName, true);
+  var existing = folder.getFilesByName(fileName);
+  while (existing.hasNext()) existing.next().setTrashed(true);
+  var file = folder.createFile(utilitiesApp.newBlob(bytes, "application/octet-stream", fileName));
+  return { saved: true, size: file.getSize() };
+}
+
+function qualixGet_(user, payload) {
+  var folderName = qualixFolderName_(payload.folder);
+  var fileName = qualixFileName_(payload.name);
+  var folder = qualixVersionFolder_(user.sub, folderName, false);
+  if (!folder) throw apiError_("NOT_FOUND", "הגיבוי לא נמצא בשרת.");
+  var files = folder.getFilesByName(fileName);
+  if (!files.hasNext()) throw apiError_("NOT_FOUND", "הקובץ לא נמצא בשרת.");
+  var utilitiesApp = getAppService(["U", "t", "i", "l", "i", "t", "i", "e", "s"]);
+  var bytes = files.next().getBlob().getBytes();
+  var packed = utilitiesApp.gzip(utilitiesApp.newBlob(bytes, "application/octet-stream", fileName)).getBytes();
+  return { name: fileName, size: bytes.length, gzip: true, data: utilitiesApp.base64Encode(packed) };
+}
+
+function qualixDelete_(user, payload) {
+  var folder = qualixVersionFolder_(user.sub, qualixFolderName_(payload.folder), false);
+  if (folder) folder.setTrashed(true);
+  return { deleted: true };
 }
 
 function runDailyMaintenance() {

@@ -223,8 +223,12 @@ const HANDLERS = { session, listLists, saveList, deleteList, deleteAccount, log,
 export const ACTIONS = Object.keys(HANDLERS);
 
 /* נקודת הכניסה: אותו מבנה תשובה כמו doPost בסקריפט. תקלת תשתית (e.infra) נזרקת החוצה כדי שהמנתב יפול לסקריפט. */
+/* קובצי גיבוי קיוליקס נשמרים בדרייב, ולחשבון השירות אין מכסת אחסון ליצירת קבצים — הפעולות האלה
+   שייכות לסקריפט, ונזרקות למנתב עוד לפני אימות הטוקן כדי לא לשלם פעמיים. */
+const SCRIPT_ONLY = new Set(["qualixList", "qualixPut", "qualixGet", "qualixDelete"]);
 export async function handle(req) {
   try {
+    if (SCRIPT_ONLY.has(req.action)) throw forwardToScript("QUALIX_FILES");
     if (!HANDLERS[req.action]) throw apiError("UNKNOWN_ACTION", "הפעולה אינה מוכרת.");
     if (req.action === "ping") return { ok: true, data: ping() };
     const identity = await verifyGoogleToken(req.idToken);

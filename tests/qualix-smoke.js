@@ -85,7 +85,8 @@ server.listen(PORT, async () => {
   await step("סגירת התפריט", click('[data-modal-choice="cancel"]'));
   await step("לחיצה על הכרטיס עצמו פותחת", click('.qx-version .qx-open'));
   await wait(500);
-  await step("הקטגוריות מופיעות בתפריט הצד", `document.querySelectorAll("#qualix-subnav .nav-sub-item").length`, 7);
+  await step("הקטגוריות מופיעות בתפריט הצד", `document.querySelectorAll('#qualix-subnav [data-qx="tab"]').length`, 7);
+  await step("ו'ניהול פתקים' של הכרטיס מעליהן", `document.querySelector('#qualix-subnav [data-qx="direct-memos"] .nav-label')?.textContent`, "ניהול פתקים");
   await step("אנשי קשר פעיל בתפריט הצד", `document.querySelector("#qualix-subnav .nav-sub-item.active")?.textContent.trim()`, v => /אנשי קשר/.test(v));
   await step("כותרת העמוד לפי הקטגוריה", `document.getElementById("page-title").textContent`, "אנשי קשר");
   await step("שלושה כרטיסי אנשי קשר", `document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length`, 3);
@@ -104,7 +105,7 @@ server.listen(PORT, async () => {
   await step("סימון שינויים", `document.querySelector(".qx-save .qx-dirty")?.textContent || "אין"`, v => /שינויים/.test(v));
   await step("לחיצה על הכותרת בתפריט מציגה את הגרסאות", `(() => { document.querySelector('[data-page="qualix"]').click(); return document.querySelector("#qualix-root .qx-versions") ? "versions" : "editor"; })()`, "versions");
   await step("הגרסה הפתוחה מסומנת עם שינויים", `document.querySelector("#qualix-root .qx-version.current .qx-state")?.textContent`, v => /שינויים/.test(v));
-  await step("הקטגוריות עדיין בתפריט הצד", `document.querySelectorAll("#qualix-subnav .nav-sub-item").length`, 7);
+  await step("הקטגוריות עדיין בתפריט הצד", `document.querySelectorAll('#qualix-subnav [data-qx="tab"]').length`, 7);
   await step("לחיצה על קטגוריה חוזרת לעורך", `(() => { document.querySelector('#qualix-subnav [data-tab="contacts"]').click(); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
   await step("חיפוש מסנן לפי שם", `(() => { const el = document.getElementById("qx-search"); el.value = "שרה"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
   await step("חיפוש מסנן לפי ספרות", `(() => { const el = document.getElementById("qx-search"); el.value = "050-111"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
@@ -148,6 +149,35 @@ server.listen(PORT, async () => {
   await step("מסגרת מרובעת: שורת הגל ושורת הקווים באותו רוחב (עד 3%)", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = "~".repeat(17) + "\\n|" + " ".repeat(28) + "|\\n" + "'".repeat(32) + "\\nשלום 304512 עולם"; ta.dispatchEvent(new Event("input", { bubbles: true })); const w = [...document.querySelectorAll("#qx-memo-preview > div")].map(d => [...d.querySelectorAll("i")].reduce((n, i) => n + parseFloat(i.style.width), 0)); const max = Math.max(w[0], w[1], w[2]), min = Math.min(w[0], w[1], w[2]); return (max - min) / max < 0.03 ? "ok" : "diff " + w.map(x => x.toFixed(0)).join("/"); })()`, "ok");
   await step("ספרות בתוך שורה עברית נשארות משמאל לימין", `[...document.querySelectorAll("#qx-memo-preview > div")][3].querySelector('.qx-run[dir="ltr"]')?.textContent`, "304512");
   await step("שני פתקים ברשימה", `document.querySelectorAll('#qualix-root .qx-list [data-qx="memo"]').length`, 2);
+  await step("אזהרת השחזור של הפתקים מוצגת בגרסה", `document.querySelector("#qualix-root .qx-memo-note")?.textContent`, v => /שם הקובץ/.test(v));
+  await step("בורר תו המילוי קיים", `[...document.querySelectorAll("#qx-memo-fill option")].map(o => o.value).join(",")`, "space,dot,tab");
+  await step("מירכוז בנקודות: שורה ארוכה נשברת ומרופדת משני הצדדים", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = Array.from({ length: 12 }, () => "שלום עולם").join(" "); ta.dispatchEvent(new Event("input", { bubbles: true })); const sel = document.getElementById("qx-memo-fill"); sel.value = "dot"; sel.dispatchEvent(new Event("change", { bubbles: true })); document.querySelector('[data-qx="center-all"]').click(); const lines = document.getElementById("qx-memo-text").value.split("\\n"); return lines.length + " " + (lines.every(l => /^\\.+שלום.*עולם\\.+$/.test(l)) ? "dots-ok" : "bad:" + lines[0]); })()`, v => /^\d+ dots-ok$/.test(v) && Number(v.split(" ")[0]) >= 3);
+  await step("חזרה למילוי ברווחים", `(() => { const sel = document.getElementById("qx-memo-fill"); sel.value = "space"; sel.dispatchEvent(new Event("change", { bubbles: true })); return sel.value; })()`, "space");
+
+  // ניהול פתקים ישיר: תיקיית Memo של הכרטיס — בלי גרסה, בלי שחזור
+  await step("בלי כניסה: שורת השרת מציעה כניסה עם Google", `(() => { document.querySelector('[data-page="qualix"]').click(); return document.querySelector("#qualix-root .qx-cloud.off") ? "off" : "אין"; })()`, "off");
+  await step("הגרסה מסומנת 'בכרטיס'", `document.querySelector("#qualix-root .qx-version .qx-badge.card")?.textContent`, v => /בכרטיס/.test(v));
+  await step("כניסה לניהול פתקים", click('[data-qx="direct-memos"]'));
+  await wait(400);
+  await step("כותרת העמוד", `document.getElementById("page-title").textContent`, "ניהול פתקים");
+  await step("הפתק מתיקיית Memo מוצג", `document.getElementById("qx-memo-text")?.value`, "פתק ראשון\nשורה שנייה");
+  await step("עריכת הפתק", fill("qx-memo-text", "פתק ראשון\nנערך במחשב"), "ok");
+  await step("מסומן כלא שמור", `document.getElementById("qx-save-state")?.className`, "qx-dirty");
+  await step("פתק חדש", click('[data-qx="new-memo"]'));
+  await wait(200);
+  await step("טקסט לפתק החדש", fill("qx-memo-text", "פתק חדש מהמחשב"), "ok");
+  await step("שמירה לטלפון", click('[data-qx="direct-save"]'));
+  await wait(500);
+  await step("שני קבצים בתיקיית Memo, התוכן נכון", `(() => { const Q = window.ANKAL_QUALIX; const keys = [...window.__mem.keys()].filter(k => k.startsWith("Memo/")); const texts = keys.map(k => Q.parseMemo(window.__mem.get(k))).sort(); return keys.length + " | " + texts.join(" / "); })()`, "2 | פתק חדש מהמחשב / פתק ראשון\nנערך במחשב");
+  await step("אין שינויים אחרי השמירה", `document.getElementById("qx-save-state")?.className`, "qx-note");
+  await step("מחיקת הפתק הנוכחי", click('[data-qx="delete-memo"]'));
+  await wait(200);
+  await step("אישור המחיקה", click('[data-modal-choice="yes"]'));
+  await wait(200);
+  await step("שמירת המחיקה לטלפון", click('[data-qx="direct-save"]'));
+  await wait(400);
+  await step("נשאר קובץ אחד בתיקיית Memo", `[...window.__mem.keys()].filter(k => k.startsWith("Memo/")).length`, 1);
+  await step("קטגוריות הגרסה עדיין בתפריט הצד", `document.querySelectorAll('#qualix-subnav [data-qx="tab"]').length`, 7);
 
   await step("לשונית לוח שנה", click('[data-qx="tab"][data-tab="calendar"]'));
   await wait(200);

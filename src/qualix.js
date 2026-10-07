@@ -45,7 +45,8 @@
     let pos = HEADER;
     while (pos + 16 <= bytes.length) {
       const size = view.getUint32(pos, true), items = view.getUint32(pos + 4, true);
-      if (!size || !items || !same(bytes.subarray(pos + 8, pos + 16), FF8) || pos + 16 + size > bytes.length) break;
+      // items יכול להיות 0 — יומן שיחות ריק הוא רשומה אחת בלי אף כניסה
+      if (!size || !same(bytes.subarray(pos + 8, pos + 16), FF8) || pos + 16 + size > bytes.length) break;
       out.records.push(bytes.slice(pos + 16, pos + 16 + size));
       pos += 16 + size + 8;
     }
@@ -169,12 +170,16 @@
     rec[0x7A] = calls.length; view.setUint32(0x7C, typeof e.typeCode === "number" ? e.typeCode : (Object.keys(CALL_TYPES).find(k => CALL_TYPES[k] === e.type) | 0), true);
     return rec;
   }
-  /* הטלפון מציג את הכניסות לפי השיחה האחרונה בכל אחת, מהחדשה לישנה; כניסה שלא השתנתה נכתבת כפי שנקראה. */
+  /* הטלפון מציג את הכניסות לפי השיחה האחרונה בכל אחת, מהחדשה לישנה; כניסה שלא השתנתה נכתבת כפי שנקראה.
+     מספר הכניסות בכותרת (ובתת-הכותרת, בית 12) הוא מספר הכניסות החיות ולא 100: הטלפון משחזר בדיוק
+     "count" כניסות, וכשכתבנו 100 על יומן חלקי הוא הציג את החריצים הריקים כ"לא נענתה" בלי מספר.
+     שני הגיבויים האמיתיים שפוענחו היו מלאים (100), ולכן שם count=100 ואורך הרשומה נשארים זהים. */
   function buildCallog(entries, options = {}) {
     const live = entries.filter(e => e.calls && e.calls.length).map(e => ({ e, latest: Math.max(...e.calls.map(c => c.time)) })).sort((a, b) => b.latest - a.latest).slice(0, CALLOG_ENTRIES);
     const rec = new Uint8Array(16 + CALLOG_ENTRIES * CALLOG_ENTRY); rec.set(options.subHeader || CALLOG_SUBHEADER, 0);
+    rec[12] = live.length & 255; rec[13] = live.length >> 8;
     live.forEach(({ e }, i) => rec.set(e._raw && !e._dirty ? e._raw : buildCallogEntry(e), 16 + i * CALLOG_ENTRY));
-    return buildIb({ name: "callog.ib", type: TYPES.callog, records: [rec], count: CALLOG_ENTRIES });
+    return buildIb({ name: "callog.ib", type: TYPES.callog, records: [rec], count: live.length });
   }
 
   /* ---------- יומן פגישות: רשומות 748 ---------- */
@@ -268,12 +273,82 @@
   /* ---------- רוחב טקסט על מסך הטלפון (פונט פרופורציונלי). רוחב שורה = 1000 יחידות.
      כויל מפתקים אמיתיים: 14 ש / 38 ו / 17 ~ / 32 ' לשורה; השאר הוערך לפי יחסי פונט ערבי-עברי רגילים. ---------- */
   // ערכים מכוילים (עיגול כלפי מטה, כדי ששורה שנכנסת בטלפון תיכנס גם כאן): 14 ש, 38 ו, 17 ~, 32 ', |+28 רווחים+| לשורה
-  const WIDTHS = { " ": 33, "ו": 26, "י": 26, "ז": 34, "ן": 26, "'": 31, "|": 26, "!": 28, ".": 28, ",": 28, ":": 28, ";": 28, "~": 58, "-": 36, "(": 36, ")": 36, '"': 38, "ש": 71, "ם": 62, "מ": 65, "ת": 62, "א": 61, "ב": 60, "ג": 46, "ד": 53, "ה": 61, "ח": 61, "ט": 61, "ך": 53, "כ": 53, "ל": 53, "נ": 44, "ס": 61, "ע": 61, "ף": 53, "פ": 61, "ץ": 55, "צ": 61, "ק": 61, "ר": 53 };
+  // רוחב הטאב בטלפון לא כויל — הערכה של ארבעה רווחים. אפשר לתקן דרך כיול (שורה של טאבים).
+  const WIDTHS = { " ": 33, "\t": 132, "ו": 26, "י": 26, "ז": 34, "ן": 26, "'": 31, "|": 26, "!": 28, ".": 28, ",": 28, ":": 28, ";": 28, "~": 58, "-": 36, "(": 36, ")": 36, '"': 38, "ש": 71, "ם": 62, "מ": 65, "ת": 62, "א": 61, "ב": 60, "ג": 46, "ד": 53, "ה": 61, "ח": 61, "ט": 61, "ך": 53, "כ": 53, "ל": 53, "נ": 44, "ס": 61, "ע": 61, "ף": 53, "פ": 61, "ץ": 55, "צ": 61, "ק": 61, "ר": 53 };
   const DEFAULT_WIDTH = 60, LINE_UNITS = 1000;
   function charWidth(ch, table) { const t = table || WIDTHS; if (t[ch] != null) return t[ch]; const c = ch.charCodeAt(0); if (c >= 0x30 && c <= 0x39) return 60; if (/[iljtfI1.,:;'!|]/.test(ch)) return 30; if (/[A-Z]/.test(ch)) return 72; if (/[a-z]/.test(ch)) return 58; return DEFAULT_WIDTH; }
   function textWidth(text, table) { let w = 0; for (const ch of String(text || "")) w += charWidth(ch, table); return w; }
-  function centerLine(line, table) { const text = String(line || "").trim(); const free = LINE_UNITS - textWidth(text, table); if (free <= 0) return text; return " ".repeat(Math.floor(free / 2 / charWidth(" ", table))) + text; }
-  function centerText(text, table) { return String(text || "").split("\n").map(l => centerLine(l, table)).join("\n"); }
+  /* ---------- שבירת שורות כמו הטלפון ----------
+     פסקה שרחבה מהמסך נשברת ברווח האחרון שנכנס, ובלי רווח — באמצע המילה. רווחים בסוף הפסקה
+     לא תופסים מקום על המסך ולכן מושמטים. מחזיר [{ t, wrap }] — wrap=true לשורה שהטלפון שבר בעצמו. */
+  function wrapParagraph(para, table) {
+    const text = String(para || "").replace(/\s+$/, ""), lines = [];
+    let line = "", w = 0, lastSpace = -1;
+    for (const ch of text) {
+      const cw = charWidth(ch, table);
+      if (w + cw > LINE_UNITS && line) {
+        if (lastSpace > 0) { lines.push({ t: line.slice(0, lastSpace), wrap: true }); line = line.slice(lastSpace + 1); w = textWidth(line, table); lastSpace = -1; }
+        else { lines.push({ t: line, wrap: true }); line = ""; w = 0; }
+      }
+      line += ch; w += cw; if (ch === " ") lastSpace = line.length - 1;
+    }
+    lines.push({ t: line, wrap: false });
+    return lines;
+  }
+  function wrapLines(text, table) { const out = []; for (const para of String(text || "").split("\n")) out.push(...wrapParagraph(para, table)); return out; }
+
+  /* שבירה מאוזנת למירכוז: אותו מספר שורות כמו שהטלפון היה שובר, אבל המילים מתחלקות כך שהשורות
+     קרובות ברוחבן. בלי זה פסקה ממורכזת נראית כשורה מלאה ושארית של מילה אחת מתחתיה. */
+  function balancedWrap(para, table) {
+    const text = String(para || "").replace(/[ \t]+/g, " ").trim(); if (!text) return [""];
+    const greedy = wrapParagraph(text, table).map(l => l.t); if (greedy.length < 2) return greedy;
+    const words = text.split(" "), space = charWidth(" ", table), W = words.map(w => textWidth(w, table)), m = words.length;
+    if (W.some(w => w > LINE_UNITS)) return greedy; // מילה ארוכה ממסך — הטלפון שובר באמצעה, ואין מה לאזן
+    /* תכנות דינמי: בדיוק n שורות (כמו החמדני, כלומר המינימום האפשרי), כל שורה נכנסת במסך, ומזעור סכום
+       ריבועי הסטייה מהרוחב הממוצע. מילוי חמדני עד גבול לא מספיק — הוא תמיד ממלא את השורות הראשונות
+       ומשאיר את השארית בסוף (4-4-4-2 במקום 4-4-3-3). */
+    const n = greedy.length, target = (W.reduce((a, b) => a + b, 0) + space * (m - 1)) / n;
+    let prev = new Array(m + 1).fill(Infinity); prev[0] = 0;
+    const back = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(-1));
+    for (let k = 1; k <= n; k++) {
+      const cur = new Array(m + 1).fill(Infinity);
+      for (let j = 1; j <= m; j++) {
+        let w = 0;
+        for (let i = j - 1; i >= 0; i--) {
+          w += W[i] + (i < j - 1 ? space : 0); if (w > LINE_UNITS) break;
+          if (prev[i] === Infinity) continue;
+          const cost = prev[i] + (w - target) * (w - target);
+          if (cost < cur[j]) { cur[j] = cost; back[k][j] = i; }
+        }
+      }
+      prev = cur;
+    }
+    if (prev[m] === Infinity) return greedy;
+    const lines = []; let j = m;
+    for (let k = n; k >= 1; k--) { const i = back[k][j]; lines.unshift(words.slice(i, j).join(" ")); j = i; }
+    return lines;
+  }
+
+  /* ---------- מירכוז ----------
+     תו המילוי: רווח או טאב אינם נראים ולכן מרפדים רק את תחילת השורה (סוף השורה לא תופס מקום על המסך);
+     נקודה נראית, ולכן מרופדת משני הצדדים — הטקסט יושב בין שני קווים מנוקדים שווים. */
+  const FILLS = { space: " ", dot: ".", tab: "\t" };
+  function fillChar(options) { const f = options && options.fill; if (f && FILLS[f]) return FILLS[f]; return typeof f === "string" && f.length === 1 ? f : " "; }
+  // שורה שכבר מורכזת מנוקה מהריפוד הקודם לפני מירכוז חוזר; נקודה בודדת בסוף משפט נשארת
+  function stripPadding(line, fill) { let t = String(line || "").trim(); if (fill.trim()) { const f = fill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); t = t.replace(new RegExp(`^(?:${f}){2,}\\s*|\\s*(?:${f}){2,}$`, "g"), "").trim(); } return t; }
+  function centerLine(line, table, options) {
+    const fill = fillChar(options), text = stripPadding(line, fill); if (!text) return "";
+    const free = LINE_UNITS - textWidth(text, table); if (free <= 0) return text;
+    const n = Math.floor(free / 2 / charWidth(fill, table));
+    return fill.repeat(n) + text + (fill.trim() ? fill.repeat(n) : "");
+  }
+  /* פסקה שרחבה מהמסך נשברת קודם לשורות מאוזנות ורק אז ממורכזת — אחרת הטלפון שובר אותה בעצמו
+     והריפוד שנוסף בתחילתה דוחף את נקודת השבירה והשורות יוצאות עקומות. */
+  function centerText(text, table, options) {
+    const fill = fillChar(options), out = [];
+    for (const para of String(text || "").split("\n")) { const clean = stripPadding(para, fill); if (!clean) { out.push(""); continue; } for (const line of balancedWrap(clean, table)) out.push(centerLine(line, table, options)); }
+    return out.join("\n");
+  }
   // כיול: פתק שבו כל שורה היא תו אחד שחוזר עד שהשורה מתמלאה → רוחב התו = 1000 / מספר החזרות
   // שורה של תו אחד שחוזר עד שהשורה מלאה: רוחב התו = 1000 / מספר החזרות, מעוגל כלפי מטה כדי שהשורה תיכנס
   function calibrateFromMemo(text, table) { const out = Object.assign({}, table || WIDTHS); for (const line of String(text || "").split("\n")) { const t = line.replace(/\s+$/, ""); if (t.length >= 3 && [...t].every(ch => ch === t[0])) out[t[0]] = Math.floor(LINE_UNITS / t.length); } return out; }
@@ -354,7 +429,7 @@
     return out;
   }
 
-  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, centerLine, centerText, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
+  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
   root.ANKAL_QUALIX = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
