@@ -345,6 +345,8 @@
     const n = Math.floor(free / 2 / charWidth(fill, table));
     return fill.repeat(n) + text + (fill.trim() ? fill.repeat(n) : "");
   }
+  /* ביטול מירכוז: מוריד את ריפוד הרווחים/הטאבים מתחילת השורה ומסופה. שורות שנשברו במירכוז נשארות נפרדות. */
+  function uncenterText(text) { return String(text || "").split("\n").map(l => l.replace(/^[ \t]+|[ \t]+$/g, "")).join("\n"); }
   /* פסקה שרחבה מהמסך נשברת קודם לשורות מאוזנות ורק אז ממורכזת — אחרת הטלפון שובר אותה בעצמו
      והריפוד שנוסף בתחילתה דוחף את נקודת השבירה והשורות יוצאות עקומות. */
   function centerText(text, table, options) {
@@ -457,7 +459,7 @@
     return out;
   }
 
-  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
+  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
   root.ANKAL_QUALIX = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

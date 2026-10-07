@@ -53,6 +53,8 @@ ipcMain.handle("qualix:write", (_, root, rel, data) => { const target = qualixRe
 ipcMain.handle("qualix:mkdir", (_, root, rel) => { fs.mkdirSync(qualixResolve(root, rel), { recursive: true }); return true; });
 ipcMain.handle("qualix:remove", (_, root, rel) => { const target = qualixResolve(root, rel); if (target === root) throw new Error("QUALIX_REFUSE_ROOT"); fs.rmSync(target, { recursive: true, force: true }); return true; });
 ipcMain.handle("qualix:exists", (_, root, rel) => { try { return fs.existsSync(qualixResolve(root, rel)); } catch (_) { return false; } });
+// זמן השינוי של קובץ: הטלפון מציג פתקים לפי זמן השינוי (החדש למעלה), וכך קובעים את הסדר בלי לכתוב מחדש
+ipcMain.handle("qualix:utimes", (_, root, rel, mtimeMs) => { const when = new Date(Number(mtimeMs) || Date.now()); fs.utimesSync(qualixResolve(root, rel), when, when); return true; });
 
 /* לקוח OAuth מסוג Desktop אצל גוגל דורש client_secret בהחלפת הקוד לטוקן, גם
    כשמשתמשים ב-PKCE. בלעדיו גוגל מחזיר "client_secret is missing" וההתחברות

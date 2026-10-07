@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     write: (root, rel, data) => ipcRenderer.invoke("qualix:write", root, rel, data),
     mkdir: (root, rel) => ipcRenderer.invoke("qualix:mkdir", root, rel),
     remove: (root, rel) => ipcRenderer.invoke("qualix:remove", root, rel),
-    exists: (root, rel) => ipcRenderer.invoke("qualix:exists", root, rel)
+    exists: (root, rel) => ipcRenderer.invoke("qualix:exists", root, rel),
+    utimes: (root, rel, mtimeMs) => ipcRenderer.invoke("qualix:utimes", root, rel, mtimeMs)
   }
 });

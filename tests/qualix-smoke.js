@@ -73,7 +73,8 @@ server.listen(PORT, async () => {
       read: async rel => { if (!mem.has(rel)) throw new Error("no file " + rel); return mem.get(rel); },
       write: async (rel, bytes) => { mem.set(rel, bytes); return true; }, mkdir: async () => true,
       remove: async rel => { for (const k of [...mem.keys()]) if (k === rel || k.startsWith(rel + "/")) mem.delete(k); return true; },
-      exists: async rel => [...mem.keys()].some(k => k === rel || k.startsWith(rel + "/")) };
+      exists: async rel => [...mem.keys()].some(k => k === rel || k.startsWith(rel + "/")),
+      utimes: async (rel, ms) => { (window.__utimes = window.__utimes || []).push([rel, ms]); return true; } };
     return await window.ANKAL_QUALIX_UI.connect(adapter);
   })()`, true);
   await wait(300);
@@ -160,11 +161,14 @@ server.listen(PORT, async () => {
   await step("מסגרת מרובעת: שורת הגל ושורת הקווים באותו רוחב (עד 3%)", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = "~".repeat(17) + "\\n|" + " ".repeat(28) + "|\\n" + "'".repeat(32) + "\\nשלום 304512 עולם"; ta.dispatchEvent(new Event("input", { bubbles: true })); const w = [...document.querySelectorAll("#qx-memo-preview > div")].map(d => [...d.querySelectorAll("i")].reduce((n, i) => n + parseFloat(i.style.width), 0)); const max = Math.max(w[0], w[1], w[2]), min = Math.min(w[0], w[1], w[2]); return (max - min) / max < 0.03 ? "ok" : "diff " + w.map(x => x.toFixed(0)).join("/"); })()`, "ok");
   await step("ספרות בתוך שורה עברית נשארות משמאל לימין", `[...document.querySelectorAll("#qx-memo-preview > div")][3].querySelector('.qx-run[dir="ltr"]')?.textContent`, "304512");
   await step("שני פתקים ברשימה", `document.querySelectorAll('#qualix-root .qx-list [data-qx="memo"]').length`, 2);
-  await step("אזהרת השחזור של הפתקים מוצגת בגרסה", `document.querySelector("#qualix-root .qx-memo-note")?.textContent`, v => /שם הקובץ/.test(v));
+  await step("אזהרת השחזור של הפתקים מוצגת בגרסה, כשלוש נקודות", `document.querySelectorAll("#qualix-root .qx-memo-note ol li").length + " " + (document.querySelector("#qualix-root .qx-memo-note")?.textContent || "")`, v => /^3 /.test(v) && /שם הקובץ/.test(v));
   await step("מירכוז הכל: שורה ארוכה נשברת לשורות מאוזנות וממורכזות ברווחים", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = Array.from({ length: 12 }, () => "שלום עולם").join(" "); ta.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector('[data-qx="center-all"]').click(); const lines = document.getElementById("qx-memo-text").value.split("\\n"); return lines.length + " " + (lines.every(l => /^ +שלום.*עולם$/.test(l)) ? "ok" : "bad:" + lines[0]); })()`, v => /^\d+ ok$/.test(v) && Number(v.split(" ")[0]) >= 3);
   await step("נקודה וטאב לשורה הנוכחית", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = "שלום\\nעולם"; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.setSelectionRange(0, 0); document.querySelector('[data-qx="bullet-line"]').click(); return JSON.stringify(document.getElementById("qx-memo-text").value); })()`, JSON.stringify(".\tשלום\nעולם"));
   await step("לחיצה נוספת מסירה", `(() => { const ta = document.getElementById("qx-memo-text"); ta.setSelectionRange(0, 0); document.querySelector('[data-qx="bullet-line"]').click(); return JSON.stringify(ta.value); })()`, JSON.stringify("שלום\nעולם"));
   await step("נקודה וטאב לכל השורות", `(() => { document.querySelector('[data-qx="bullet-all"]').click(); return JSON.stringify(document.getElementById("qx-memo-text").value); })()`, JSON.stringify(".\tשלום\n.\tעולם"));
+  await step("הסרת נקודה וטאב מכל הפתק", `(() => { document.querySelector('[data-qx="unbullet-all"]').click(); return JSON.stringify(document.getElementById("qx-memo-text").value); })()`, JSON.stringify("שלום\nעולם"));
+  await step("'בטל את הפעולה האחרונה' מחזיר את הנקודות", `(() => { document.querySelector('[data-qx="memo-undo"]').click(); return JSON.stringify(document.getElementById("qx-memo-text").value); })()`, JSON.stringify(".\tשלום\n.\tעולם"));
+  await step("בטל מירכוז לכל הפתק", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = "   שלום\\n  עולם"; ta.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector('[data-qx="uncenter-all"]').click(); return JSON.stringify(ta.value); })()`, JSON.stringify("שלום\nעולם"));
   await step("כפתור מעבר לניהול ישיר בתוך האזהרה", `document.querySelector('#qualix-root .qx-memo-note [data-qx="direct-memos"]')?.textContent`, v => /ניהול פתקים/.test(v));
 
   // ניהול פתקים ישיר: תיקיית Memo של הכרטיס — בלי גרסה, בלי שחזור
@@ -190,6 +194,20 @@ server.listen(PORT, async () => {
   await step("שמירת המחיקה לטלפון", click('[data-qx="direct-save"]'));
   await wait(400);
   await step("נשאר קובץ אחד בתיקיית Memo", `[...window.__mem.keys()].filter(k => k.startsWith("Memo/")).length`, 1);
+  // סדר הפתקים: ▲▼ ברשימה, ובשמירה זמני הקבצים נכתבים בסדר יורד (העליון החדש ביותר)
+  await step("פתק נוסף לבדיקת הסדר", click('[data-qx="new-memo"]'));
+  await wait(200);
+  await step("טקסט לפתק", fill("qx-memo-text", "פתק שלישי"), "ok");
+  await step("שמירה", click('[data-qx="direct-save"]'));
+  await wait(500);
+  await step("הפתק החדש למעלה", `[...document.querySelectorAll('#qualix-root .qx-memo-pick strong')].map(e => e.textContent).join("|")`, "פתק שלישי|פתק ראשון");
+  await step("הזזת הפתק העליון למטה", click('[data-qx="memo-down"][data-i="0"]'));
+  await wait(200);
+  await step("הסדר ברשימה התהפך", `[...document.querySelectorAll('#qualix-root .qx-memo-pick strong')].map(e => e.textContent).join("|")`, "פתק ראשון|פתק שלישי");
+  await step("שמירת הסדר לטלפון", click('[data-qx="direct-save"]'));
+  await wait(500);
+  await step("זמני הקבצים נכתבו בסדר יורד: העליון החדש ביותר", `(() => { const u = (window.__utimes || []).slice(-2); if (u.length < 2) return "no-utimes"; const Q = window.ANKAL_QUALIX; const names = u.map(x => Q.parseMemo(window.__mem.get(x[0])).split("\\n")[0]); return names.join("|") + " " + (u[0][1] > u[1][1] ? "desc" : "bad"); })()`, "פתק ראשון|פתק שלישי desc");
+  await step("הרשימה נשארה בסדר שנבחר אחרי השמירה", `[...document.querySelectorAll('#qualix-root .qx-memo-pick strong')].map(e => e.textContent).join("|")`, "פתק ראשון|פתק שלישי");
   await step("קטגוריות הגרסה עדיין בתפריט הצד", `document.querySelectorAll('#qualix-subnav [data-qx="tab"]').length`, 7);
 
   await step("לשונית לוח שנה", click('[data-qx="tab"][data-tab="calendar"]'));

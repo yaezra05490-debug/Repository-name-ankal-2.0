@@ -97,6 +97,14 @@ html[data-theme="dark"] .qx-tabs button.active,:root:not([data-theme]) .qx-tabs 
 .qx-list button.active{background:hsl(var(--page) 60% 55% / .14)}
 .qx-list button strong{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .qx-list button span{font-size:11px;color:var(--muted)}
+/* שורת פתק ברשימה: הכפתור הרחב בוחר, ▲/▼ בצד מזיזים (הסדר = הסדר בטלפון) */
+.qx-memo-row{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.qx-memo-row.active{background:hsl(var(--page) 60% 55% / .14)}
+.qx-memo-row .qx-memo-pick{flex:1;min-width:0;border:0;background:transparent;text-align:right;padding:10px 12px;color:var(--text)}
+.qx-memo-row .qx-memo-pick strong{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qx-memo-row .qx-memo-pick span{font-size:11px;color:var(--muted)}
+.qx-memo-move{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 4px}
+.qx-memo-move .icon-btn{width:22px;height:18px;font-size:9px;opacity:.55}.qx-memo-row:hover .qx-memo-move .icon-btn{opacity:1}.qx-memo-move .icon-btn:disabled{opacity:.15}
 .qx-editor{display:grid;gap:10px;align-content:start}
 .qx-editor textarea{width:100%;min-height:220px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--card);color:var(--text);font:inherit;line-height:1.6;resize:vertical}
 .qx-counter{font-size:12px;color:var(--muted);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
@@ -160,7 +168,17 @@ button.qx-entry{cursor:pointer}button.qx-entry:hover{background:var(--paper)}
 .qx-help summary{cursor:pointer;font-weight:700;font-size:13px}
 .qx-help ol{margin:8px 0 4px;padding:0 18px 0 0;display:grid;gap:6px}
 .qx-help p{margin:6px 0 0}
-.qx-memo-note{margin-bottom:12px}
+/* אזהרת השחזור של הפתקים: כותרת, שלוש נקודות קצרות, ושורת פעולה — לא פסקה אחת ארוכה */
+.qx-memo-note{margin-bottom:12px;padding:14px 16px;border-radius:14px;background:#fff6e0;border:1px solid #f0d28a;border-right:5px solid #e0a62d;color:#5a3d00;display:grid;gap:8px}
+.qx-memo-note-head{display:flex;align-items:center;gap:9px;font-size:14px}
+.qx-memo-note-head i{font-style:normal;width:28px;height:28px;border-radius:9px;background:#e0a62d;color:#fff;display:grid;place-items:center;font-size:15px;flex:none}
+.qx-memo-note ol{margin:0;padding:0 22px 0 0;display:grid;gap:4px;font-size:13px;line-height:1.6}
+.qx-memo-note ol b{color:#7a4a00}
+.qx-memo-note-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed #e9cf8c;font-size:12.5px}
+.qx-memo-note-foot .btn{margin-right:auto}
+html[data-theme="dark"] .qx-memo-note,:root:not([data-theme]) .qx-memo-note{background:hsl(38 45% 14%);border-color:hsl(38 50% 30%);border-right-color:#e0a62d;color:#f3dba8}
+html[data-theme="dark"] .qx-memo-note ol b,:root:not([data-theme]) .qx-memo-note ol b{color:#ffd37a}
+html[data-theme="dark"] .qx-memo-note-foot,:root:not([data-theme]) .qx-memo-note-foot{border-top-color:hsl(38 40% 28%)}
 /* שורת השרת מעל הגרסאות */
 .qx-cloud{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-radius:14px;border:1px solid var(--line);background:var(--card)}
 .qx-cloud i{font-style:normal;font-size:20px;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--paper);color:var(--muted)}
