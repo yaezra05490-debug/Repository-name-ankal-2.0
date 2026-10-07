@@ -17,7 +17,7 @@
 
   /* view: "versions" = רשימת הגרסאות (כמו "הרשימות שלי"), "editor" = הקטגוריות של הגרסה הפתוחה (כמו "אנשי קשר") */
   /* direct: הפתקים של תיקיית Memo בכרטיס ("ניהול פתקים", בלי גרסה). cloud: הגרסאות ששמורות בשרת (דרייב). */
-  const qx = { adapter: null, layout: null, backups: [], open: null, view: "versions", tab: "contacts", busy: "", search: "", memoLimit: 1000, widths: null, memoFill: "space", memoIdx: 0, plIdx: 0, rendered: false, keepView: false, direct: null, cloud: { loaded: false, versions: [], uploading: "", error: "" } };
+  const qx = { adapter: null, layout: null, backups: [], open: null, view: "versions", tab: "contacts", busy: "", search: "", memoLimit: 1000, widths: null, memoFill: "space", memoIdx: 0, plIdx: 0, rendered: false, keepView: false, direct: null, contactView: "list", groupSel: null, selected: new Set(), cloud: { loaded: false, versions: [], uploading: "", error: "" } };
   try { qx.memoLimit = Number(localStorage.getItem(LIMIT_KEY)) || 1000; qx.widths = JSON.parse(localStorage.getItem(WIDTH_KEY) || "null"); qx.memoFill = localStorage.getItem(FILL_KEY) || "space"; } catch (_) { }
   const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n ? n + " B" : "";
   const widths = () => qx.widths || Q.WIDTHS;
@@ -256,7 +256,8 @@
     const ringSel = document.getElementById("qx-c-ring").value, ringPath = v("ringpath");
     const ring = ringSel === "builtin" ? (Math.max(1, Math.min(65535, Number(v("ringcode")) || 201))) : (Number(ringSel) || 0);
     const next = { name: v("name"), mobile: v("mobile"), home: v("home"), work: v("work"), fax: v("fax"), email: v("email"), note: v("note"), group: v("group"), ringtone: ring === Q.RINGTONE_FILE && !ringPath ? 0 : ring, ringtonePath: ring === Q.RINGTONE_FILE ? ringPath : "" };
-    if (idx >= 0) { const changedRing = next.ringtone !== c.ringtone || next.ringtonePath !== (c.ringtonePath || ""); Object.assign(c, next, { _dirty: true, _ringDirty: c._ringDirty || changedRing }); }
+    // קבוצה שהשתנתה מאפסת את הביט: אחרת הביט הישן היה נודד עם איש הקשר לקבוצה החדשה ומתנגש עם הקבוצה הישנה
+    if (idx >= 0) { const changedRing = next.ringtone !== c.ringtone || next.ringtonePath !== (c.ringtonePath || ""); Object.assign(c, next, { _dirty: true, _ringDirty: c._ringDirty || changedRing }, next.group !== (c.group || "") ? { groupBit: 0 } : {}); }
     else d.contacts.push(Object.assign(next, { id: 0, groupBit: 0, _dirty: true, _ringDirty: next.ringtone === Q.RINGTONE_FILE }));
     dirty("phonebook"); render();
   }
@@ -711,19 +712,22 @@
     const d = qx.open.data, q = qx.search.trim().toLowerCase(), qDigits = q.replace(/\D/g, "");
     return d.contacts.map((c, i) => ({ c, i })).filter(({ c }) => !q || [c.name, c.email, c.note, c.group].some(v => String(v || "").toLowerCase().includes(q)) || (qDigits && Q.SLOT_FIELDS.some(f => String(c[f] || "").replace(/\D/g, "").includes(qDigits))));
   }
+  /* כרטיס איש קשר. selectable: עם תיבת סימון וגרירה (תצוגת הקבוצות). */
+  function contactCardHtml(c, i, selectable) {
+    const name = c.name || "ללא שם";
+    const phones = Q.SLOT_FIELDS.filter(f => c[f]).map(f => `<div class="contact-line ${f}"><b>${FIELD_HE[f]}</b><span dir="ltr">${esc(c[f])}</span></div>`).join("");
+    const ring = c.ringtone === Q.RINGTONE_FILE ? "♪ " + ((c.ringtonePath || "").split("\\").pop() || "קובץ מהכרטיס") : c.ringtone ? "♪ צלצול מובנה " + c.ringtone : "";
+    return `<article class="contact-card ${selectable && qx.selected.has(i) ? "selected" : ""}" style="--tint:${A().avatarHue(name)}" data-qx="edit-contact" data-i="${i}" role="button" tabindex="0" ${selectable ? `draggable="true" data-drag-i="${i}"` : ""}>`
+      + (selectable ? `<input type="checkbox" class="contact-select" data-qx-select="${i}" ${qx.selected.has(i) ? "checked" : ""} aria-label="סימון ${esc(name)}">` : "")
+      + `<div class="contact-head"><span class="contact-avatar">${esc(A().initialOf(name))}</span><h3>${esc(name)}</h3></div>` + phones
+      + (c.email ? `<div class="contact-line email-line"><b>מייל</b><span dir="auto">${esc(c.email)}</span></div>` : "")
+      + (c.note ? `<div class="contact-line note-line"><b>הערה</b><span class="contact-note">${esc(c.note)}</span></div>` : "")
+      + (c.group || ring ? `<div class="contact-line note-line"><b>קיוליקס</b><span class="contact-note">${esc([c.group, ring].filter(Boolean).join(" · "))}</span></div>` : "")
+      + `<div class="card-actions"><button class="icon-btn" aria-label="עריכה">✎</button></div></article>`;
+  }
   function contactsListHtml() {
     const rows = filteredQxContacts(); const d = qx.open.data;
-    const cards = rows.slice(0, 1500).map(({ c, i }) => {
-      const name = c.name || "ללא שם";
-      const phones = Q.SLOT_FIELDS.filter(f => c[f]).map(f => `<div class="contact-line ${f}"><b>${FIELD_HE[f]}</b><span dir="ltr">${esc(c[f])}</span></div>`).join("");
-      const ring = c.ringtone === Q.RINGTONE_FILE ? "♪ " + ((c.ringtonePath || "").split("\\").pop() || "קובץ מהכרטיס") : c.ringtone ? "♪ צלצול מובנה " + c.ringtone : "";
-      return `<article class="contact-card" style="--tint:${A().avatarHue(name)}" data-qx="edit-contact" data-i="${i}" role="button" tabindex="0">`
-        + `<div class="contact-head"><span class="contact-avatar">${esc(A().initialOf(name))}</span><h3>${esc(name)}</h3></div>` + phones
-        + (c.email ? `<div class="contact-line email-line"><b>מייל</b><span dir="auto">${esc(c.email)}</span></div>` : "")
-        + (c.note ? `<div class="contact-line note-line"><b>הערה</b><span class="contact-note">${esc(c.note)}</span></div>` : "")
-        + (c.group || ring ? `<div class="contact-line note-line"><b>קיוליקס</b><span class="contact-note">${esc([c.group, ring].filter(Boolean).join(" · "))}</span></div>` : "")
-        + `<div class="card-actions"><button class="icon-btn" aria-label="עריכה">✎</button></div></article>`;
-    }).join("");
+    const cards = rows.slice(0, 1500).map(({ c, i }) => contactCardHtml(c, i, false)).join("");
     return `<p class="qx-note" style="margin:0 0 10px">${rows.length} מתוך ${d.contacts.length}${rows.length > 1500 ? " · מוצגים 1500 הראשונים, השתמשו בחיפוש" : ""}</p><div class="contact-grid">${cards || `<div class="empty-box"><div class="empty-icon">◫</div><h3>אין אנשי קשר</h3></div>`}</div>`;
   }
   /* המשתמש שאל "איך זה עובד": שלוש הדרכים לערוך את אנשי הקשר של הגיבוי, והמסלול דרך אנק״ל וחזרה. */
@@ -735,8 +739,56 @@
       <p class="qx-note">שום דבר לא נכתב לכרטיס עד “שמירה כגרסה חדשה”. אחר כך, בטלפון: גיבוי ושחזור ← שחזור ← הגרסה החדשה ← לסמן “אנשי קשר”.</p></details>`;
   }
   function contactsTab() {
-    const d = qx.open.data; const groups = [...new Set(d.contacts.map(c => c.group).filter(Boolean))];
-    return contactsGuide() + `<div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="qx-search" type="search" value="${esc(qx.search)}" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn btn-secondary btn-sm" data-qx="add-contact">＋ איש קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-to-list">⇄ העבר לניהול אנשי קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-list">⇐ מרשימה באנק״ל</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-file">⇐ מקובץ VCF/Excel</button><span class="qx-note">קבוצות: ${groups.map(esc).join(", ") || "אין"}</span></div><div id="qx-contacts-list">${contactsListHtml()}</div>`;
+    const d = qx.open.data; const groups = allGroups(d); const grouped = qx.contactView === "groups";
+    return contactsGuide() + `<div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="qx-search" type="search" value="${esc(qx.search)}" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn ${grouped ? "btn-secondary" : "btn-quiet"} btn-sm" data-qx="contacts-view" data-view="${grouped ? "list" : "groups"}">${grouped ? "☰ תצוגת רשימה" : "⊞ לפי קבוצות"}</button><button class="btn btn-secondary btn-sm" data-qx="add-contact">＋ איש קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-to-list">⇄ העבר לניהול אנשי קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-list">⇐ מרשימה באנק״ל</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-file">⇐ מקובץ VCF/Excel</button>${grouped ? "" : `<span class="qx-note">קבוצות: ${groups.map(esc).join(", ") || "אין"}</span>`}</div><div id="qx-contacts-list">${contactsBodyHtml()}</div>`;
+  }
+  function contactsBodyHtml() { return qx.contactView === "groups" ? groupsViewHtml() : contactsListHtml(); }
+
+  /* ---------- תצוגה לפי קבוצות ----------
+     מימין לשוניות הקבוצות (וגם "בלי קבוצה"), משמאל כרטיסי אנשי הקשר של הקבוצה שנבחרה. כרטיס נגרר
+     ללשונית אחרת כדי לעבור קבוצה; כרטיסים מסומנים נגררים יחד, או עוברים דרך "העבר מסומנים".
+     הטלפון מאפשר עד 8 קבוצות (ביט לכל קבוצה), ולכן המעבר נבדק מראש. */
+  const GROUP_MAX = 8;
+  function allGroups(d) { return [...new Set([...(d.groups || []), ...d.contacts.map(c => c.group).filter(Boolean)])]; }
+  function groupsViewHtml() {
+    const d = qx.open.data; const groups = allGroups(d);
+    if (qx.groupSel == null || (qx.groupSel && !groups.includes(qx.groupSel))) qx.groupSel = groups[0] || "";
+    const counts = {}; for (const c of d.contacts) counts[c.group || ""] = (counts[c.group || ""] || 0) + 1;
+    const tab = (name, label) => `<button class="qx-group-tab ${qx.groupSel === name ? "active" : ""}" data-qx="group-pick" data-group="${esc(name)}" data-drop-group="${esc(name)}"><b>${esc(label)}</b><span>${counts[name] || 0}</span></button>`;
+    const tabs = groups.map(g => tab(g, g)).join("") + tab("", "בלי קבוצה") + `<button class="qx-group-tab new" data-qx="group-new">＋ קבוצה חדשה</button>`;
+    const rows = filteredQxContacts().filter(({ c }) => (c.group || "") === qx.groupSel);
+    const cards = rows.slice(0, 1500).map(({ c, i }) => contactCardHtml(c, i, true)).join("");
+    const sel = [...qx.selected].filter(i => d.contacts[i]).length;
+    const moveTo = `<select id="qx-move-to">${groups.filter(g => g !== qx.groupSel).map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("")}${qx.groupSel ? `<option value="">בלי קבוצה</option>` : ""}</select>`;
+    return `<div class="qx-groups"><aside class="qx-group-tabs">${tabs}<p class="qx-note">גררו כרטיס ללשונית של קבוצה אחרת (כרטיסים מסומנים נגררים יחד). הטלפון מאפשר עד ${GROUP_MAX} קבוצות.</p></aside>
+      <div class="qx-group-main"><div class="qx-toolbar"><strong>${esc(qx.groupSel || "בלי קבוצה")}</strong><span class="qx-note">${rows.length} אנשי קשר${sel ? ` · ${sel} מסומנים` : ""}</span><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="group-select-all">סמן הכל</button><button class="btn btn-quiet btn-sm" data-qx="group-clear">נקה סימון</button><label class="modal-field qx-inline">העבר מסומנים ל${moveTo}</label><button class="btn btn-secondary btn-sm" data-qx="group-move-selected" ${sel ? "" : "disabled"}>העבר</button>${qx.groupSel ? `<button class="btn btn-quiet btn-sm" data-qx="group-rename">✎ שינוי שם הקבוצה</button>` : ""}</div>
+      <div class="contact-grid">${cards || `<div class="empty-box"><div class="empty-icon">◫</div><h3>אין אנשי קשר בקבוצה</h3><p>גררו לכאן כרטיסים מקבוצה אחרת, או סמנו והעבירו.</p></div>`}</div></div></div>`;
+  }
+  function moveContacts(indexes, group) {
+    const d = qx.open?.data; if (!d) return;
+    const target = String(group || ""), ids = new Set(indexes.map(Number));
+    const after = new Set(d.contacts.map((c, i) => ids.has(i) ? target : (c.group || "")).filter(Boolean));
+    if (after.size > GROUP_MAX) return A().toast(`הטלפון מאפשר עד ${GROUP_MAX} קבוצות — רוקנו קבוצה לפני שמוסיפים חדשה`, "warning");
+    let n = 0;
+    for (const i of ids) { const c = d.contacts[i]; if (!c || (c.group || "") === target) continue; c.group = target; c.groupBit = 0; c._dirty = true; n++; }
+    if (!n) return;
+    qx.selected = new Set(); dirty("phonebook"); render();
+    A().toast(target ? `${n} אנשי קשר עברו לקבוצה “${target}”` : `${n} אנשי קשר הוסרו מהקבוצה`);
+  }
+  async function newGroup() {
+    const d = qx.open.data; if (allGroups(d).length >= GROUP_MAX) return A().toast(`הטלפון מאפשר עד ${GROUP_MAX} קבוצות`, "warning");
+    const choice = await A().modal({ kicker: "קבוצת מתקשרים", title: "שם הקבוצה החדשה", html: `<label class="modal-field">שם<input id="qx-group-name" maxlength="40" placeholder="לדוגמה: עבודה"></label><p class="qx-note">הקבוצה נכתבת לטלפון רק כשיש בה לפחות איש קשר אחד.</p>`, buttons: [{ id: "go", label: "יצירה", primary: true }, { id: "cancel", label: "ביטול" }] });
+    if (choice !== "go") return; const name = (document.getElementById("qx-group-name")?.value || "").trim(); if (!name) return;
+    if (!allGroups(d).includes(name)) (d.groups = d.groups || []).push(name);
+    qx.groupSel = name; qx.contactView = "groups"; render();
+  }
+  async function renameGroup() {
+    const d = qx.open.data; const old = qx.groupSel; if (!old) return;
+    const choice = await A().modal({ kicker: "קבוצת מתקשרים", title: `שינוי השם “${old}”`, html: `<label class="modal-field">שם חדש<input id="qx-group-name" maxlength="40" value="${esc(old)}"></label>`, buttons: [{ id: "go", label: "שמירה", primary: true }, { id: "cancel", label: "ביטול" }] });
+    if (choice !== "go") return; const name = (document.getElementById("qx-group-name")?.value || "").trim(); if (!name || name === old) return;
+    for (const c of d.contacts) if (c.group === old) { c.group = name; c._dirty = true; }
+    d.groups = (d.groups || []).map(g => g === old ? name : g);
+    qx.groupSel = name; dirty("phonebook"); render();
   }
   /* יומן השיחות כמו בטלפון: רשימה צרה, סמל לכל סוג, שם (או מספר), שעה, ומסננים כמו הלשוניות בטלפון */
   const CALL_ICON = { incoming: "↙", outgoing: "↗", missed: "✕", rejected: "⊘" };
@@ -825,10 +877,30 @@
       <div class="qx-toolbar" style="margin-top:12px"><input id="qx-word" class="qinline" placeholder="מילה חדשה לחיזוי" style="max-width:260px"><button class="btn btn-secondary btn-sm" data-qx="add-word">＋ הוספה</button><button class="btn btn-quiet btn-sm" data-qx="import-words">⇐ מאקסל / מקובץ טקסט</button><span class="qx-note">${d.dictionaryWords.length} מילים${d.dictAdd.length ? ` · ${d.dictAdd.length} חדשות` : ""}${d.dictRemove.length ? ` · ${d.dictRemove.length} להסרה` : ""} · מקום לעוד כ-${Math.max(0, Math.floor(udbFreeBytes() / 26))} מילים</span></div>
       <div class="qx-words">${d.dictionaryWords.map(w => `<span class="qx-word">${esc(w)}<button data-qx="remove-word" data-w="${esc(w)}" aria-label="הסרה">✕</button></span>`).join("") || "<span class='qx-note'>המילון ריק</span>"}</div>`;
   }
-  function settingsTab() { const d = qx.open.data; return `<div class="qx-panel"><h3 style="margin:0 0 8px">הגדרות הטלפון</h3><p class="qx-note">${d.settings ? `קובץ ההגדרות (${(d.settings.length / 1024).toFixed(0)} KB) הוא צילום של זיכרון המערכת ואי אפשר לערוך אותו בבטחה. הוא נשמר בגרסה החדשה כמו שהוא, ובטלפון אפשר לבחור אם לשחזר אותו.` : "בגרסה הזו אין קובץ הגדרות."}</p></div>`; }
+  /* הגדרות: קריאה בלבד. מה שקריא מוצג כרשימה, וחיפוש ערך מאתר מספר או טקסט בכל הקידודים — כך אפשר למצוא
+     את מיקום קוד הנעילה לפי קוד ידוע, ואחרי שהמקום ידוע לשלוף אותו מגיבוי של טלפון שהקוד שלו נשכח. */
+  function settingsTab() {
+    const d = qx.open.data;
+    if (!d.settings) return `<div class="qx-panel"><h3 style="margin:0 0 8px">הגדרות הטלפון</h3><p class="qx-note">בגרסה הזו אין קובץ הגדרות.</p></div>`;
+    const strings = Q.settingsStrings(d.settings);
+    const rows = strings.map(s => `<tr><td class="num">0x${s.offset.toString(16).padStart(6, "0")}</td><td class="num">${s.kind}</td><td dir="auto">${esc(s.text)}</td></tr>`).join("");
+    return `<div class="qx-panel"><h3 style="margin:0 0 8px">הגדרות הטלפון — צפייה בלבד</h3><p class="qx-note">קובץ ההגדרות (${(d.settings.length / 1024).toFixed(0)} KB) הוא צילום של זיכרון המערכת ואי אפשר לערוך אותו בבטחה. הוא נשמר בגרסה החדשה כמו שהוא, ובטלפון אפשר לבחור אם לשחזר אותו. למטה כל מה שקריא בו: שמות SIM, הגדרות גלישה (APN), מספרי חירום ועותקים של אירועי יומן.</p>
+      <div class="qx-toolbar" style="margin-top:12px"><label class="search-field"><span>⌕</span><input id="qx-settings-find" type="search" placeholder="חיפוש ערך בקובץ, למשל קוד נעילה (1234)…"></label><span class="qx-note">מחפש כטקסט, כ-UTF-16, כ-BCD וכמספר. הקוד אינו טקסט גלוי — חפשו קוד ידוע כדי לאתר את מקומו.</span></div>
+      <div id="qx-settings-hits" class="qx-note"></div>
+      <div class="qx-table-wrap" style="margin-top:10px;max-height:50vh"><table class="qx-table"><thead><tr><th>היסט</th><th>קידוד</th><th>ערך</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="qx-note">לא נמצא טקסט קריא</td></tr>`}</tbody></table></div></div>`;
+  }
+  function settingsFind(value) {
+    const box = document.getElementById("qx-settings-hits"); const d = qx.open?.data; if (!box || !d?.settings) return;
+    const text = String(value || "").trim(); if (!text) { box.textContent = ""; return; }
+    const hits = Q.findValue(d.settings, text);
+    box.innerHTML = hits.length ? `נמצא ${hits.length} פעמים: ` + hits.slice(0, 40).map(h => `<code>${h.kind}@0x${h.offset.toString(16)}</code>`).join(" ") : "לא נמצא באף קידוד";
+  }
 
   /* ---------- אירועים ---------- */
   document.addEventListener("click", async event => {
+    // תיבת הסימון שעל כרטיס בתצוגת הקבוצות: מסמנת, ולא פותחת את הכרטיס לעריכה
+    const check = event.target.closest?.("[data-qx-select]");
+    if (check) { const i = Number(check.dataset.qxSelect); if (qx.selected.has(i)) qx.selected.delete(i); else qx.selected.add(i); return render(); }
     const el = event.target.closest("[data-qx]"); if (!el || !document.getElementById("qualix-root")) return;
     const act = el.dataset.qx, i = Number(el.dataset.i);
     try {
@@ -858,6 +930,13 @@
         case "edit-contact": return editContact(i);
         case "pick-ring": return pickAudio("qx-c-ringpath");
         case "pick-song": return pickAudio("qx-song-path");
+        case "contacts-view": qx.contactView = el.dataset.view; qx.selected = new Set(); return render();
+        case "group-pick": qx.groupSel = el.dataset.group; return render();
+        case "group-new": return newGroup();
+        case "group-rename": return renameGroup();
+        case "group-select-all": for (const { c, i: ci } of filteredQxContacts()) if ((c.group || "") === qx.groupSel) qx.selected.add(ci); return render();
+        case "group-clear": qx.selected = new Set(); return render();
+        case "group-move-selected": return moveContacts([...qx.selected], document.getElementById("qx-move-to")?.value || "");
         case "contacts-to-list": return contactsToList();
         case "contacts-from-list": return contactsFromList();
         case "contacts-from-file": return contactsFromFile();
@@ -896,8 +975,23 @@
       }
     } catch (error) { console.error(error); setBusy(""); A().toast("משהו השתבש: " + (error.message || error), "error"); }
   });
+  /* גרירת כרטיס (או כמה מסומנים) ללשונית קבוצה. הנתונים עוברים ב-dataTransfer כדי שגם גרירה לחלון אחר לא תפיל */
+  document.addEventListener("dragstart", event => {
+    const card = event.target.closest?.("[data-drag-i]"); if (!card || !qx.open) return;
+    const i = Number(card.dataset.dragI); const ids = qx.selected.has(i) ? [...qx.selected] : [i];
+    event.dataTransfer.setData("text/plain", JSON.stringify({ ankalQx: ids })); event.dataTransfer.effectAllowed = "move";
+  });
+  document.addEventListener("dragover", event => { const t = event.target.closest?.("[data-drop-group]"); if (t) { event.preventDefault(); t.classList.add("over"); } });
+  document.addEventListener("dragleave", event => { const t = event.target.closest?.("[data-drop-group]"); if (t) t.classList.remove("over"); });
+  document.addEventListener("drop", event => {
+    const t = event.target.closest?.("[data-drop-group]"); if (!t) return;
+    event.preventDefault(); t.classList.remove("over");
+    let data = null; try { data = JSON.parse(event.dataTransfer.getData("text/plain")); } catch (_) { }
+    if (data && Array.isArray(data.ankalQx)) moveContacts(data.ankalQx, t.dataset.dropGroup);
+  });
   document.addEventListener("input", event => {
-    if (event.target.id === "qx-search") { qx.search = event.target.value; const list = document.getElementById("qx-contacts-list"); if (list) list.innerHTML = contactsListHtml(); }
+    if (event.target.id === "qx-search") { qx.search = event.target.value; const list = document.getElementById("qx-contacts-list"); if (list) list.innerHTML = contactsBodyHtml(); }
+    if (event.target.id === "qx-settings-find") settingsFind(event.target.value);
     if (event.target.id === "qx-memo-text") { const st = memoStore(); const m = st.memos[st.idx]; if (m) { m.text = event.target.value; m._dirty = true; st.mark(); memoCounter(); markUnsaved(); } }
   });
   document.addEventListener("change", event => {

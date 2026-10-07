@@ -103,7 +103,8 @@
   /* מפת קבוצות: שם → ביט. קודם מה שכבר כתוב ברשומות, ואז ביט פנוי לכל קבוצה חדשה (עד 8). */
   function groupBits(contacts, preset) {
     const bits = Object.assign({}, preset || {});
-    for (const c of contacts) if (c.group && c.groupBit && !bits[c.group]) bits[c.group] = c.groupBit;
+    // ביט שכבר שייך לקבוצה אחרת לא נלקח (איש קשר שעבר קבוצה ונשאר עם ביט ישן)
+    for (const c of contacts) if (c.group && c.groupBit && !bits[c.group] && !Object.values(bits).includes(c.groupBit)) bits[c.group] = c.groupBit;
     const taken = new Set(Object.values(bits));
     for (const c of contacts) { if (!c.group || bits[c.group]) continue; let bit = 1; while (taken.has(bit) && bit < 256) bit <<= 1; if (bit > 128) throw new Error("TOO_MANY_GROUPS"); bits[c.group] = bit; taken.add(bit); }
     return bits;
@@ -356,6 +357,30 @@
      בטלפון להישבר כאן. */
   function calibrateFromMemo(text, table) { const out = Object.assign({}, table || WIDTHS); for (const line of String(text || "").split("\n")) { const t = line.replace(/\s+$/, ""); if (t.length >= 3 && [...t].every(ch => ch === t[0])) out[t[0]] = Math.round(LINE_UNITS / (t.length + 0.5)); } return out; }
 
+  /* ---------- הגדרות (settings.ib): צילום NVRAM. לא עורכים, אבל קוראים ----------
+     מה שקריא בו: שמות SIM, הגדרות APN, מספרי חירום ועותקי אירועי יומן. קוד הנעילה אינו טקסט גלוי,
+     ולכן יש חיפוש ערך בכל הקידודים (ASCII, UTF-16, BCD, מספר) כדי לאתר את המקום שלו לפי ערך ידוע. */
+  function settingsStrings(bytes) {
+    const out = []; if (!bytes || !bytes.length) return out;
+    const okU16 = c => (c >= 0x20 && c < 0x7F) || (c >= 0x5D0 && c <= 0x5EA) || c === 0x5F3 || c === 0x5F4 || (c >= 0x2010 && c <= 0x2026);
+    let run = "", start = -1;
+    for (let i = 0; i + 1 < bytes.length; i += 2) { const c = bytes[i] | (bytes[i + 1] << 8); if (okU16(c)) { if (start < 0) start = i; run += String.fromCharCode(c); } else { if (run.length >= 3) out.push({ offset: start, kind: "utf16", text: run }); run = ""; start = -1; } }
+    if (run.length >= 3) out.push({ offset: start, kind: "utf16", text: run });
+    run = ""; start = -1;
+    for (let i = 0; i < bytes.length; i++) { const c = bytes[i]; if (c >= 0x20 && c < 0x7F) { if (start < 0) start = i; run += String.fromCharCode(c); } else { if (run.length >= 4) out.push({ offset: start, kind: "ascii", text: run }); run = ""; start = -1; } }
+    if (run.length >= 4) out.push({ offset: start, kind: "ascii", text: run });
+    const seen = new Set();
+    return out.sort((a, b) => a.offset - b.offset).filter(s => { if (/^[\s\-_.~|'"=+*#]+$/.test(s.text)) return false; const key = s.kind + ":" + s.text; if (seen.has(key)) return false; seen.add(key); return true; });
+  }
+  function indexOfBytes(hay, needle, from) { if (!needle.length) return -1; outer: for (let i = from || 0; i + needle.length <= hay.length; i++) { for (let k = 0; k < needle.length; k++) if (hay[i + k] !== needle[k]) continue outer; return i; } return -1; }
+  function findValue(bytes, value) {
+    const text = String(value || "").trim(), hits = []; if (!bytes || !text) return hits;
+    const probes = [["ascii", ascii(text)], ["utf16", u16le(text)]];
+    if (/^[0-9*#]+$/.test(text)) { probes.push(["bcd", encodeBcd(text)]); const n = Number(text); if (/^\d+$/.test(text) && n < 2 ** 32) { const le = new Uint8Array(4); dv(le).setUint32(0, n, true); probes.push(["u32", le]); if (n < 65536) probes.push(["u16", le.subarray(0, 2)]); } }
+    for (const [kind, needle] of probes) { let p = -1; while ((p = indexOfBytes(bytes, needle, p + 1)) >= 0 && hits.length < 200) hits.push({ offset: p, kind }); }
+    return hits;
+  }
+
   /* ---------- מילון המשתמש (udb.cache): המבנה פוענח, קידוד האותיות עדיין לא. קריאה בלבד. ---------- */
   function parseUdb(bytes) {
     const words = [], refs = []; if (!bytes || bytes.length < 0x840) return { words, refs };
@@ -432,7 +457,7 @@
     return out;
   }
 
-  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
+  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
   root.ANKAL_QUALIX = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

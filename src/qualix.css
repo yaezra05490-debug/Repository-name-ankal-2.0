@@ -173,6 +173,17 @@ button.qx-entry{cursor:pointer}button.qx-entry:hover{background:var(--paper)}
 .qx-badge.card{color:#087455;background:#dff8ef}.qx-badge.cloud{color:#0b5fa8;background:#e1efff}.qx-badge.off{color:#9a670a;background:#fff3d9}
 .qx-version.cloud-only{border-style:dashed}
 .qx-version.cloud-only:hover{transform:none;cursor:default}
+/* תצוגה לפי קבוצות: לשוניות מימין, כרטיסים משמאל, גרירה בין לשוניות */
+.qx-groups{display:grid;grid-template-columns:230px 1fr;gap:14px;align-items:start}
+.qx-group-tabs{display:flex;flex-direction:column;gap:6px;position:sticky;top:0}
+.qx-group-tab{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:1px solid var(--line);background:var(--card);color:var(--text);padding:10px 12px;border-radius:12px;text-align:right;font-weight:600;cursor:pointer;transition:.14s}
+.qx-group-tab span{font-size:11px;padding:1px 8px;border-radius:999px;background:var(--paper);color:var(--muted)}
+.qx-group-tab.active{border-color:hsl(var(--page) 60% 55%);background:hsl(var(--page) 60% 55% / .12)}
+.qx-group-tab.over{outline:2px dashed hsl(var(--page) 60% 55%);outline-offset:2px;background:hsl(var(--page) 60% 55% / .18)}
+.qx-group-tab.new{border-style:dashed;color:var(--muted);justify-content:center}
+#qualix-root .contact-card[draggable="true"]{cursor:grab}
+#qualix-root .contact-card.selected{box-shadow:0 0 0 2px var(--cyan-2);border-color:var(--cyan-2)}
+@media(max-width:900px){.qx-groups{grid-template-columns:1fr}.qx-group-tabs{flex-direction:row;flex-wrap:wrap;position:static}}
 .nav-sub-sep{font-size:10px;color:#8fa0b8;padding:6px 10px 2px;font-weight:700;direction:ltr;text-align:right}
 html[data-theme="light"] .nav-sub-sep{color:#5f6d84}
 .sidebar.collapsed .nav-sub-sep{display:none}

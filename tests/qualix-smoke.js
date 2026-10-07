@@ -111,6 +111,17 @@ server.listen(PORT, async () => {
   await step("חיפוש מסנן לפי ספרות", `(() => { const el = document.getElementById("qx-search"); el.value = "050-111"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 1);
   await step("ניקוי החיפוש", `(() => { const el = document.getElementById("qx-search"); el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); return document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length; })()`, 4);
 
+  // תצוגה לפי קבוצות: לשוניות מימין, כרטיסים משמאל, סימון, העברה וגרירה
+  await step("תצוגה לפי קבוצות", click('[data-qx="contacts-view"][data-view="groups"]'));
+  await wait(200);
+  await step("לשוניות: משפחה, חברים, בלי קבוצה", `[...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("b").textContent + ":" + b.querySelector("span").textContent).join("|")`, "משפחה:2|חברים:1|בלי קבוצה:1");
+  await step("הקבוצה הראשונה נבחרת: שני כרטיסים", `document.querySelectorAll('#qualix-root .qx-group-main .contact-card').length`, 2);
+  await step("סימון כרטיס בתיבה לא פותח אותו לעריכה", `(() => { document.querySelector('#qualix-root [data-qx-select]').click(); return document.querySelectorAll('#qualix-root .contact-card.selected').length + " " + (document.getElementById("modal-backdrop").classList.contains("open") ? "modal" : "no-modal"); })()`, "1 no-modal");
+  await step("העברת המסומנים לחברים", `(() => { document.getElementById("qx-move-to").value = "חברים"; document.querySelector('[data-qx="group-move-selected"]').click(); return [...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("span").textContent).join("|"); })()`, "1|2|1");
+  await step("גרירת כרטיס ללשונית חברים", `(() => { const card = document.querySelector('#qualix-root .qx-group-main .contact-card[data-drag-i]'); const dt = new DataTransfer(); card.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: dt })); const target = document.querySelector('#qualix-root [data-drop-group="חברים"]'); target.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: dt })); return [...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("span").textContent).join("|"); })()`, "0|3|1");
+  await step("חזרה לתצוגת רשימה", click('[data-qx="contacts-view"][data-view="list"]'));
+  await wait(200);
+
   await step("לשונית יומן שיחות", click('[data-qx="tab"][data-tab="calls"]'));
   await wait(200);
   await step("שני אנשי קשר ביומן (שורה לכל איש קשר)", `document.querySelectorAll('#qualix-root .qx-call[data-qx="call-group"]').length`, 2);
@@ -233,6 +244,10 @@ server.listen(PORT, async () => {
   await step("כפתור ייבוא מאקסל קיים", `document.querySelector('[data-qx="import-words"]')?.textContent.trim()`, v => /אקסל/.test(v));
   await step("מקום פנוי מוצג", `document.querySelector("#qualix-root .qx-toolbar .qx-note")?.textContent`, v => /מקום לעוד/.test(v));
 
+  await step("לשונית הגדרות: צפייה בלבד עם חיפוש", click('[data-qx="tab"][data-tab="settings"]'));
+  await wait(200);
+  await step("שדה חיפוש בהגדרות", `document.getElementById("qx-settings-find") ? "yes" : "no"`, "yes");
+  await step("חיפוש ערך שלא קיים", `(() => { const el = document.getElementById("qx-settings-find"); el.value = "9876"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.getElementById("qx-settings-hits").textContent; })()`, v => /לא נמצא/.test(v));
   await step("שמירה כגרסה חדשה", click('[data-qx="save"]'));
   await wait(300);
   await step("אישור השמירה", click('[data-modal-choice="save"]'));
@@ -252,7 +267,7 @@ server.listen(PORT, async () => {
     const udb = Q.parseUdb(get("000000000000001")).words;
     const crcOk = head.crcs[2] === Q.crc16arc(get("phonebook.ib")) && head.crcs[0] === Q.crc16arc(get("schedule.ib")) && head.crcs[1] === Q.crc16arc(get("callog.ib"));
     return [pb.contacts.length, added ? added.mobile + "/" + added.group + "/bit" + added.groupBit : "חסר", calls, events, memoMan, lst.map(e => e.path).join(","), udb.join(","), head.categories.length, crcOk ? "crc-ok" : "crc-bad", head.folder === folder ? "folder-ok" : "folder-bad"].join(" | ");
-  })()`, v => v === "4 | 0501112222/חברים/bit2 | 2 | 2 | 2 | E:\\b.mp3,E:\\a.mp3 | אנקל | 7 | crc-ok | folder-ok");
+  })()`, v => v === "4 | 0501112222/חברים/bit1 | 2 | 2 | 2 | E:\\b.mp3,E:\\a.mp3 | אנקל | 7 | crc-ok | folder-ok");
   await step("אין שינויים אחרי השמירה", `document.querySelector(".qx-save .qx-dirty") ? "יש" : "אין"`, "אין");
   await step("אין שורת מקור בתוך קטגוריה", `document.querySelector("#qualix-root .qx-source") ? "יש" : "אין"`, "אין");
   await step("שתי גרסאות ברשימה", `(() => { document.querySelector('[data-page="qualix"]').click(); return document.querySelectorAll("#qualix-root .qx-version").length; })()`, 2);

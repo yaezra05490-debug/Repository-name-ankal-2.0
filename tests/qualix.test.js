@@ -146,6 +146,19 @@ test("רוחב טקסט ומירכוז לפי טבלת הרוחב של הטלפ�
   for (const real of ['"חנוך לנער ע"פ דרכו..."', '״חנוך לנער ע״פ דרכו...״']) assert.equal(Q.wrapParagraph(real).length, 1, real + " נשברה: " + Q.textWidth(real));
 });
 
+test("הגדרות: מחרוזות קריאות וחיפוש ערך בכל הקידודים", () => {
+  const bytes = new Uint8Array(200);
+  bytes.set(Q.u16le("SIM1"), 10); bytes.set(Buffer.from("http://mms.example"), 40); bytes.set(Q.encodeBcd("1234"), 100); new DataView(bytes.buffer).setUint32(120, 1234, true);
+  const strings = Q.settingsStrings(bytes);
+  assert.deepEqual(strings.map(s => s.text), ["SIM1", "http://mms.example"]);
+  assert.equal(strings[0].kind, "utf16"); assert.equal(strings[0].offset, 10);
+  const hits = Q.findValue(bytes, "1234");
+  assert.ok(hits.some(h => h.kind === "bcd" && h.offset === 100), "BCD");
+  assert.ok(hits.some(h => h.kind === "u32" && h.offset === 120), "u32");
+  assert.ok(!hits.some(h => h.kind === "ascii"), "לא כטקסט");
+  assert.deepEqual(Q.findValue(bytes, ""), []);
+});
+
 test("הרכבת גיבוי שלם וקריאתו חזרה", async () => {
   const files = Q.assembleBackup({
     folder: "2026-10-04_12-00-00", cardLetter: "E",
