@@ -37,7 +37,8 @@
   const HEADER = 0x244;
   const FF8 = new Uint8Array(8).fill(0xFF);
   function parseIb(bytes) {
-    if (!bytes || bytes.length < HEADER + 16) throw new Error("IB_TOO_SHORT");
+    // קובץ של כותרת בלבד = קטגוריה ריקה (לוח שנה בלי אירועים, ספר טלפונים ריק) — תקין, אפס רשומות
+    if (!bytes || bytes.length < HEADER) throw new Error("IB_TOO_SHORT");
     const name = readU16z(bytes, 0, 16), view = dv(bytes);
     const out = { name, type: view.getUint32(0x20, true), dataSize: view.getUint32(0x28, true), count: view.getUint32(0x2C, true), count2: view.getUint32(0x30, true), records: [] };
     // כל רשומה: [u32 גודל][u32 מספר הפריטים ברשומה][ff×8] תוכן [ff×8]. בספר הטלפונים וביומן כל רשומה היא פריט אחד;
@@ -455,17 +456,19 @@
   }
 
   /* ---------- קריאת תיקיית גיבוי: readFile(name) מחזיר Uint8Array או null; listFiles() מחזיר שמות ---------- */
+  /* קובץ פגום באחת הקטגוריות לא מפיל את כל הגיבוי: הקטגוריה נרשמת ב-errors והשאר נקרא כרגיל. */
   async function readBackup({ folder, listFiles, readFile }) {
     const names = await listFiles(); const has = n => names.includes(n);
-    const out = { folder, categories: [], groups: [] };
+    const out = { folder, categories: [], groups: [], errors: [] };
+    const attempt = async (file, fn) => { try { await fn(); } catch (error) { out.errors.push({ file, error: String(error && error.message || error) }); } };
     const headBytes = has("ibphone_head.in") ? await readFile("ibphone_head.in") : null; out.head = headBytes ? parseHead(headBytes) : null;
-    if (has("phonebook.ib")) { const pb = parsePhonebook(await readFile("phonebook.ib")); out.contacts = pb.contacts; out.recordSize = pb.recordSize; out.categories.push("phonebook"); out.groups = [...new Set(pb.contacts.map(c => c.group).filter(Boolean))]; }
-    if (has("callog.ib")) { out.callog = parseCallog(await readFile("callog.ib")); out.categories.push("callog"); }
-    if (has("schedule.ib")) { out.events = parseSchedule(await readFile("schedule.ib")).events; out.categories.push("schedule"); }
-    if (has("settings.ib")) { out.settings = await readFile("settings.ib"); out.categories.push("settings"); }
-    if (has("memo.ib")) { const man = parseManifest(await readFile("memo.ib")); out.memos = []; for (const e of man.entries) { const fileName = e.dst.split("\\").pop(); const bytes = has(fileName) ? await readFile(fileName) : null; if (bytes) out.memos.push({ fileName, bytes, text: parseMemo(bytes), created: memoDateFromName(fileName) }); } out.categories.push("memo"); }
-    if (has("playlist.ib")) { const man = parseManifest(await readFile("playlist.ib")); out.playlists = []; for (const e of man.entries) { const name = e.dst.split("\\").pop(); const bytes = has(name) ? await readFile(name) : null; if (bytes) { let entries = []; try { entries = parseLst(bytes); } catch (_) { } out.playlists.push({ name, bytes, entries }); } } out.categories.push("playlist"); }
-    if (has("udb.ib")) { out.udb = { phoneCache: has("udb.cache") ? await readFile("udb.cache") : new Uint8Array(0), cardCache: has("000000000000001") ? await readFile("000000000000001") : new Uint8Array(0) }; out.dictionary = parseUdb(out.udb.cardCache.length ? out.udb.cardCache : out.udb.phoneCache); out.categories.push("udb"); }
+    if (has("phonebook.ib")) await attempt("phonebook.ib", async () => { const pb = parsePhonebook(await readFile("phonebook.ib")); out.contacts = pb.contacts; out.recordSize = pb.recordSize; out.categories.push("phonebook"); out.groups = [...new Set(pb.contacts.map(c => c.group).filter(Boolean))]; });
+    if (has("callog.ib")) await attempt("callog.ib", async () => { out.callog = parseCallog(await readFile("callog.ib")); out.categories.push("callog"); });
+    if (has("schedule.ib")) await attempt("schedule.ib", async () => { out.events = parseSchedule(await readFile("schedule.ib")).events; out.categories.push("schedule"); });
+    if (has("settings.ib")) await attempt("settings.ib", async () => { out.settings = await readFile("settings.ib"); out.categories.push("settings"); });
+    if (has("memo.ib")) await attempt("memo.ib", async () => { const man = parseManifest(await readFile("memo.ib")); out.memos = []; for (const e of man.entries) { const fileName = e.dst.split("\\").pop(); const bytes = has(fileName) ? await readFile(fileName) : null; if (bytes) out.memos.push({ fileName, bytes, text: parseMemo(bytes), created: memoDateFromName(fileName) }); } out.categories.push("memo"); });
+    if (has("playlist.ib")) await attempt("playlist.ib", async () => { const man = parseManifest(await readFile("playlist.ib")); out.playlists = []; for (const e of man.entries) { const name = e.dst.split("\\").pop(); const bytes = has(name) ? await readFile(name) : null; if (bytes) { let entries = []; try { entries = parseLst(bytes); } catch (_) { } out.playlists.push({ name, bytes, entries }); } } out.categories.push("playlist"); });
+    if (has("udb.ib")) await attempt("udb.ib", async () => { out.udb = { phoneCache: has("udb.cache") ? await readFile("udb.cache") : new Uint8Array(0), cardCache: has("000000000000001") ? await readFile("000000000000001") : new Uint8Array(0) }; out.dictionary = parseUdb(out.udb.cardCache.length ? out.udb.cardCache : out.udb.phoneCache); out.categories.push("udb"); });
     return out;
   }
 

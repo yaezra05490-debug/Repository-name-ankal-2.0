@@ -163,6 +163,18 @@ test("הגדרות: מחרוזות קריאות וחיפוש ערך בכל הק�
   assert.equal(Q.parseSoundPaths(env)[1].offset, 0x202);
 });
 
+test("קטגוריה ריקה = קובץ של כותרת בלבד, וקובץ פגום לא מפיל את שאר הגיבוי", async () => {
+  // גרסה שנשמרה בלי אירועים הפילה את הפתיחה עם IB_TOO_SHORT (המשתמש, 2026-10-07)
+  const emptySchedule = Q.buildSchedule([]); assert.equal(emptySchedule.length, 0x244); assert.deepEqual(Q.parseSchedule(emptySchedule).events, []);
+  assert.equal(Q.parsePhonebook(Q.buildPhonebook([])).contacts.length, 0);
+  assert.throws(() => Q.parseIb(new Uint8Array(10)), /IB_TOO_SHORT/);
+  const files = new Map([["phonebook.ib", Q.buildPhonebook([{ name: "א", mobile: "0501", home: "", work: "", fax: "", email: "", note: "", group: "" }])], ["schedule.ib", new Uint8Array(10)], ["callog.ib", Q.buildCallog([])]]);
+  const bk = await Q.readBackup({ folder: "x", listFiles: async () => [...files.keys()], readFile: async n => files.get(n) });
+  assert.equal(bk.contacts.length, 1); assert.equal(bk.callog.entries.length, 0);
+  assert.deepEqual(bk.categories, ["phonebook", "callog"]);
+  assert.equal(bk.errors.length, 1); assert.equal(bk.errors[0].file, "schedule.ib"); assert.ok(/IB_TOO_SHORT/.test(bk.errors[0].error));
+});
+
 test("הרכבת גיבוי שלם וקריאתו חזרה", async () => {
   const files = Q.assembleBackup({
     folder: "2026-10-04_12-00-00", cardLetter: "E",

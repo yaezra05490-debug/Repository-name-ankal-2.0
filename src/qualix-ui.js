@@ -111,6 +111,7 @@
       data.callog = data.callog || { entries: [] }; data.dictionaryWords = (data.dictionary?.words || []).filter((w, i, arr) => arr.indexOf(w) === i); data.dictAdd = []; data.dictRemove = [];
       await attachRingtones(data); await attachMemoTimes(data, new Map(entries.map(e => [e.name, e.mtime || 0])));
       qx.open = { folder: bk.folder, rel: bk.rel, data, dirty: new Set(), isNew: false };
+      if (data.errors?.length) A().toast(`חלק מהגיבוי לא נקרא ונפתח בלעדיו: ${data.errors.map(e => `${e.file} (${e.error})`).join(", ")}`, "warning");
       qx.view = "editor"; qx.tab = "contacts"; qx.memoIdx = 0; qx.plIdx = 0; qx.search = ""; render();
     } catch (error) { console.error(error); A().toast("הגיבוי לא נקרא: " + (error.message || error), "error"); }
     finally { setBusy(""); }
@@ -415,6 +416,14 @@
   function undoMemo() { const st = memoStore(); const m = st.memos[st.idx]; const ta = document.getElementById("qx-memo-text"); if (!m || !ta || !m._history?.length) return; m.text = m._history.pop(); m._dirty = true; st.mark(); ta.value = m.text; memoCounter(); markUnsaved(); if (!m._history.length) document.querySelector('[data-qx="memo-undo"]')?.setAttribute("disabled", ""); }
   /* סדר הפתקים: ▲/▼ מזיזים ברשימה; הסדר נכתב בשמירה. */
   function moveMemo(i, delta) { const st = memoStore(); const j = i + delta; if (i < 0 || j < 0 || j >= st.memos.length) return; [st.memos[i], st.memos[j]] = [st.memos[j], st.memos[i]]; if (st.idx === i) st.idx = j; else if (st.idx === j) st.idx = i; if (st.direct) qx.direct.orderDirty = true; st.mark(); render(); markUnsaved(); }
+  /* גרירה ברשימה: הפתק שנגרר נכנס לפני או אחרי הפתק שעליו שוחרר (לפי חצי השורה). הפתק שהיה נבחר נשאר נבחר. */
+  function reorderMemo(from, to, after) {
+    const st = memoStore(); if (from === to || from < 0 || to < 0 || from >= st.memos.length || to >= st.memos.length) return;
+    const selected = st.memos[st.idx]; const [item] = st.memos.splice(from, 1);
+    let insertAt = to + (after ? 1 : 0); if (from < insertAt) insertAt--;
+    st.memos.splice(insertAt, 0, item); st.idx = Math.max(0, st.memos.indexOf(selected));
+    if (st.direct) qx.direct.orderDirty = true; st.mark(); render(); markUnsaved();
+  }
   /* "נקודה וטאב": השורה מתחילה בנקודה, טאב ואז המשפט — סעיף ברשימה, כמו שהמשתמש כותב בטלפון.
      לחיצה חוזרת על שורה שכבר מעוצבת כך מסירה; "לכל השורות" מוסיף למה שחסר, או מסיר מכולן אם כולן כבר מעוצבות. */
   const BULLET = ".\t";
@@ -929,7 +938,7 @@
     const st = memoStore(); const m = st.memos[st.idx];
     const when = x => { const t = x.modified || x.created || ""; const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(t); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : ""; };
     // הסדר ברשימה הוא הסדר בטלפון: העליון מוצג ראשון. ▲/▼ מזיזים, והסדר נכתב בשמירה דרך זמני הקבצים.
-    const list = st.memos.map((x, i) => `<div class="qx-memo-row ${i === st.idx ? "active" : ""}"><button class="qx-memo-pick" data-qx="memo" data-i="${i}"><strong>${esc(x.text.split("\n").map(l => l.trim()).find(Boolean) || "(פתק ריק)")}</strong><span>${esc(when(x))} · ${x.text.length} תווים${x._dirty ? " · לא נשמר" : ""}</span></button><span class="qx-memo-move"><button class="icon-btn" data-qx="memo-up" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="למעלה">▲</button><button class="icon-btn" data-qx="memo-down" data-i="${i}" ${i === st.memos.length - 1 ? "disabled" : ""} aria-label="למטה">▼</button></span></div>`).join("");
+    const list = st.memos.map((x, i) => `<div class="qx-memo-row ${i === st.idx ? "active" : ""}" draggable="true" data-memo-drag="${i}" data-memo-drop="${i}" title="גררו כדי לשנות את הסדר"><button class="qx-memo-pick" data-qx="memo" data-i="${i}"><strong>${esc(x.text.split("\n").map(l => l.trim()).find(Boolean) || "(פתק ריק)")}</strong><span>${esc(when(x))} · ${x.text.length} תווים${x._dirty ? " · לא נשמר" : ""}</span></button><span class="qx-memo-move"><button class="icon-btn" data-qx="memo-up" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="למעלה">▲</button><button class="icon-btn" data-qx="memo-down" data-i="${i}" ${i === st.memos.length - 1 ? "disabled" : ""} aria-label="למטה">▼</button></span></div>`).join("");
     const align = `<div class="qx-align"><div class="qx-align-head"><strong>יישור למרכז מסך הטלפון</strong><span class="qx-note">שורה שארוכה מהמסך נשברת קודם לכמה שורות מאוזנות (כמו שהטלפון היה שובר), ואז כל שורה ממורכזת ברווחים. מירכוז חוזר לא מצטבר.</span></div>
       <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="center-line">מרכז את השורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="center-all">מרכז את כל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="uncenter-line">בטל מירכוז לשורה</button><button class="btn btn-quiet btn-sm" data-qx="uncenter-all">בטל מירכוז לכל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="calibrate">כיול רוחב</button></div>
       <div class="qx-align-head"><strong>נקודה וטאב</strong><span class="qx-note">השורה מתחילה בנקודה, טאב ואז המשפט — כמו סעיף ברשימה. לחיצה נוספת על אותה שורה מסירה.</span></div>
@@ -1099,17 +1108,26 @@
     } catch (error) { console.error(error); setBusy(""); A().toast("משהו השתבש: " + (error.message || error), "error"); }
   });
   /* גרירת כרטיס (או כמה מסומנים) ללשונית קבוצה. הנתונים עוברים ב-dataTransfer כדי שגם גרירה לחלון אחר לא תפיל */
+  const dropHalf = (row, event) => { const r = row.getBoundingClientRect(); return event.clientY > r.top + r.height / 2; }; // false = לפני, true = אחרי
   document.addEventListener("dragstart", event => {
+    const memoRow = event.target.closest?.("[data-memo-drag]");
+    if (memoRow) { event.dataTransfer.setData("text/plain", JSON.stringify({ ankalMemo: Number(memoRow.dataset.memoDrag) })); event.dataTransfer.effectAllowed = "move"; return; }
     const card = event.target.closest?.("[data-drag-i]"); if (!card || !qx.open) return;
     const i = Number(card.dataset.dragI); const ids = qx.selected.has(i) ? [...qx.selected] : [i];
     event.dataTransfer.setData("text/plain", JSON.stringify({ ankalQx: ids })); event.dataTransfer.effectAllowed = "move";
   });
-  document.addEventListener("dragover", event => { const t = event.target.closest?.("[data-drop-group]"); if (t) { event.preventDefault(); t.classList.add("over"); } });
-  document.addEventListener("dragleave", event => { const t = event.target.closest?.("[data-drop-group]"); if (t) t.classList.remove("over"); });
+  document.addEventListener("dragover", event => {
+    const row = event.target.closest?.("[data-memo-drop]");
+    if (row) { event.preventDefault(); const after = dropHalf(row, event); row.classList.toggle("over-bottom", after); row.classList.toggle("over-top", !after); return; }
+    const t = event.target.closest?.("[data-drop-group]"); if (t) { event.preventDefault(); t.classList.add("over"); }
+  });
+  document.addEventListener("dragleave", event => { const row = event.target.closest?.("[data-memo-drop]"); if (row) row.classList.remove("over-top", "over-bottom"); const t = event.target.closest?.("[data-drop-group]"); if (t) t.classList.remove("over"); });
   document.addEventListener("drop", event => {
+    let data = null; try { data = JSON.parse(event.dataTransfer.getData("text/plain")); } catch (_) { }
+    const row = event.target.closest?.("[data-memo-drop]");
+    if (row) { event.preventDefault(); row.classList.remove("over-top", "over-bottom"); if (data && typeof data.ankalMemo === "number") reorderMemo(data.ankalMemo, Number(row.dataset.memoDrop), dropHalf(row, event)); return; }
     const t = event.target.closest?.("[data-drop-group]"); if (!t) return;
     event.preventDefault(); t.classList.remove("over");
-    let data = null; try { data = JSON.parse(event.dataTransfer.getData("text/plain")); } catch (_) { }
     if (data && Array.isArray(data.ankalQx)) moveContacts(data.ankalQx, t.dataset.dropGroup);
   });
   document.addEventListener("input", event => {

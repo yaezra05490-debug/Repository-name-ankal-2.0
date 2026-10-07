@@ -86,12 +86,16 @@
     list.updatedAt = now(); list.version = Number(list.version || 0) + 1; list.dirty = true;
     clearTimeout(state.saveTimer);
     setSyncState("pending", state.user ? "ממתין לסנכרון" : "נשמר במחשב");
-    state.saveTimer = setTimeout(() => { persistLocal(); if (state.user) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`); }, CFG.AUTOSAVE_DELAY_MS || 1800);
+    state.saveTimer = setTimeout(() => { persistLocal(); if (state.user && !isPlaceholderList(list)) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`); }, CFG.AUTOSAVE_DELAY_MS || 1800);
     renderShell();
     safeDataLayer({ event: "ankal_change", action_name: reason });
   }
 
   function cloudList(list) { const copy = clone(list); delete copy.undo; delete copy.redo; delete copy.dirty; return copy; }
+  /* רשימה ריקה בשם ברירת המחדל (נוצרת לבד בכניסה ראשונה) לא נשלחת לענן — אחרת כל מי שרק הציץ באתר
+     מקבל קובץ בדרייב. ברגע שיש בה איש קשר או שהשם שונה, היא עולה כרגיל. */
+  const PLACEHOLDER_LIST_NAMES = new Set(["הרשימה הראשונה", "רשימה חדשה"]);
+  function isPlaceholderList(list) { return !!list && !list.contacts.length && !list.remoteVersion && PLACEHOLDER_LIST_NAMES.has(String(list.name || "").trim()); }
   function setSyncState(kind, text) { const el = document.getElementById("sync-state"); if (!el) return; el.className = "sync-state " + (kind || ""); el.querySelector("span").textContent = text; }
   function toast(message, type = "ok") { const el = document.createElement("div"); el.className = `toast ${type}`; el.textContent = message; document.getElementById("toast-zone")?.appendChild(el); setTimeout(() => el.remove(), 4800); }
   function safeDataLayer(event) { try { window.dataLayer = window.dataLayer || []; window.dataLayer.push(event); } catch (_) {} }
@@ -283,6 +287,7 @@
   }
   /* איפה הרשימה שמורה: בענן של אנק״ל, ממתינה לשליחה, או רק במחשב הזה (מצב אופליין / עדיין לא נשלחה). */
   function syncBadge(list) {
+    if (isPlaceholderList(list)) return `<span class="sync-badge local" title="רשימה ריקה בשם ברירת המחדל לא נשלחת לענן — עד שמוסיפים איש קשר או משנים שם">▮ ריקה, לא נשלחת</span>`;
     if (!state.user) return `<span class="sync-badge local" title="מצב אופליין: הרשימה שמורה במחשב הזה בלבד">▮ נשמר מקומית</span>`;
     if (list.dirty || state.syncQueue.some(job => job.key === `save:${list.id}`)) return `<span class="sync-badge pending" title="השינויים יישלחו לענן ברקע">⟳ ממתין לסנכרון</span>`;
     return list.remoteVersion ? `<span class="sync-badge cloud" title="הרשימה שמורה בענן של אנק״ל">☁ נשמר בענן</span>` : `<span class="sync-badge local" title="הרשימה עדיין לא נשלחה לענן">▮ נשמר מקומית</span>`;
@@ -1481,7 +1486,7 @@
         })
         .then(() => {
           // רשימות שנערכו בלי חיבור (או שהתור שלהן רוקן ביציאה) נשלחות עכשיו.
-          for (const list of state.lists) if (list.dirty) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`);
+          for (const list of state.lists) if (list.dirty && !isPlaceholderList(list)) enqueue("saveList", { list: cloudList(list), expectedVersion: list.remoteVersion || 0 }, `save:${list.id}`);
           processQueue();
         })
         .catch((error) => {

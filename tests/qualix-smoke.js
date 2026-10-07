@@ -211,6 +211,10 @@ server.listen(PORT, async () => {
   await wait(500);
   await step("זמני הקבצים נכתבו בסדר יורד: העליון החדש ביותר", `(() => { const u = (window.__utimes || []).slice(-2); if (u.length < 2) return "no-utimes"; const Q = window.ANKAL_QUALIX; const names = u.map(x => Q.parseMemo(window.__mem.get(x[0])).split("\\n")[0]); return names.join("|") + " " + (u[0][1] > u[1][1] ? "desc" : "bad"); })()`, "פתק ראשון|פתק שלישי desc");
   await step("הרשימה נשארה בסדר שנבחר אחרי השמירה", `[...document.querySelectorAll('#qualix-root .qx-memo-pick strong')].map(e => e.textContent).join("|")`, "פתק ראשון|פתק שלישי");
+  await step("גרירת הפתק התחתון מעל העליון", `(() => { const rows = document.querySelectorAll('#qualix-root [data-memo-drag]'); const dt = new DataTransfer(); rows[1].dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: dt })); const top = rows[0].getBoundingClientRect().top; rows[0].dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: dt, clientY: top + 1 })); return [...document.querySelectorAll('#qualix-root .qx-memo-pick strong')].map(e => e.textContent).join("|"); })()`, "פתק שלישי|פתק ראשון");
+  await step("שמירת הסדר אחרי הגרירה", click('[data-qx="direct-save"]'));
+  await wait(500);
+  await step("זמני הקבצים אחרי הגרירה: שלישי חדש יותר מראשון", `(() => { const u = (window.__utimes || []).slice(-2); const Q = window.ANKAL_QUALIX; const names = u.map(x => Q.parseMemo(window.__mem.get(x[0])).split("\\n")[0]); return names.join("|") + " " + (u[0][1] > u[1][1] ? "desc" : "bad"); })()`, "פתק שלישי|פתק ראשון desc");
   await step("קטגוריות הגרסה עדיין בתפריט הצד", `document.querySelectorAll('#qualix-subnav [data-qx="tab"]').length`, 7);
 
   await step("לשונית לוח שנה", click('[data-qx="tab"][data-tab="calendar"]'));
