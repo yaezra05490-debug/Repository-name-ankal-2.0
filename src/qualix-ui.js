@@ -57,7 +57,7 @@
     try {
       const layout = await detectLayout(adapter);
       if (!layout) { A().toast("בתיקייה שנבחרה אין גיבוי של קיוליקס. בחרו את הכרטיס עצמו או את תיקיית ibphone.", "warning"); return false; }
-      qx.adapter = adapter; qx.layout = layout; qx.open = null; qx.direct = null; qx.cloud = { loaded: false, versions: [], uploading: "", error: "" };
+      qx.adapter = adapter; qx.layout = layout; qx.open = null; qx.direct = null; qx.cardSounds = null; versionCache.clear(); qx.cloud = { loaded: false, versions: [], uploading: "", error: "" };
       await loadBackups(); render(); A().toast(`נמצאו ${qx.backups.length} גיבויים`);
       syncCloud(); // ברקע: מה כבר בשרת, והעלאה של מה שחסר
       return true;
@@ -969,12 +969,36 @@
   }
   /* הגדרות: קריאה בלבד. מה שקריא מוצג כרשימה, וחיפוש ערך מאתר מספר או טקסט בכל הקידודים — כך אפשר למצוא
      את מיקום קוד הנעילה לפי קוד ידוע, ואחרי שהמקום ידוע לשלוף אותו מגיבוי של טלפון שהקוד שלו נשכח. */
+  /* הגדרות שאפשר לקרוא מהכרטיס עצמו (לא מהגיבוי): הצלילים שנבחרו (moreringset\envset.ini) וצלצולי השעונים
+     המעוררים (Alarm\N_Ring.ini). נקראים פעם אחת כשפותחים את לשונית ההגדרות עם כרטיס מחובר. */
+  async function loadCardSounds() {
+    if (!qx.adapter || qx.layout.mode !== "card") { qx.cardSounds = null; return; }
+    const out = { envset: [], alarms: [], error: "" };
+    try {
+      const root = await qx.adapter.list("");
+      const dirOf = n => root.find(e => e.kind === "directory" && e.name.toLowerCase() === n)?.name;
+      const ring = dirOf("moreringset"); if (ring) { const f = (await qx.adapter.list(ring)).find(e => e.kind === "file" && e.name.toLowerCase() === "envset.ini"); if (f) out.envset = Q.parseSoundPaths(await qx.adapter.read(join(ring, f.name))); }
+      const alarm = dirOf("alarm"); if (alarm) for (const f of (await qx.adapter.list(alarm)).filter(e => e.kind === "file" && /^\d+_Ring\.ini$/i.test(e.name)).sort((a, b) => parseInt(a.name) - parseInt(b.name))) { const paths = Q.parseSoundPaths(await qx.adapter.read(join(alarm, f.name))); out.alarms.push({ index: parseInt(f.name), path: paths[0]?.path || "" }); }
+    } catch (error) { out.error = error.message || String(error); }
+    qx.cardSounds = out;
+  }
   function settingsTab() {
     const d = qx.open.data;
-    if (!d.settings) return `<div class="qx-panel"><h3 style="margin:0 0 8px">הגדרות הטלפון</h3><p class="qx-note">בגרסה הזו אין קובץ הגדרות.</p></div>`;
+    const fromCard = qx.layout?.mode === "card";
+    if (fromCard && !qx.cardSounds) loadCardSounds().then(() => { if (qx.tab === "settings" && qx.view === "editor") render(); });
+    const cs = qx.cardSounds;
+    const soundRows = cs ? cs.envset.map((p, i) => `<tr><td class="num">${i + 1}</td><td class="num" style="white-space:normal;direction:ltr">${esc(p.path)}</td></tr>`).join("") : "";
+    const alarmRows = cs ? cs.alarms.map(a => `<tr><td class="num">${a.index}</td><td class="num" style="white-space:normal;direction:ltr">${esc(a.path) || "<span class='qx-note'>ברירת מחדל</span>"}</td></tr>`).join("") : "";
+    const card = !fromCard ? `<p class="qx-note">הצלילים שנבחרו וצלצולי השעונים נמצאים בכרטיס עצמו (לא בגיבוי) — כדי לראות אותם בחרו את הכרטיס.</p>`
+      : !cs ? `<p class="qx-note">קורא מהכרטיס…</p>`
+      : `<div class="qx-table-wrap" style="max-height:40vh"><table class="qx-table"><thead><tr><th>#</th><th>צליל שנבחר בהגדרות (envset.ini)</th></tr></thead><tbody>${soundRows || `<tr><td colspan="2" class="qx-note">לא נמצא קובץ envset.ini בכרטיס</td></tr>`}</tbody></table></div>
+         <div class="qx-table-wrap" style="max-height:40vh;margin-top:10px"><table class="qx-table"><thead><tr><th>שעון מעורר</th><th>צלצול (Alarm\\N_Ring.ini)</th></tr></thead><tbody>${alarmRows || `<tr><td colspan="2" class="qx-note">אין תיקיית Alarm בכרטיס</td></tr>`}</tbody></table></div>
+         <p class="qx-note">איזו משבצת היא צלצול, הודעה או שעון — הטלפון לא כותב; אם תזהו לפי ההגדרות בטלפון, נסמן.</p>${cs.error ? `<p class="qx-note">שגיאה בקריאה: ${esc(cs.error)}</p>` : ""}`;
+    const head = `<div class="qx-panel"><h3 style="margin:0 0 8px">הגדרות מהכרטיס — צלילים ושעונים</h3>${card}</div>`;
+    if (!d.settings) return head + `<div class="qx-panel" style="margin-top:12px"><h3 style="margin:0 0 8px">קובץ ההגדרות של הגיבוי</h3><p class="qx-note">בגרסה הזו אין קובץ הגדרות.</p></div>`;
     const strings = Q.settingsStrings(d.settings);
     const rows = strings.map(s => `<tr><td class="num">0x${s.offset.toString(16).padStart(6, "0")}</td><td class="num">${s.kind}</td><td dir="auto">${esc(s.text)}</td></tr>`).join("");
-    return `<div class="qx-panel"><h3 style="margin:0 0 8px">הגדרות הטלפון — צפייה בלבד</h3><p class="qx-note">קובץ ההגדרות (${(d.settings.length / 1024).toFixed(0)} KB) הוא צילום של זיכרון המערכת ואי אפשר לערוך אותו בבטחה. הוא נשמר בגרסה החדשה כמו שהוא, ובטלפון אפשר לבחור אם לשחזר אותו. למטה כל מה שקריא בו: שמות SIM, הגדרות גלישה (APN), מספרי חירום ועותקים של אירועי יומן.</p>
+    return head + `<div class="qx-panel" style="margin-top:12px"><h3 style="margin:0 0 8px">קובץ ההגדרות של הגיבוי — צפייה בלבד</h3><p class="qx-note">קובץ ההגדרות (${(d.settings.length / 1024).toFixed(0)} KB) הוא צילום של זיכרון המערכת ואי אפשר לערוך אותו בבטחה. הוא נשמר בגרסה החדשה כמו שהוא, ובטלפון אפשר לבחור אם לשחזר אותו. רוב ההגדרות שבו (עוצמות, פרופילים, תצוגה) בינאריות ובלי מפה ידועה; מה שקריא: שמות SIM, הגדרות גלישה (APN), מספרי חירום ועותקים של אירועי יומן.</p>
       <div class="qx-toolbar" style="margin-top:12px"><label class="search-field"><span>⌕</span><input id="qx-settings-find" type="search" placeholder="חיפוש ערך בקובץ, למשל קוד נעילה (1234)…"></label><span class="qx-note">מחפש כטקסט, כ-UTF-16, כ-BCD וכמספר. בבדיקה על גיבוי אמיתי (אוקטובר 2026) קוד הנעילה לא נמצא באף קידוד — ככל הנראה הטלפון לא כולל אותו בגיבוי.</span></div>
       <div id="qx-settings-hits" class="qx-note"></div>
       <div class="qx-table-wrap" style="margin-top:10px;max-height:50vh"><table class="qx-table"><thead><tr><th>היסט</th><th>קידוד</th><th>ערך</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="qx-note">לא נמצא טקסט קריא</td></tr>`}</tbody></table></div></div>`;

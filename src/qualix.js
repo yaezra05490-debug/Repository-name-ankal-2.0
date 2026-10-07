@@ -374,6 +374,16 @@
     const seen = new Set();
     return out.sort((a, b) => a.offset - b.offset).filter(s => { if (/^[\s\-_.~|'"=+*#]+$/.test(s.text)) return false; const key = s.kind + ":" + s.text; if (seen.has(key)) return false; seen.add(key); return true; });
   }
+  /* נתיבי קובצי שמע בקובץ בינארי (moreringset\envset.ini בכרטיס: הצלילים שנבחרו בהגדרות — צלצול, הודעה,
+     שעון וכו׳; Alarm\N_Ring.ini: צלצול לכל שעון מעורר, עם # בתחילתו). מחזיר את כל המופעים עם ההיסט, בלי איחוד. */
+  function parseSoundPaths(bytes) {
+    const out = []; if (!bytes) return out;
+    let run = "", start = -1;
+    const flush = () => { const t = run.replace(/^#/, ""); if (/^[A-Za-z]:\\/.test(t) && t.length > 3) out.push({ offset: start, path: t }); run = ""; start = -1; };
+    for (let i = 0; i + 1 < bytes.length; i += 2) { const c = bytes[i] | (bytes[i + 1] << 8); const ok = (c >= 0x20 && c < 0x7F) || (c >= 0x5D0 && c <= 0x5EA) || c === 0x5F3 || c === 0x5F4 || (c >= 0x2010 && c <= 0x2026); if (ok) { if (start < 0) start = i; run += String.fromCharCode(c); } else if (run) flush(); }
+    if (run) flush();
+    return out;
+  }
   function indexOfBytes(hay, needle, from) { if (!needle.length) return -1; outer: for (let i = from || 0; i + needle.length <= hay.length; i++) { for (let k = 0; k < needle.length; k++) if (hay[i + k] !== needle[k]) continue outer; return i; } return -1; }
   function findValue(bytes, value) {
     const text = String(value || "").trim(), hits = []; if (!bytes || !text) return hits;
@@ -459,7 +469,7 @@
     return out;
   }
 
-  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
+  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, parseSoundPaths, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
   root.ANKAL_QUALIX = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

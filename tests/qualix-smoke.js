@@ -68,6 +68,9 @@ server.listen(PORT, async () => {
     const mem = new Map(); for (const f of files) mem.set("ibphone/" + folder + "/" + f.name, f.bytes); mem.set("PB/.keep", new Uint8Array(0)); mem.set("a.mp3", new Uint8Array(1000)); window.__mem = mem;
     // הטלפון מרפד פתקים בבתי אפס — מדמים את זה
     const memoKey = "ibphone/" + folder + "/MEMO_20260925_1200001234567890.txt"; const mb = mem.get(memoKey); const padded = new Uint8Array(mb.length + 20); padded.set(mb); mem.set(memoKey, padded); mem.set("Memo/MEMO_20260925_1200001234567890.txt", padded);
+    // הגדרות שמע בכרטיס: envset.ini עם שני נתיבים, ושעון מעורר אחד
+    const env = new Uint8Array(1100); env.set(Q.u16le("E:\\\\צלצול.mp3"), 0); env.set(Uint8Array.from([0x18, 0]), 0x200); env.set(Q.u16le("D:\\\\Audio\\\\REC_0000002.mp3"), 0x202); mem.set("moreringset/envset.ini", env);
+    const al = new Uint8Array(514); al.set(Q.u16le("#E:\\\\שיר.mp3"), 0); mem.set("Alarm/0_Ring.ini", al);
     const adapter = { label: "זיכרון", kind: "mem",
       list: async rel => { const prefix = rel ? rel.replace(/\\/+$/, "") + "/" : ""; const out = new Map(); for (const key of mem.keys()) { if (!key.startsWith(prefix)) continue; const rest = key.slice(prefix.length); const name = rest.split("/")[0]; if (!name) continue; out.set(name, rest.includes("/") ? "directory" : "file"); } return [...out].map(([name, kind]) => ({ name, kind, size: kind === "file" ? mem.get(prefix + name).length : 0 })); },
       read: async rel => { if (!mem.has(rel)) throw new Error("no file " + rel); return mem.get(rel); },
@@ -265,6 +268,9 @@ server.listen(PORT, async () => {
   await step("לשונית הגדרות: צפייה בלבד עם חיפוש", click('[data-qx="tab"][data-tab="settings"]'));
   await wait(200);
   await step("שדה חיפוש בהגדרות", `document.getElementById("qx-settings-find") ? "yes" : "no"`, "yes");
+  await wait(400);
+  await step("צלילים שנבחרו נקראו מהכרטיס (envset.ini)", `[...document.querySelectorAll("#qualix-root .qx-table")][0]?.querySelectorAll("tbody tr").length`, 2);
+  await step("צלצול השעון המעורר נקרא (Alarm)", `[...document.querySelectorAll("#qualix-root .qx-table")][1]?.querySelector("tbody td:nth-child(2)")?.textContent`, "E:\\שיר.mp3");
   await step("חיפוש ערך שלא קיים", `(() => { const el = document.getElementById("qx-settings-find"); el.value = "9876"; el.dispatchEvent(new Event("input", { bubbles: true })); return document.getElementById("qx-settings-hits").textContent; })()`, v => /לא נמצא/.test(v));
   await step("שמירה כגרסה חדשה", click('[data-qx="save"]'));
   await wait(300);

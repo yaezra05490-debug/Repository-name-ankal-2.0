@@ -157,6 +157,10 @@ test("הגדרות: מחרוזות קריאות וחיפוש ערך בכל הק�
   assert.ok(hits.some(h => h.kind === "u32" && h.offset === 120), "u32");
   assert.ok(!hits.some(h => h.kind === "ascii"), "לא כטקסט");
   assert.deepEqual(Q.findValue(bytes, ""), []);
+  // envset.ini: נתיבים ב-UTF-16 עם אורך לפניהם; Alarm: # לפני הנתיב
+  const env = new Uint8Array(1200); env.set(Q.u16le("E:\\צלצול.mp3"), 0); env.set(Uint8Array.from([0x18, 0]), 0x200); env.set(Q.u16le("D:\\Audio\\REC_0000002.mp3"), 0x202); env.set(Q.u16le("#E:\\תשרי\\שיר.mp3"), 0x400);
+  assert.deepEqual(Q.parseSoundPaths(env).map(p => p.path), ["E:\\צלצול.mp3", "D:\\Audio\\REC_0000002.mp3", "E:\\תשרי\\שיר.mp3"]);
+  assert.equal(Q.parseSoundPaths(env)[1].offset, 0x202);
 });
 
 test("הרכבת גיבוי שלם וקריאתו חזרה", async () => {
