@@ -110,6 +110,18 @@
     if (!response.ok || body.ok === false) throw Object.assign(new Error(body.message || body.error || "השרת לא השיב"), { code: body.error, details: body });
     return body.data;
   }
+  /* ישירות ל-Apps Script, בלי הפונקציה בנטליפי: לקבצים גדולים (גיבוי קיוליקס), שהפונקציה מפילה אחרי 10 שניות.
+     POST כ-text/plain — בלי preflight, והדפדפן עוקב אחרי ההפניה של הסקריפט בעצמו. נופל ל-api הרגיל אם אין כתובת. */
+  async function apiDirect(action, payload = {}) {
+    const url = String(CFG.APPS_SCRIPT_URL || "");
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) return api(action, payload);
+    let response;
+    try { response = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action, payload, idToken: state.token, appVersion: CFG.APP_VERSION }), redirect: "follow" }); }
+    catch (_) { return api(action, payload); } // רשת/CORS חסמו את הגישה הישירה — הדרך הרגילה דרך נטליפי
+    const body = await response.json().catch(() => ({ ok: false, error: "INVALID_RESPONSE", message: "הסקריפט החזיר תשובה לא תקינה" }));
+    if (!response.ok || body.ok === false) throw Object.assign(new Error(body.message || body.error || "השרת לא השיב"), { code: body.error, details: body });
+    return body.data;
+  }
   function enqueue(action, payload, key = null) {
     if (key) state.syncQueue = state.syncQueue.filter(item => item.key !== key);
     state.syncQueue.push({ id: id("job"), action, payload, key, attempts: 0, createdAt: now() });
@@ -316,6 +328,10 @@
 
   function renderContacts() {
     const grid = document.getElementById("contact-grid"); if (!grid) return;
+    /* הכרטיסים נבנים רק כשעמוד אנשי הקשר מוצג: renderAll רץ בכל מעבר בין עמודים, ובניית 1,500 כרטיסים
+       בכל מעבר (גם לעמודים אחרים) היא מה שהאט את כל האתר. מעבר לעמוד אנשי הקשר בונה מחדש, כי setPage
+       קובע את העמוד לפני renderAll. */
+    if (state.page !== "contacts") return;
     const all = filteredContacts(); const existing = new Set(currentList()?.contacts.map(c => c.id) || []);
     state.selected = new Set([...state.selected].filter(x => existing.has(x)));
     grid.classList.toggle("compact", state.dense);
@@ -1365,6 +1381,7 @@
   const ADMIN_CACHE_KEY = "ankal.adminCache";
   function adminCacheRead(tab) { try { return JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY) || "{}")[tab] || null; } catch (_) { return null; } }
   function adminCacheWrite(tab, data) { try { const all = JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY) || "{}"); all[tab] = { at: now(), data }; localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(all)); } catch (_) { /* מכסה — מוותרים על המטמון, לא על המסך */ } }
+  function formatBytesHe(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
   function adminFreshness(text, pending) { const el = document.getElementById("admin-freshness"); if (el) { el.textContent = text; el.classList.toggle("pending", !!pending); } }
   async function loadAdmin() {
     if (!state.user?.isAdmin) { document.getElementById("admin-content").innerHTML = "<p>המסך זמין למנהל בלבד.</p>"; return; }
@@ -1373,10 +1390,21 @@
     else { document.getElementById("admin-content").innerHTML = "<p>טוען נתונים מהשרת…</p>"; adminFreshness("", true); }
     const requested = tab;
     try {
-      const data = await api("adminOverview", { tab });
+      const data = await api("adminOverview", { tab, limit: 500 });
       adminCacheWrite(tab, data);
       if (state.adminTab !== requested) return; // המנהל כבר עבר ללשונית אחרת בזמן ההמתנה
       renderAdmin(data); adminFreshness(`עודכן ${fmtDate(now())}`, false);
+      // הסטטיסטיקה הכבדה (סריקת דרייב) מגיעה בבקשה נפרדת ברקע, ומתמזגת לכרטיסי המשתמשים
+      if (data.stats?.pending || (data.items || []).some(i => i.sub && i.lists == null)) {
+        adminFreshness("מחשב סטטיסטיקה ברקע…", true);
+        api("adminStats").then(s => {
+          if (state.adminTab !== requested) return;
+          data.stats = Object.assign({}, data.stats, s.stats || {}); delete data.stats.pending;
+          const safe = v => String(v || "").replace(/[^A-Za-z0-9_-]/g, "");
+          for (const item of data.items || []) { const mine = (s.perUser || {})[safe(item.sub)]; if (mine) Object.assign(item, { lists: mine.lists || 0, contacts: mine.contacts || 0, backups: mine.backups || 0, storage: formatBytesHe(mine.bytes || 0) }); }
+          adminCacheWrite(tab, data); renderAdmin(data); adminFreshness(`עודכן ${fmtDate(now())}`, false);
+        }).catch(() => adminFreshness("הסטטיסטיקה לא התקבלה", false));
+      }
     } catch (error) {
       if (state.adminTab !== requested) return;
       if (cached) adminFreshness(`השרת לא ענה (${error.message}) — מוצגים הנתונים מ-${fmtDate(cached.at)}`, false);
@@ -1637,7 +1665,7 @@
     modal, confirmBox, toast, esc, fmtDate, isDesktopApp, downloadBlob, ensureXlsx, setPage, blankContact, avatarHue, initialOf,
     getLists: () => state.lists.filter(list => !list.deletedAt),
     // לגיבוי קיוליקס בשרת: קריאה בזהות המשתמש המחובר, מי מחובר, וכניסה כשצריך
-    api, currentUser: () => state.user, login: googleLogin,
+    api, apiDirect, currentUser: () => state.user, login: googleLogin,
     createListWithContacts: (name, contacts) => { const list = blankList(name); list.contacts = contacts.map(c => blankContact(c)); state.lists.push(list); state.activeListId = list.id; resetReview(); persistLocal(); markChanged(list, "create_list"); logAction("create_list", list.id); return list; },
     openList,
     // קורא קובץ VCF/Excel/CSV דרך צינור הייבוא הרגיל (קידוד, גיליונות, מיפוי) ומחזיר את אנשי הקשר בלי לשנות רשימה

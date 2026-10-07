@@ -16,6 +16,10 @@ window.ANKAL_CONFIG = Object.freeze({
   // ב-Netlify הפנייה עוברת דרך פונקציה מאובטחת אל Apps Script.
   API_PATH: "/.netlify/functions/ankal-api",
 
+  /* קובצי גיבוי קיוליקס (עד כמה מגה-בייט) נשלחים ישירות ל-Apps Script: דרך הפונקציה בנטליפי הם נתקעו
+     במגבלת 10 השניות שלה (INVALID_RESPONSE). הכתובת ציבורית ממילא; הזהות נבדקת בסקריפט לפי ה-ID Token. */
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxPc9F_6BUF593fe4qUtCTI-o2qXue_lt6MV6BtV5ujob3ouLa6uYJUYcBK2bN-wL1ahQ/exec",
+
   /* כתובת קובץ ההתקנה של תוכנת Windows, לכפתור "הורדת התוכנה למחשב" בדף הנחיתה.
 
      הקובץ מתארח ב-GitHub Releases ולא באתר, כי הוא שוקל כ-92MB — נפח כזה בתוך

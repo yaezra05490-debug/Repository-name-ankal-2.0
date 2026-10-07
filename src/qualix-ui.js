@@ -617,6 +617,8 @@
      כל גיבוי שבכרטיס מועלה לדרייב של המשתמש דרך השרת, כך שהוא שמור גם אם הכרטיס נפגע או אובד. ההעלאה
      רצה ברקע אחרי חיבור הכרטיס, קובץ-קובץ ודחוס ב-gzip (ספר טלפונים הוא בעיקר אפסים). דורש כניסה עם Google. */
   const cloudUser = () => (A().currentUser ? A().currentUser() : null);
+  // קובצי הגיבוי הולכים ישירות לסקריפט (A().apiDirect) — דרך נטליפי הם נפלו במגבלת 10 השניות של הפונקציה
+  const cloudApi = (action, payload) => (A().apiDirect || A().api)(action, payload);
   function toBase64(bytes) { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
   function fromBase64(text) { const s = atob(text); const out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i); return out; }
   async function gzipBytes(bytes) { if (typeof CompressionStream === "undefined") return null; return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer()); }
@@ -624,7 +626,7 @@
   const renderIfVersions = () => { if (qx.view === "versions") render(); else renderSubnav(); };
   async function loadCloud() {
     if (!cloudUser()) { qx.cloud.loaded = false; qx.cloud.versions = []; return; }
-    try { const data = await A().api("qualixList"); qx.cloud.versions = data.versions || []; qx.cloud.loaded = true; qx.cloud.error = ""; }
+    try { const data = await cloudApi("qualixList"); qx.cloud.versions = data.versions || []; qx.cloud.loaded = true; qx.cloud.error = ""; }
     catch (error) { qx.cloud.error = error.message || String(error); qx.cloud.loaded = true; }
   }
   async function syncCloud(force) {
@@ -662,8 +664,10 @@
         if (existing.get(f.name) === f.size) continue; // כבר בשרת, באותו גודל
         const bytes = await qx.adapter.read(join(bk.rel, f.name));
         const packed = await gzipBytes(bytes); const data = toBase64(packed || bytes);
-        if (data.length > 5500000) throw new Error(`הקובץ ${f.name} גדול מדי להעלאה`);
-        await A().api("qualixPut", { folder, name: f.name, data, gzip: !!packed });
+        if (data.length > 20000000) throw new Error(`הקובץ ${f.name} גדול מדי להעלאה`);
+        let lastError = null;
+        for (let attempt = 0; attempt < 2; attempt++) { try { await cloudApi("qualixPut", { folder, name: f.name, data, gzip: !!packed }); lastError = null; break; } catch (error) { lastError = error; } }
+        if (lastError) throw lastError;
       }
       qx.cloud.versions = [{ folder, files: files.map(f => ({ name: f.name, size: f.size })), updatedAt: new Date().toISOString() }, ...qx.cloud.versions.filter(v => v.folder !== folder)];
       if (!quiet) A().toast(`הגיבוי ${folderDate(folder)} שמור בשרת`);
@@ -679,7 +683,7 @@
     setBusy(`מוריד מהשרת: ${folderDate(folder)}…`);
     try {
       await qx.adapter.mkdir(rel); let n = 0;
-      for (const f of v.files) { n++; setBusy(`מוריד מהשרת: ${folderDate(folder)} · ${n}/${v.files.length}`); const got = await A().api("qualixGet", { folder, name: f.name }); let bytes = fromBase64(got.data); if (got.gzip) bytes = await gunzipBytes(bytes); await qx.adapter.write(join(rel, f.name), bytes); }
+      for (const f of v.files) { n++; setBusy(`מוריד מהשרת: ${folderDate(folder)} · ${n}/${v.files.length}`); const got = await cloudApi("qualixGet", { folder, name: f.name }); let bytes = fromBase64(got.data); if (got.gzip) bytes = await gunzipBytes(bytes); await qx.adapter.write(join(rel, f.name), bytes); }
       await loadBackups(); render(); A().toast(`הגיבוי ${folderDate(folder)} ירד לכרטיס. בטלפון: גיבוי ושחזור ← שחזור.`);
     } catch (error) { console.error(error); A().toast("ההורדה מהשרת נכשלה: " + (error.message || error), "error"); }
     finally { setBusy(""); }
@@ -692,7 +696,7 @@
     if (choice !== "delete") return;
     if (!(await A().confirmBox("מחיקה מהשרת", `למחוק את הגיבוי ${folderDate(folder)} מהשרת?${onCard ? " העותק שבכרטיס נשאר." : " זה העותק היחיד שלו!"}`, "מחיקה"))) return;
     setBusy("מוחק מהשרת…");
-    try { await A().api("qualixDelete", { folder }); qx.cloud.versions = qx.cloud.versions.filter(x => x.folder !== folder); render(); A().toast("הגיבוי נמחק מהשרת"); }
+    try { await cloudApi("qualixDelete", { folder }); qx.cloud.versions = qx.cloud.versions.filter(x => x.folder !== folder); render(); A().toast("הגיבוי נמחק מהשרת"); }
     catch (error) { A().toast("המחיקה נכשלה: " + (error.message || error), "error"); }
     finally { setBusy(""); }
   }
@@ -881,7 +885,7 @@
     const sel = [...qx.selected].filter(i => d.contacts[i]).length;
     const moveTo = `<select id="qx-move-to">${groups.filter(g => g !== qx.groupSel).map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("")}${qx.groupSel ? `<option value="">בלי קבוצה</option>` : ""}</select>`;
     return `<div class="qx-groups"><aside class="qx-group-tabs">${tabs}<p class="qx-note">גררו כרטיס ללשונית של קבוצה אחרת (כרטיסים מסומנים נגררים יחד). הטלפון מאפשר עד ${GROUP_MAX} קבוצות.</p></aside>
-      <div class="qx-group-main"><div class="qx-toolbar"><strong>${esc(qx.groupSel || "בלי קבוצה")}</strong><span class="qx-note">${rows.length !== total ? `${rows.length} מתוך ${total} אנשי קשר (מסונן לפי החיפוש “${esc(qx.search.trim())}”)` : `${total} אנשי קשר`}${sel ? ` · ${sel} מסומנים` : ""}</span>${rows.length !== total ? `<button class="btn btn-quiet btn-sm" data-qx="clear-search">נקה חיפוש</button>` : ""}<div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="group-select-all">סמן הכל</button><button class="btn btn-quiet btn-sm" data-qx="group-clear">נקה סימון</button><label class="modal-field qx-inline">העבר מסומנים ל${moveTo}</label><button class="btn btn-secondary btn-sm" data-qx="group-move-selected" ${sel ? "" : "disabled"}>העבר</button>${qx.groupSel ? `<button class="btn btn-quiet btn-sm" data-qx="group-rename">✎ שינוי שם הקבוצה</button>` : ""}</div>
+      <div class="qx-group-main"><div class="qx-toolbar"><strong>${esc(qx.groupSel || "בלי קבוצה")}</strong><span class="qx-note">${rows.length !== total ? `${rows.length} מתוך ${total} אנשי קשר (מסונן לפי החיפוש “${esc(qx.search.trim())}”)` : `${total} אנשי קשר`}<span id="qx-sel-count">${sel ? ` · ${sel} מסומנים` : ""}</span></span>${rows.length !== total ? `<button class="btn btn-quiet btn-sm" data-qx="clear-search">נקה חיפוש</button>` : ""}<div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="group-select-all">סמן הכל</button><button class="btn btn-quiet btn-sm" data-qx="group-clear">נקה סימון</button><label class="modal-field qx-inline">העבר מסומנים ל${moveTo}</label><button class="btn btn-secondary btn-sm" id="qx-move-btn" data-qx="group-move-selected" ${sel ? "" : "disabled"}>העבר</button>${qx.groupSel ? `<button class="btn btn-quiet btn-sm" data-qx="group-rename">✎ שינוי שם הקבוצה</button>` : ""}</div>
       <div class="contact-grid">${cards || `<div class="empty-box"><div class="empty-icon">◫</div><h3>אין אנשי קשר בקבוצה</h3><p>גררו לכאן כרטיסים מקבוצה אחרת, או סמנו והעבירו.</p></div>`}</div></div></div>`;
   }
   function moveContacts(indexes, group) {
@@ -1047,7 +1051,14 @@
   document.addEventListener("click", async event => {
     // תיבת הסימון שעל כרטיס בתצוגת הקבוצות: מסמנת, ולא פותחת את הכרטיס לעריכה
     const check = event.target.closest?.("[data-qx-select]");
-    if (check) { const i = Number(check.dataset.qxSelect); if (qx.selected.has(i)) qx.selected.delete(i); else qx.selected.add(i); return render(); }
+    if (check) {
+      // סימון בלי לבנות מחדש את כל הכרטיסים (אלף כרטיסים בכל לחיצה זה איטי): מעדכנים את הכרטיס, המונה והכפתור
+      const i = Number(check.dataset.qxSelect); if (qx.selected.has(i)) qx.selected.delete(i); else qx.selected.add(i);
+      check.closest(".contact-card")?.classList.toggle("selected", qx.selected.has(i));
+      const n = qx.selected.size, cnt = document.getElementById("qx-sel-count"), btn = document.getElementById("qx-move-btn");
+      if (cnt) cnt.textContent = n ? ` · ${n} מסומנים` : ""; if (btn) btn.disabled = !n;
+      return;
+    }
     const el = event.target.closest("[data-qx]"); if (!el || !document.getElementById("qualix-root")) return;
     const act = el.dataset.qx, i = Number(el.dataset.i);
     try {

@@ -42,6 +42,7 @@ function doPost(e) {
       log: log_,
       error: error_,
       adminOverview: adminOverview_,
+      adminStats: adminStats_,
       adminToggleBlock: adminToggleBlock_,
       adminUserLists: adminUserLists_,
       qualixList: qualixList_,
@@ -342,17 +343,22 @@ function error_(user, payload) {
   return { queued: false };
 }
 
-function adminOverview_(user, payload) {
+/* הסטטיסטיקה (סריקת כל תיקיות המשתמשים בדרייב) כבדה, ולכן אינה רצה בתוך בקשת לשונית: adminOverview
+   מחזיר מיד את הנתונים הקלים ואת הסטטיסטיקה מהמטמון אם יש (אחרת pending), ו-adminStats מחשב אותה
+   בנפרד — הלקוח קורא לו ברקע ומעדכן את המספרים כשהם מגיעים. המטמון: עשר דקות. */
+function adminCache_() { return getAppService(["C", "a", "c", "h", "e", "S", "e", "r", "v", "i", "c", "e"]).getScriptCache(); }
+function cachedAdminStats_() { try { return JSON.parse(adminCache_().get("ADMIN_STATS") || "null"); } catch (_) { return null; } }
+function adminStats_(user) {
   requireAdmin_(user);
   var users = sheet_(USERS_SHEET, ["sub", "email", "name", "picture", "createdAt", "lastSeen", "blocked", "deletedAt", "termsVersion", "privacyVersion"]).getDataRange().getValues().slice(1);
-
-  /* ספירת הרשימות עוברת על כל קובץ של כל משתמש ומפענחת כל JSON — עם עשרות
-     משתמשים זה מתקרב למגבלת 6 הדקות של Apps Script. לכן התוצאה נשמרת במטמון
-     לעשר דקות; מספר המשתמשים תמיד טרי כי הוא מגיע מהגיליון בזול. */
-  var cacheApp = getAppService(["C", "a", "c", "h", "e", "S", "e", "r", "v", "i", "c", "e"]);
-  var cache = cacheApp.getScriptCache();
-  var stats = null;
-  try { stats = JSON.parse(cache.get("ADMIN_STATS") || "null"); } catch (_) {}
+  var full = computeAdminStats_();
+  var perUser = full.perUser || {};
+  var stats = JSON.parse(JSON.stringify(full)); delete stats.perUser; stats.users = users.length;
+  return { stats: stats, perUser: perUser };
+}
+function computeAdminStats_() {
+  var cache = adminCache_();
+  var stats = cachedAdminStats_();
   if (!stats) {
     var listCount = 0;
     var contacts = 0;
@@ -391,12 +397,18 @@ function adminOverview_(user, payload) {
     stats = { lists: listCount, contacts: contacts, storage: formatBytes_(bytes), perUser: perUser };
     try { cache.put("ADMIN_STATS", JSON.stringify(stats), 600); } catch (_) {}
   }
-  var perUserMap = stats.perUser || {};
+  return stats;
+}
+function adminOverview_(user, payload) {
+  requireAdmin_(user);
+  var users = sheet_(USERS_SHEET, ["sub", "email", "name", "picture", "createdAt", "lastSeen", "blocked", "deletedAt", "termsVersion", "privacyVersion"]).getDataRange().getValues().slice(1);
+  var cached = cachedAdminStats_();
+  var perUserMap = (cached && cached.perUser) || {};
+  var stats = cached ? JSON.parse(JSON.stringify(cached)) : { pending: true };
   delete stats.perUser;
   stats.users = users.length;
-  /* היומן מוחזר במלואו כברירת מחדל (עד תקרה שמונעת תשובה ענקית), כדי שהמנהל
-     יראה את כל ההיסטוריה ולא רק את הסוף. total אומר כמה באמת קיימות. */
-  var limit = Math.max(1, Math.min(Number(payload.limit || 20000), 50000));
+  /* היומן נטען ב-500 שורות כברירת מחדל (מהחדש לישן); "כל ההיסטוריה" מבקש יותר. total אומר כמה באמת קיימות. */
+  var limit = Math.max(1, Math.min(Number(payload.limit || 500), 50000));
   var items = [];
   var total = 0;
   if (payload.tab === "logs") {
@@ -413,7 +425,9 @@ function adminOverview_(user, payload) {
   } else {
     items = users.map(function (r) {
       var mine = perUserMap[safeId_(r[0])] || {};
-      return { sub:r[0], email:r[1], name:r[2], picture:r[3], createdAt:r[4], lastSeen:r[5], blocked:String(r[6]).toLowerCase()==="true", deletedAt:r[7], termsVersion:r[8], privacyVersion:r[9], lists: mine.lists || 0, contacts: mine.contacts || 0, backups: mine.backups || 0, storage: formatBytes_(mine.bytes || 0) };
+      var base = { sub:r[0], email:r[1], name:r[2], picture:r[3], createdAt:r[4], lastSeen:r[5], blocked:String(r[6]).toLowerCase()==="true", deletedAt:r[7], termsVersion:r[8], privacyVersion:r[9] };
+      if (cached) { base.lists = mine.lists || 0; base.contacts = mine.contacts || 0; base.backups = mine.backups || 0; base.storage = formatBytes_(mine.bytes || 0); }
+      return base;
     });
     total = items.length;
   }

@@ -201,12 +201,13 @@
   async function signInWithCode() {
     view.innerHTML = `<div class="load">בודק את הקוד…</div>`;
     try {
-      const data = await api("adminOverview", { tab: "users" });
+      const data = await api("adminOverview", { tab: "users", limit: 500 });
       sessionStorage.setItem("yaezra.code", code);
       me = { name: "מנהל" };
       document.getElementById("who").innerHTML = `<span>מנהל</span><button class="linkish" id="sign-out">יציאה</button>`;
       document.getElementById("sign-out").onclick = () => { code = ""; sessionStorage.removeItem("yaezra.code"); renderCodeGate(""); };
       state.tab = "users"; cacheWrite("users", data); applyTabData("users", data); renderTab(); setFreshness(`עודכן ${fmtDate(new Date().toISOString())}`);
+      if (statsNeeded(data)) { setFreshness("מחשב סטטיסטיקה ברקע…"); refreshStats(); }
     } catch (error) {
       code = ""; sessionStorage.removeItem("yaezra.code");
       renderCodeGate(/שגוי|ADMIN_ONLY/.test(error.message) ? "הקוד שגוי." : error.message);
@@ -234,7 +235,7 @@
     return `<div class="adm-search"><span>⌕</span><input id="adm-q" type="search" placeholder="${esc(placeholder)}" value="${esc(state.q)}"></div>`;
   }
   function bindShell() {
-    view.querySelectorAll("[data-tab]").forEach((el) => el.onclick = () => { state.q = ""; openTab(el.dataset.tab); });
+    view.querySelectorAll("[data-tab]").forEach((el) => el.onclick = () => { state.q = ""; if (el.dataset.tab !== state.tab) state.limit = 0; openTab(el.dataset.tab); });
     const q = document.getElementById("adm-q");
     if (q) q.oninput = () => { state.q = q.value; renderTabContent(); };
   }
@@ -288,6 +289,28 @@
   function cacheWrite(tab, data) { try { const all = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); all[tab] = { at: new Date().toISOString(), data }; localStorage.setItem(CACHE_KEY, JSON.stringify(all)); } catch (_) { } }
   function applyTabData(tab, data) { state.stats = data.stats || {}; state.items = data.items || []; state.total = data.total ?? state.items.length; if (tab === "users") state.users = state.items; }
   function setFreshness(text) { const el = document.getElementById("tab-fresh"); if (el) el.textContent = text; }
+  const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+  /* הסטטיסטיקה (סריקת דרייב של כל המשתמשים) מגיעה בבקשה נפרדת ברקע ומתמזגת למסך: שורת המספרים
+     למעלה והמונים בכרטיסי המשתמשים. כך הלשונית עצמה חוזרת מיד. */
+  let statsInFlight = null;
+  function refreshStats() {
+    if (statsInFlight) return statsInFlight;
+    statsInFlight = (async () => {
+      try {
+        const s = await api("adminStats");
+        state.stats = Object.assign({}, state.stats, s.stats || {}); delete state.stats.pending;
+        const safe = (v) => String(v || "").replace(/[^A-Za-z0-9_-]/g, "");
+        for (const u of state.users || []) { const mine = (s.perUser || {})[safe(u.sub)]; if (mine) Object.assign(u, { lists: mine.lists || 0, contacts: mine.contacts || 0, backups: mine.backups || 0, storage: fmtBytes(mine.bytes || 0) }); }
+        if (state.users) cacheWrite("users", { stats: state.stats, items: state.users, total: state.users.length });
+        const statsEl = view.querySelector(".stats"); if (statsEl) statsEl.outerHTML = statsHtml();
+        if (state.tab === "users" && document.getElementById("tab-content")) renderTabContent();
+        setFreshness(`עודכן ${fmtDate(new Date().toISOString())}`);
+      } catch (_) { setFreshness("הסטטיסטיקה לא התקבלה — המספרים למעלה עשויים להיות חסרים"); }
+      finally { statsInFlight = null; }
+    })();
+    return statsInFlight;
+  }
+  function statsNeeded(data) { return Boolean(data.stats?.pending) || (data.items || []).some((i) => i.sub && i.lists == null); }
   async function openTab(tab) {
     state.tab = tab; state.user = null; state.list = null;
     if (tab === "server") { view.innerHTML = `<div class="load">טוען…</div>`; return renderServerTab(); }
@@ -295,9 +318,10 @@
     if (cached) { applyTabData(tab, cached.data); renderTab(); setFreshness(`מוצגים נתונים מ-${fmtDate(cached.at)} · מעדכן מהשרת…`); }
     else view.innerHTML = `<div class="load">טוען מהשרת…</div>`;
     try {
-      const data = await api("adminOverview", { tab });
+      const data = await api("adminOverview", { tab, limit: state.limit || 500 });
       if (state.tab !== tab) return; // עברו ללשונית אחרת בזמן ההמתנה
       cacheWrite(tab, data); applyTabData(tab, data); renderTab(); setFreshness(`עודכן ${fmtDate(new Date().toISOString())}`);
+      if (statsNeeded(data)) { setFreshness("מחשב סטטיסטיקה ברקע…"); refreshStats(); }
     } catch (error) {
       if (state.tab !== tab) return;
       if (cached) setFreshness(`השרת לא ענה (${error.message}) — מוצגים הנתונים מ-${fmtDate(cached.at)}`);
@@ -370,7 +394,9 @@
         <thead><tr>${columns.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>
         <tbody>${items.map((item) => `<tr>${columns.map(([key]) =>
           `<td class="${key === "message" ? "wrap" : ""}">${cellHtml(key, item)}</td>`).join("")}</tr>`).join("")}</tbody>
-      </table></div>` : '<p class="muted">אין פריטים להצגה.</p>';
+      </table></div>${all > shown ? `<p style="margin-top:12px"><button class="btn btn-secondary" id="load-all">טען את כל ההיסטוריה (${all} רשומות)</button></p>` : ""}` : '<p class="muted">אין פריטים להצגה.</p>';
+    // היומן נטען ב-500 שורות כדי שהלשונית תחזור מיד; "כל ההיסטוריה" מבקש הכול (עד 50,000)
+    const loadAll = document.getElementById("load-all"); if (loadAll) loadAll.onclick = () => { state.limit = 50000; openTab(state.tab); };
   }
 
   function userCard(user) {

@@ -70,7 +70,10 @@ function memoryStore() {
   test("פעולות ניהול דורשות מנהל", async () => { fresh(); assert.equal((await call("adminOverview", "dan", { tab: "users" })).error, "ADMIN_ONLY"); });
   test("adminOverview: סטטיסטיקה, משתמשים, יומן, חסימה ורשימות משתמש", async () => {
     fresh(); await call("session", "dan"); await scriptCreates("111", { id: "l1", name: "x", contacts: [{ id: "a", name: "א" }, { id: "b", name: "ב" }] }); await call("log", "dan", { action: "import" });
-    const ov = await call("adminOverview", "admin", { tab: "users" }); assert.equal(ov.ok, true); assert.equal(ov.data.stats.users, 2); assert.equal(ov.data.stats.lists, 1); assert.equal(ov.data.stats.contacts, 2); assert.equal(ov.data.stats.server, "netlify");
+    // הלשונית חוזרת מיד בלי הסטטיסטיקה הכבדה (pending); adminStats מחשב אותה, ואחריו adminOverview מגיש אותה מהמטמון עם מונים לכל משתמש
+    const ov = await call("adminOverview", "admin", { tab: "users" }); assert.equal(ov.ok, true); assert.equal(ov.data.stats.users, 2); assert.equal(ov.data.stats.pending, true); assert.equal(ov.data.stats.server, "netlify"); assert.equal(ov.data.items[0].lists, undefined);
+    const st = await call("adminStats", "admin"); assert.equal(st.ok, true); assert.equal(st.data.stats.lists, 1); assert.equal(st.data.stats.contacts, 2); assert.equal(st.data.perUser["111"].lists, 1); assert.equal(st.data.perUser["111"].contacts, 2);
+    const ov2 = await call("adminOverview", "admin", { tab: "users" }); assert.equal(ov2.data.stats.lists, 1); assert.equal(ov2.data.stats.pending, undefined); assert.equal(ov2.data.items.find(i => i.sub === "111").contacts, 2);
     const logs = await call("adminOverview", "admin", { tab: "logs" }); assert.equal(logs.data.items.length, 1); assert.equal(logs.data.items[0].name, "דן");
     assert.equal((await call("adminToggleBlock", "admin", { sub: "111" })).data.updated, true); assert.equal(store.tabs["משתמשים"][1][6], true);
     const ul = await call("adminUserLists", "admin", { sub: "111" }); assert.equal(ul.data.lists.length, 1);

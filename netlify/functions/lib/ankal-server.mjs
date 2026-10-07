@@ -161,10 +161,12 @@ let statsCache = { at: 0, stats: null };
 export function invalidateStats() { statsCache = { at: 0, stats: null }; }
 function formatBytes(n) { if (n < 1024) return n + " B"; if (n < 1048576) return (n / 1024).toFixed(1) + " KB"; if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB"; return (n / 1073741824).toFixed(2) + " GB"; }
 const rowsAsObjects = (rows, limit) => { if (rows.length < 2) return []; const headers = rows[0]; return rows.slice(Math.max(1, rows.length - limit)).reverse().map(r => Object.fromEntries(headers.map((h, i) => [h, cell(r, i)]))); };
-async function adminOverview(user, payload) {
-  requireAdmin(user);
-  const users = (await usersRows()).slice(1);
-  let stats = statsCache.stats && Date.now() - statsCache.at < 600000 ? statsCache.stats : null;
+/* הסטטיסטיקה (סריקת דרייב של כל המשתמשים, עשרות קריאות) כבדה, ולכן היא לא רצה בתוך בקשת לשונית:
+   adminOverview מחזיר מיד את הנתונים הקלים ואת הסטטיסטיקה מהמטמון אם יש (אחרת pending), ו-adminStats
+   מחשב אותה בנפרד — הלקוח קורא לו ברקע ומעדכן את המספרים כשהם מגיעים. */
+const cachedStats = () => statsCache.stats && Date.now() - statsCache.at < 600000 ? statsCache.stats : null;
+async function computeStats() {
+  let stats = cachedStats();
   if (!stats) {
     let listCount = 0, contacts = 0, bytes = 0;
     const root = await rootFolder();
@@ -181,16 +183,29 @@ async function adminOverview(user, payload) {
     folders.forEach((folder, k) => { const sub = folder.name.slice(5); if (perUser[sub]) perUser[sub].backups = versionLists[k].filter(v => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(v.name)).length; });
     stats = { lists: listCount, contacts, storage: formatBytes(bytes), perUser }; statsCache = { at: Date.now(), stats };
   }
-  const perUserMap = stats.perUser || {};
-  stats = Object.assign({}, stats, { users: users.length, server: "netlify" }); delete stats.perUser;
-  const limit = Math.max(1, Math.min(Number(payload.limit || 20000), 50000));
+  return stats;
+}
+async function adminStats(user) {
+  requireAdmin(user);
+  const users = (await usersRows()).slice(1);
+  const full = await computeStats();
+  const stats = Object.assign({}, full, { users: users.length, server: "netlify" }); delete stats.perUser;
+  return { stats, perUser: full.perUser || {} };
+}
+async function adminOverview(user, payload) {
+  requireAdmin(user);
+  const users = (await usersRows()).slice(1);
+  const cached = cachedStats();
+  const perUserMap = (cached && cached.perUser) || {};
+  const stats = Object.assign({}, cached || { pending: true }, { users: users.length, server: "netlify" }); delete stats.perUser;
+  const limit = Math.max(1, Math.min(Number(payload.limit || 500), 50000));
   const names = Object.fromEntries(users.map(r => [String(cell(r, 0)), String(cell(r, 2) || "")]));
   const withNames = items => items.map(it => Object.assign(it, { name: names[String(it.sub)] || "" }));
   let items = [], total = 0;
   if (payload.tab === "logs") { const rows = await S().readTab(LOGS.tab, LOGS.headers); total = Math.max(0, rows.length - 1); items = withNames(rowsAsObjects(rows, limit)); }
   else if (payload.tab === "errors") { const rows = await S().readTab(ERRORS.tab, ERRORS.headers); total = Math.max(0, rows.length - 1); items = withNames(rowsAsObjects(rows, limit)); }
   else if (payload.tab === "trash") { items = users.filter(r => cell(r, 7)).map(r => ({ sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), deletedAt: cell(r, 7), status: "יימחק לאחר 30 יום" })); total = items.length; }
-  else { items = users.map(r => { const mine = perUserMap[String(cell(r, 0)).replace(/[^A-Za-z0-9_-]/g, "")] || {}; return { sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), picture: cell(r, 3), createdAt: cell(r, 4), lastSeen: cell(r, 5), blocked: isTrue(cell(r, 6)), deletedAt: cell(r, 7), termsVersion: cell(r, 8), privacyVersion: cell(r, 9), lists: mine.lists || 0, contacts: mine.contacts || 0, backups: mine.backups || 0, storage: formatBytes(mine.bytes || 0) }; }); total = items.length; }
+  else { items = users.map(r => { const mine = perUserMap[String(cell(r, 0)).replace(/[^A-Za-z0-9_-]/g, "")] || {}; const base = { sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), picture: cell(r, 3), createdAt: cell(r, 4), lastSeen: cell(r, 5), blocked: isTrue(cell(r, 6)), deletedAt: cell(r, 7), termsVersion: cell(r, 8), privacyVersion: cell(r, 9) }; return cached ? Object.assign(base, { lists: mine.lists || 0, contacts: mine.contacts || 0, backups: mine.backups || 0, storage: formatBytes(mine.bytes || 0) }) : base; }); total = items.length; }
   return { stats, items, total };
 }
 async function adminToggleBlock(user, payload) {
@@ -235,7 +250,7 @@ async function adminServerMode(user, payload) {
 }
 const ping = () => ({ server: "netlify", at: now(), alive: true });
 
-const HANDLERS = { session, listLists, saveList, deleteList, deleteAccount, log, error, adminOverview, adminToggleBlock, adminUserLists, adminServerMode, ping };
+const HANDLERS = { session, listLists, saveList, deleteList, deleteAccount, log, error, adminOverview, adminStats, adminToggleBlock, adminUserLists, adminServerMode, ping };
 export const ACTIONS = Object.keys(HANDLERS);
 
 /* נקודת הכניסה: אותו מבנה תשובה כמו doPost בסקריפט. תקלת תשתית (e.infra) נזרקת החוצה כדי שהמנתב יפול לסקריפט. */
