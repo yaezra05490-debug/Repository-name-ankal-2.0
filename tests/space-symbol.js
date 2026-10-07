@@ -84,7 +84,7 @@ server.listen(PORT, async () => {
   })()`;
   const reseed = async () => {
     await ev(`location.href = "/seed.html", "nav"`); await wait(700); await ev(SEED);
-    await ev(`location.href = "/index.html?app=1", "nav"`); await wait(2200);
+    await ev(`location.href = "/index.html?app=1&offline=1", "nav"`); await wait(2200);
     await ev(`document.querySelector('[data-page="smart"]').click(), 1`); await wait(200);
     await ev(`document.querySelector('[data-action="scan-symbols"]').click(), 1`); await wait(900);
   };

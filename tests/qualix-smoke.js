@@ -44,7 +44,7 @@ server.listen(PORT, async () => {
   const fill = (id, value) => `(() => { const el = document.getElementById("${id}"); if (!el) return "אין: ${id}"; el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event("input", { bubbles: true })); return "ok"; })()`;
 
   await step("עמוד הזרע", "document.title", "seed");
-  await step("ניווט לאפליקציה", `location.href = "/index.html?app=1", "navigating"`);
+  await step("ניווט לאפליקציה", `location.href = "/index.html?app=1&offline=1", "navigating"`);
   await wait(2500);
   await step("האתר נטען", "document.title", v => /אנק/.test(v));
   await step("בחירת מצב אופליין", click('[data-modal-choice="offline"]'));
@@ -86,7 +86,7 @@ server.listen(PORT, async () => {
   await step("לחיצה על הכרטיס עצמו פותחת", click('.qx-version .qx-open'));
   await wait(500);
   await step("הקטגוריות מופיעות בתפריט הצד", `document.querySelectorAll('#qualix-subnav [data-qx="tab"]').length`, 7);
-  await step("ו'ניהול פתקים' של הכרטיס מעליהן", `document.querySelector('#qualix-subnav [data-qx="direct-memos"] .nav-label')?.textContent`, "ניהול פתקים");
+  await step("'ניהול פתקים' הוא פריט ראשי בתפריט, מעל גיבוי קיוליקס", `(() => { const items = [...document.querySelectorAll('.side-nav .nav-item')].map(b => b.dataset.page); return items.indexOf("memos") >= 0 && items.indexOf("memos") === items.indexOf("qualix") - 1 ? "ok" : items.join(","); })()`, "ok");
   await step("אנשי קשר פעיל בתפריט הצד", `document.querySelector("#qualix-subnav .nav-sub-item.active")?.textContent.trim()`, v => /אנשי קשר/.test(v));
   await step("כותרת העמוד לפי הקטגוריה", `document.getElementById("page-title").textContent`, "אנשי קשר");
   await step("שלושה כרטיסי אנשי קשר", `document.querySelectorAll('#qualix-root .contact-card[data-qx="edit-contact"]').length`, 3);
@@ -150,14 +150,16 @@ server.listen(PORT, async () => {
   await step("ספרות בתוך שורה עברית נשארות משמאל לימין", `[...document.querySelectorAll("#qx-memo-preview > div")][3].querySelector('.qx-run[dir="ltr"]')?.textContent`, "304512");
   await step("שני פתקים ברשימה", `document.querySelectorAll('#qualix-root .qx-list [data-qx="memo"]').length`, 2);
   await step("אזהרת השחזור של הפתקים מוצגת בגרסה", `document.querySelector("#qualix-root .qx-memo-note")?.textContent`, v => /שם הקובץ/.test(v));
-  await step("בורר תו המילוי קיים", `[...document.querySelectorAll("#qx-memo-fill option")].map(o => o.value).join(",")`, "space,dot,tab");
-  await step("מירכוז בנקודות: שורה ארוכה נשברת ומרופדת משני הצדדים", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = Array.from({ length: 12 }, () => "שלום עולם").join(" "); ta.dispatchEvent(new Event("input", { bubbles: true })); const sel = document.getElementById("qx-memo-fill"); sel.value = "dot"; sel.dispatchEvent(new Event("change", { bubbles: true })); document.querySelector('[data-qx="center-all"]').click(); const lines = document.getElementById("qx-memo-text").value.split("\\n"); return lines.length + " " + (lines.every(l => /^\\.+שלום.*עולם\\.+$/.test(l)) ? "dots-ok" : "bad:" + lines[0]); })()`, v => /^\d+ dots-ok$/.test(v) && Number(v.split(" ")[0]) >= 3);
-  await step("חזרה למילוי ברווחים", `(() => { const sel = document.getElementById("qx-memo-fill"); sel.value = "space"; sel.dispatchEvent(new Event("change", { bubbles: true })); return sel.value; })()`, "space");
+  await step("מירכוז הכל: שורה ארוכה נשברת לשורות מאוזנות וממורכזות ברווחים", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = Array.from({ length: 12 }, () => "שלום עולם").join(" "); ta.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector('[data-qx="center-all"]').click(); const lines = document.getElementById("qx-memo-text").value.split("\\n"); return lines.length + " " + (lines.every(l => /^ +שלום.*עולם$/.test(l)) ? "ok" : "bad:" + lines[0]); })()`, v => /^\d+ ok$/.test(v) && Number(v.split(" ")[0]) >= 3);
+  await step("נקודה וטאב לשורה הנוכחית", `(() => { const ta = document.getElementById("qx-memo-text"); ta.value = "שלום\\nעולם"; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.setSelectionRange(0, 0); document.querySelector('[data-qx="bullet-line"]').click(); return JSON.stringify(document.getElementById("qx-memo-text").value); })()`, JSON.stringify(".\tשלום\nעולם"));
+  await step("לחיצה נוספת מסירה", `(() => { const ta = document.getElementById("qx-memo-text"); ta.setSelectionRange(0, 0); document.querySelector('[data-qx="bullet-line"]').click(); return JSON.stringify(ta.value); })()`, JSON.stringify("שלום\nעולם"));
+  await step("נקודה וטאב לכל השורות", `(() => { document.querySelector('[data-qx="bullet-all"]').click(); return JSON.stringify(document.getElementById("qx-memo-text").value); })()`, JSON.stringify(".\tשלום\n.\tעולם"));
+  await step("כפתור מעבר לניהול ישיר בתוך האזהרה", `document.querySelector('#qualix-root .qx-memo-note [data-qx="direct-memos"]')?.textContent`, v => /ניהול פתקים/.test(v));
 
   // ניהול פתקים ישיר: תיקיית Memo של הכרטיס — בלי גרסה, בלי שחזור
   await step("בלי כניסה: שורת השרת מציעה כניסה עם Google", `(() => { document.querySelector('[data-page="qualix"]').click(); return document.querySelector("#qualix-root .qx-cloud.off") ? "off" : "אין"; })()`, "off");
   await step("הגרסה מסומנת 'בכרטיס'", `document.querySelector("#qualix-root .qx-version .qx-badge.card")?.textContent`, v => /בכרטיס/.test(v));
-  await step("כניסה לניהול פתקים", click('[data-qx="direct-memos"]'));
+  await step("כניסה לניהול פתקים מהתפריט הראשי", click('.side-nav [data-page="memos"]'));
   await wait(400);
   await step("כותרת העמוד", `document.getElementById("page-title").textContent`, "ניהול פתקים");
   await step("הפתק מתיקיית Memo מוצג", `document.getElementById("qx-memo-text")?.value`, "פתק ראשון\nשורה שנייה");

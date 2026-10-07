@@ -345,6 +345,11 @@ html[data-theme="light"] .theme-row{color:#5b6a83}
 html[data-theme="light"] .nav-item:hover,
 html[data-theme="light"] .theme-row:hover{background:hsl(var(--page) 55% 55% / .1);color:#172033}
 html[data-theme="light"] .account-card{border-top-color:var(--line)}
+/* כרטיס החשבון לחיץ כולו (כניסה / תפריט), לא רק ה-⋮ הקטן */
+.account-card{cursor:pointer;border-radius:12px;transition:.16s}.account-card:hover{background:rgba(255,255,255,.05)}
+/* איפה הרשימה שמורה: ענן / ממתין / מקומי */
+.sync-badge{margin-right:auto;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:var(--paper);color:var(--muted);white-space:nowrap}
+.sync-badge.cloud{color:#0b5fa8;background:#e1efff}.sync-badge.pending{color:#9a670a;background:#fff3d9}
 html[data-theme="light"] .account-copy strong{color:#172033}
 html[data-theme="light"] .account-copy span{color:var(--muted)}
 html[data-theme="light"] .side-collapse{color:#5b6a83}

@@ -271,12 +271,14 @@
   function memoDateFromName(name) { const m = /MEMO_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(name || ""); return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` : ""; }
 
   /* ---------- רוחב טקסט על מסך הטלפון (פונט פרופורציונלי). רוחב שורה = 1000 יחידות.
-     כויל מפתקים אמיתיים: 14 ש / 38 ו / 17 ~ / 32 ' לשורה; השאר הוערך לפי יחסי פונט ערבי-עברי רגילים. ---------- */
-  // ערכים מכוילים (עיגול כלפי מטה, כדי ששורה שנכנסת בטלפון תיכנס גם כאן): 14 ש, 38 ו, 17 ~, 32 ', |+28 רווחים+| לשורה
+     כויל מפתקים אמיתיים: 14 ש / 38 ו / 17 ~ / 32 ' / |+28 רווחים+| לשורה. "14 נכנסות" אומר רק שהרוחב
+     בין 1000/15 ל-1000/14, ולכן הערך הוא אמצע הטווח (1000/14.5 = 69) ולא הגבול העליון: עם הגבול העליון
+     (71) שורה אמיתית של 999 יחידות — "חנוך לנער ע"פ דרכו..." — נשברה כאן למרות שבטלפון היא נכנסת.
+     שאר האותיות הוערכו לפי יחסי הפונט ביחס ל-ש, ולכן קוטנו באותו יחס (69/71). ---------- */
   // רוחב הטאב בטלפון לא כויל — הערכה של ארבעה רווחים. אפשר לתקן דרך כיול (שורה של טאבים).
-  const WIDTHS = { " ": 33, "\t": 132, "ו": 26, "י": 26, "ז": 34, "ן": 26, "'": 31, "|": 26, "!": 28, ".": 28, ",": 28, ":": 28, ";": 28, "~": 58, "-": 36, "(": 36, ")": 36, '"': 38, "ש": 71, "ם": 62, "מ": 65, "ת": 62, "א": 61, "ב": 60, "ג": 46, "ד": 53, "ה": 61, "ח": 61, "ט": 61, "ך": 53, "כ": 53, "ל": 53, "נ": 44, "ס": 61, "ע": 61, "ף": 53, "פ": 61, "ץ": 55, "צ": 61, "ק": 61, "ר": 53 };
-  const DEFAULT_WIDTH = 60, LINE_UNITS = 1000;
-  function charWidth(ch, table) { const t = table || WIDTHS; if (t[ch] != null) return t[ch]; const c = ch.charCodeAt(0); if (c >= 0x30 && c <= 0x39) return 60; if (/[iljtfI1.,:;'!|]/.test(ch)) return 30; if (/[A-Z]/.test(ch)) return 72; if (/[a-z]/.test(ch)) return 58; return DEFAULT_WIDTH; }
+  const WIDTHS = { " ": 33, "\t": 132, "ו": 26, "י": 25, "ז": 33, "ן": 25, "'": 31, "׳": 31, "‘": 31, "’": 31, "|": 26, "!": 27, ".": 27, ",": 27, ":": 27, ";": 27, "~": 57, "-": 35, "–": 35, "(": 35, ")": 35, '"': 37, "״": 37, "“": 37, "”": 37, "ש": 69, "ם": 60, "מ": 63, "ת": 60, "א": 59, "ב": 58, "ג": 45, "ד": 52, "ה": 59, "ח": 59, "ט": 59, "ך": 52, "כ": 52, "ל": 52, "נ": 43, "ס": 59, "ע": 59, "ף": 52, "פ": 59, "ץ": 53, "צ": 59, "ק": 59, "ר": 52 };
+  const DEFAULT_WIDTH = 58, LINE_UNITS = 1000;
+  function charWidth(ch, table) { const t = table || WIDTHS; if (t[ch] != null) return t[ch]; const c = ch.charCodeAt(0); if (c >= 0x30 && c <= 0x39) return 58; if (/[iljtfI1.,:;'!|]/.test(ch)) return 29; if (/[A-Z]/.test(ch)) return 70; if (/[a-z]/.test(ch)) return 56; return DEFAULT_WIDTH; }
   function textWidth(text, table) { let w = 0; for (const ch of String(text || "")) w += charWidth(ch, table); return w; }
   /* ---------- שבירת שורות כמו הטלפון ----------
      פסקה שרחבה מהמסך נשברת ברווח האחרון שנכנס, ובלי רווח — באמצע המילה. רווחים בסוף הפסקה
@@ -349,9 +351,10 @@
     for (const para of String(text || "").split("\n")) { const clean = stripPadding(para, fill); if (!clean) { out.push(""); continue; } for (const line of balancedWrap(clean, table)) out.push(centerLine(line, table, options)); }
     return out.join("\n");
   }
-  // כיול: פתק שבו כל שורה היא תו אחד שחוזר עד שהשורה מתמלאה → רוחב התו = 1000 / מספר החזרות
-  // שורה של תו אחד שחוזר עד שהשורה מלאה: רוחב התו = 1000 / מספר החזרות, מעוגל כלפי מטה כדי שהשורה תיכנס
-  function calibrateFromMemo(text, table) { const out = Object.assign({}, table || WIDTHS); for (const line of String(text || "").split("\n")) { const t = line.replace(/\s+$/, ""); if (t.length >= 3 && [...t].every(ch => ch === t[0])) out[t[0]] = Math.floor(LINE_UNITS / t.length); } return out; }
+  /* כיול: פתק שבו כל שורה היא תו אחד שחוזר עד שהשורה מתמלאה. n חזרות נכנסות ו-n+1 לא, כלומר הרוחב
+     בין 1000/(n+1) ל-1000/n — לוקחים את אמצע הטווח. הגבול העליון (1000/n) גרם לשורות אמיתיות שנכנסות
+     בטלפון להישבר כאן. */
+  function calibrateFromMemo(text, table) { const out = Object.assign({}, table || WIDTHS); for (const line of String(text || "").split("\n")) { const t = line.replace(/\s+$/, ""); if (t.length >= 3 && [...t].every(ch => ch === t[0])) out[t[0]] = Math.round(LINE_UNITS / (t.length + 0.5)); } return out; }
 
   /* ---------- מילון המשתמש (udb.cache): המבנה פוענח, קידוד האותיות עדיין לא. קריאה בלבד. ---------- */
   function parseUdb(bytes) {

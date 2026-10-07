@@ -134,12 +134,16 @@ test("פתקים: BOM, מעברי שורה, שם קובץ ותאריך", () => {
 });
 
 test("רוחב טקסט ומירכוז לפי טבלת הרוחב של הטלפון", () => {
-  assert.ok(Math.abs(Q.textWidth("ש".repeat(14)) - 1000) < 20); assert.ok(Math.abs(Q.textWidth("ו".repeat(38)) - 1000) < 20);
   const centered = Q.centerLine("שלום"); assert.ok(centered.startsWith(" ")); assert.ok(centered.endsWith("שלום"));
   assert.ok(Q.textWidth(centered) <= 1000 && Q.textWidth(centered) > 450, "הרווחים מביאים את הטקסט לאמצע");
-  const table = Q.calibrateFromMemo("ששששששששששששש\nוווווווווווווווווווווווווווווווווווווווו"); assert.equal(table["ש"], Math.floor(1000 / 13)); assert.equal(table["ו"], 25);
-  // פתק הכיול האמיתי: כל שורה שנכנסת בטלפון חייבת להיכנס גם בחישוב
-  for (const line of ["~".repeat(17), "'".repeat(32), "|" + " ".repeat(28) + "|", "ש".repeat(14), "ו".repeat(38)]) assert.ok(Q.textWidth(line) <= Q.LINE_UNITS, line.slice(0, 5) + "… רחב מדי: " + Q.textWidth(line));
+  const table = Q.calibrateFromMemo("ששששששששששששש\nוווווווווווווווווווווווווווווווווווווווו"); assert.equal(table["ש"], Math.round(1000 / 13.5)); assert.equal(table["ו"], 25);
+  // פתק הכיול האמיתי: כל שורה שנכנסת בטלפון חייבת להיכנס גם בחישוב, ותו אחד נוסף כבר לא
+  for (const [line, extra] of [["~".repeat(17), "~"], ["'".repeat(32), "'"], ["|" + " ".repeat(28) + "|", " "], ["ש".repeat(14), "ש"], ["ו".repeat(38), "ו"]]) {
+    assert.ok(Q.textWidth(line) <= Q.LINE_UNITS, line.slice(0, 5) + "… רחב מדי: " + Q.textWidth(line));
+    assert.ok(Q.textWidth(line + extra) > Q.LINE_UNITS, line.slice(0, 5) + "… צר מדי: תו נוסף עדיין נכנס");
+  }
+  // שורה אמיתית מהטלפון (צילום מסך, אוקטובר 2026): נכנסת בשורה אחת — גם עם גרשיים עבריים
+  for (const real of ['"חנוך לנער ע"פ דרכו..."', '״חנוך לנער ע״פ דרכו...״']) assert.equal(Q.wrapParagraph(real).length, 1, real + " נשברה: " + Q.textWidth(real));
 });
 
 test("הרכבת גיבוי שלם וקריאתו חזרה", async () => {

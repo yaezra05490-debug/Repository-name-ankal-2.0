@@ -34,7 +34,7 @@
         <h1>אנשי קשר מסודרים.<br><span>בכמה לחיצות.</span></h1>
         <p>מייבאים קובץ, מתקנים שמות ומספרים, בודקים כפולים ומייצאים לפורמט שהטלפון צריך.</p>
         <div class="hero-actions"><button class="btn btn-primary btn-large" data-action="enter-app">פתחו את אנק״ל</button><button class="btn btn-glass btn-large" data-action="download-app">⤓ הורדת התוכנה למחשב</button></div>
-        <div class="hero-points"><span>✓ שבעה שדות קבועים</span><span>✓ תצוגה מקדימה לפני שינוי</span><span>✓ עובדת גם בלי אינטרנט</span></div>
+        <div class="hero-points"><span>✓ שבעה שדות קבועים</span><span>✓ תצוגה מקדימה לפני שינוי</span><span>✓ נשמר בענן, זמין מכל מחשב</span></div>
       </div>
       <div class="hero-visual" aria-hidden="true"><div class="glow"></div><div class="mock-window"><div class="mock-top"><i></i><i></i><i></i><b>אנשי קשר</b></div><div class="mock-grid"><article><strong>דוד כהן</strong><span>050-1234567</span><em>נשמר</em></article><article><strong>משה לוי</strong><span>02-5551234</span><em>נשמר</em></article><article class="mock-active"><strong>שרה ישראלי</strong><span>052-7654321</span><em>בודק כפולים…</em></article><article><strong>חיים אברהם</strong><span>03-5558877</span><em>נשמר</em></article></div></div></div>
     </main>
@@ -51,12 +51,13 @@
         <button class="nav-item" data-page="clean"><span class="nav-icon">✦</span><span class="nav-label">ניקוי והחלפה</span></button>
         <button class="nav-item" data-page="duplicates"><span class="nav-icon">◇</span><span class="nav-label">בדיקת כפולים</span><span class="nav-count warning" id="nav-dupe-count">0</span></button>
         <button class="nav-item" data-page="transfer"><span class="nav-icon">⇅</span><span class="nav-label">ייבוא וייצוא</span></button>
+        <button class="nav-item" data-page="memos"><span class="nav-icon">✎</span><span class="nav-label">ניהול פתקים</span><span class="nav-count" id="nav-memos-count"></span></button>
         <button class="nav-item" data-page="qualix"><span class="nav-icon">☏</span><span class="nav-label">גיבוי קיוליקס</span><span class="nav-count" id="nav-qualix-count"></span></button>
         <div class="nav-sub hidden" id="qualix-subnav" aria-label="קטגוריות הגיבוי"></div>
         <button class="nav-item" data-page="help"><span class="nav-icon">?</span><span class="nav-label">עזרה והסברים</span></button>
         <button class="nav-item admin-only hidden" data-page="admin"><span class="nav-icon">⚙</span><span class="nav-label">ניהול מערכת</span></button>
       </nav>
-      <div class="side-bottom"><button class="theme-row" data-action="toggle-theme"><span data-theme-icon>☾</span><span class="nav-label">מצב תצוגה</span></button><div class="account-card" id="account-card"><div class="avatar" id="account-avatar">א</div><div class="account-copy"><strong id="account-name">מצב מקומי</strong><span id="account-email">לא מחובר</span></div><button class="icon-btn" data-action="account-menu" aria-label="אפשרויות חשבון">⋮</button></div></div>
+      <div class="side-bottom"><button class="theme-row" data-action="toggle-theme"><span data-theme-icon>☾</span><span class="nav-label">מצב תצוגה</span></button><div class="account-card" id="account-card" data-action="account-card" role="button" tabindex="0" title="חשבון"><div class="avatar" id="account-avatar">א</div><div class="account-copy"><strong id="account-name">מצב מקומי</strong><span id="account-email">לא מחובר</span></div><button class="icon-btn" data-action="account-menu" aria-label="אפשרויות חשבון">⋮</button></div></div>
     </aside>
 
     <main class="workspace">

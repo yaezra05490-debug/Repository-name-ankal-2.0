@@ -69,7 +69,7 @@ server.listen(PORT, async () => {
 
   /* רשימה שמייצרת כל סוג מסך: סימונים (כולל שם שכולו סימון), וכפולים מכל
      הקטגוריות — זהים, בטוח, שם, מספרים, שניהם, מייל, דומה-חלש. */
-  const reseed = async () => { await ev(`location.href = "/seed.html", "nav"`); await wait(700); await ev(SEED); await ev(`location.href = "/index.html?app=1", "nav"`); await wait(2200); await ev(`document.querySelector('[data-page="smart"]').click(), 1`); await wait(200); await ev(`document.querySelector('[data-action="scan-symbols"]').click(), 1`); await wait(900); };
+  const reseed = async () => { await ev(`location.href = "/seed.html", "nav"`); await wait(700); await ev(SEED); await ev(`location.href = "/index.html?app=1&offline=1", "nav"`); await wait(2200); await ev(`document.querySelector('[data-page="smart"]').click(), 1`); await wait(200); await ev(`document.querySelector('[data-action="scan-symbols"]').click(), 1`); await wait(900); };
   const SEED = `(() => {
     const seed = [
       { name: "מרים הריס_1", mobile: "050-1234567" }, { name: "מרים הריס_2", mobile: "050-1234567" },
@@ -93,7 +93,7 @@ server.listen(PORT, async () => {
     return "ok";
   })()`;
   await ev(SEED);
-  await ev(`location.href = "/index.html?app=1", "nav"`); await wait(2200);
+  await ev(`location.href = "/index.html?app=1&offline=1", "nav"`); await wait(2200);
   await ev(`document.querySelector('[data-page="smart"]').click(), 1`); await wait(200);
   await ev(`document.querySelector('[data-action="scan-symbols"]').click(), 1`); await wait(900);
 

@@ -136,7 +136,22 @@ server.listen(PORT, async () => {
     return "ok";
   })()`);
 
-  await step("מעבר לאפליקציה", `location.href = "/index.html", 'navigating'`);
+  // מדיניות הכניסה באתר: בלי ?offline=1 הכניסה עם Google חובה — "התחילו לעבוד" פותח חלון כניסה, ו"חזרה" מחזירה לדף הנחיתה
+  await step("ניווט לאתר בלי דגל אופליין", `location.href = "/index.html", 'navigating'`);
+  await new Promise((r) => setTimeout(r, 2500));
+  await step("לחיצה על 'התחילו לעבוד'", `document.querySelector('[data-action="enter-app"]').click(), 'clicked'`);
+  await new Promise((r) => setTimeout(r, 400));
+  await step("באתר נדרשת כניסה עם Google", `document.getElementById("modal-title")?.textContent || "אין חלון"`, v => /להיכנס עם Google/.test(v));
+  await step("אין אפשרות אופליין בחלון", `document.querySelector('[data-modal-choice="offline"]') ? "יש" : "אין"`);
+  await step("לחיצה על 'חזרה'", `document.querySelector('[data-modal-choice="back"]').click(), 'clicked'`);
+  await new Promise((r) => setTimeout(r, 300));
+  const backToLanding = await evaluate(`document.getElementById("landing").classList.contains("hidden") ? "app" : "landing"`);
+  steps.push({ label: "'חזרה' מחזירה לדף הנחיתה", ok: backToLanding === "landing", value: backToLanding });
+  await step("גם הורדת התוכנה דורשת כניסה", `(() => { document.querySelector('[data-action="download-app"]').click(); return "clicked"; })()`);
+  await new Promise((r) => setTimeout(r, 400));
+  await step("חלון הכניסה נפתח להורדה", `document.getElementById("modal-title")?.textContent || "אין חלון"`, v => /להוריד/.test(v) && /Google/.test(v));
+  await step("סגירת החלון", `document.querySelector('[data-modal-choice="back"]').click(), 'closed'`);
+  await step("מעבר לאפליקציה", `location.href = "/index.html?offline=1", 'navigating'`);
   await new Promise((r) => setTimeout(r, 2500));
   await step("האתר נטען", "document.title");
   await step("המנוע נטען", "typeof window.ANKAL_DEDUPE");

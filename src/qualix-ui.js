@@ -396,9 +396,21 @@
      ולכן שורה אחת יכולה להפוך לכמה. תו המילוי נבחר בבורר שליד הכפתורים ונשמר להבא. */
   function centerMemo(all) {
     const st = memoStore(); const m = st.memos[st.idx]; const ta = document.getElementById("qx-memo-text"); if (!m || !ta) return;
-    const opts = { fill: qx.memoFill };
+    const opts = { fill: "space" };
     if (all) m.text = Q.centerText(m.text, widths(), opts);
     else { const pos = ta.selectionStart; const before = m.text.lastIndexOf("\n", pos - 1) + 1; let after = m.text.indexOf("\n", pos); if (after < 0) after = m.text.length; m.text = m.text.slice(0, before) + Q.centerText(m.text.slice(before, after), widths(), opts) + m.text.slice(after); }
+    m._dirty = true; st.mark(); ta.value = m.text; memoCounter(); markUnsaved();
+  }
+  /* "נקודה וטאב": השורה מתחילה בנקודה, טאב ואז המשפט — סעיף ברשימה, כמו שהמשתמש כותב בטלפון.
+     לחיצה חוזרת על שורה שכבר מעוצבת כך מסירה; "לכל השורות" מוסיף למה שחסר, או מסיר מכולן אם כולן כבר מעוצבות. */
+  const BULLET = ".\t";
+  function bulletMemo(all) {
+    const st = memoStore(); const m = st.memos[st.idx]; const ta = document.getElementById("qx-memo-text"); if (!m || !ta) return;
+    const bare = line => line.replace(/^\s+/, "");
+    const has = line => bare(line).startsWith(BULLET);
+    const add = line => bare(line) ? BULLET + bare(line) : line, remove = line => has(line) ? bare(line).slice(BULLET.length) : line;
+    if (all) { const lines = m.text.split("\n"); const filled = lines.filter(l => bare(l)); const allOn = filled.length && filled.every(has); m.text = lines.map(l => allOn ? remove(l) : (has(l) ? l : add(l))).join("\n"); }
+    else { const pos = ta.selectionStart; const before = m.text.lastIndexOf("\n", pos - 1) + 1; let after = m.text.indexOf("\n", pos); if (after < 0) after = m.text.length; const line = m.text.slice(before, after); m.text = m.text.slice(0, before) + (has(line) ? remove(line) : add(line)) + m.text.slice(after); }
     m._dirty = true; st.mark(); ta.value = m.text; memoCounter(); markUnsaved();
   }
   async function calibrate() {
@@ -520,8 +532,15 @@
       finally { setBusy(""); }
     }
     qx.view = "memos-direct";
-    if (document.getElementById("app-shell")?.dataset.activePage !== "qualix") { qx.keepView = true; return A().setPage("qualix"); }
+    // "ניהול פתקים" הוא עמוד משלו בתפריט הראשי; מכל מקום אחר עוברים אליו, ו-setPage("memos") חוזר לכאן דרך showMemos
+    if (document.getElementById("app-shell")?.dataset.activePage !== "memos") return A().setPage("memos");
     render();
+  }
+  /* פריט "ניהול פתקים" בתפריט הראשי: בלי כרטיס מציג את מסך החיבור (ובתוכנה מנסה לזהות כרטיס לבד). */
+  async function showMemos() {
+    if (!qx.adapter && window.electronAPI?.qualix) await detectCards(true);
+    if (!qx.adapter || qx.layout.mode !== "card") { qx.view = "versions"; render(); if (qx.adapter) A().toast("ניהול פתקים עובד רק כשנבחר הכרטיס עצמו (שיש בו תיקיית Memo)", "warning"); return; }
+    return openDirectMemos();
   }
   async function saveDirectMemos() {
     const d = qx.direct; if (!d) return;
@@ -539,7 +558,7 @@
   }
   function directView() {
     const d = qx.direct;
-    const head = `<div class="qx-head"><div><h2>✎ ניהול פתקים</h2><div class="qx-sub">תיקיית Memo בכרטיס · ${d.memos.length} פתקים</div></div><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="direct-reload">↻ קריאה מחדש מהכרטיס</button>${qx.open ? `<button class="btn btn-quiet btn-sm" data-qx="resume">← חזרה לגרסה</button>` : `<button class="btn btn-quiet btn-sm" data-qx="back">← כל הגרסאות</button>`}</div>`;
+    const head = `<div class="qx-head"><div><h2>✎ ניהול פתקים</h2><div class="qx-sub">תיקיית Memo בכרטיס · ${d.memos.length} פתקים</div></div><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="direct-reload">↻ קריאה מחדש מהכרטיס</button><button class="btn btn-quiet btn-sm" data-qx="to-versions">← גיבוי קיוליקס</button></div>`;
     const info = `<div class="qx-help"><b>איך זה עובד:</b> הפתקים שבטלפון הם קבצי טקסט בתיקיית Memo של הכרטיס. מה שעורכים כאן נכתב ישירות לשם, ולכן אחרי “שמירה לטלפון” והחזרת הכרטיס הפתקים מעודכנים מיד — בלי גיבוי ובלי שחזור. אם אותו פתק נערך גם בטלפון, הכתיבה האחרונה קובעת.</div>`;
     const save = `<div class="qx-save"><button class="btn btn-primary" data-qx="direct-save">💾 שמירה לטלפון</button><span id="qx-save-state" class="${d.dirty ? "qx-dirty" : "qx-note"}">${d.dirty ? "יש שינויים שלא נשמרו" : "אין שינויים"}</span></div>`;
     return head + info + memosTab() + save;
@@ -634,6 +653,7 @@
   function render() {
     const root = document.getElementById("qualix-root"); if (!root) return;
     const navCount = document.getElementById("nav-qualix-count"); if (navCount) navCount.textContent = qx.backups.length || "";
+    const memoCount = document.getElementById("nav-memos-count"); if (memoCount) memoCount.textContent = qx.direct ? qx.direct.memos.length + (qx.direct.dirty ? " ●" : "") : "";
     const editing = qx.open && qx.view === "editor", direct = qx.view === "memos-direct" && !!qx.direct;
     // שורת המקור (כרטיס, בחירת תיקייה) שייכת לעמוד הגרסאות בלבד; בתוך קטגוריה היא רק רעש
     root.innerHTML = (editing || direct ? "" : sourceBar()) + (direct ? directView() : editing ? openView() : (qx.adapter ? versionsView() : introView())) + `<div id="qx-busy" class="qx-warn ${qx.busy ? "" : "hidden"}" style="position:fixed;bottom:18px;right:50%;transform:translateX(50%);z-index:60">${esc(qx.busy)}</div>`;
@@ -647,19 +667,11 @@
   function renderSubnav() {
     const nav = document.getElementById("qualix-subnav"); if (!nav) return;
     const onPage = document.getElementById("app-shell")?.dataset.activePage === "qualix";
-    const canDirect = !!qx.adapter && qx.layout?.mode === "card";
-    if (!qx.open && !canDirect) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
-    const directActive = onPage && qx.view === "memos-direct";
-    let html = canDirect ? `<button class="nav-sub-item ${directActive ? "active" : ""} ${qx.direct?.dirty ? "dirty" : ""}" data-qx="direct-memos"><span class="nav-icon">✎</span><span class="nav-label">ניהול פתקים</span><span class="nav-count">${qx.direct ? qx.direct.memos.length : ""}</span></button>` : "";
-    const kicker = document.getElementById("page-kicker"), title = document.getElementById("page-title");
-    if (qx.open) {
-      const counts = tabCounts(qx.open.data), editing = onPage && qx.view === "editor";
-      if (canDirect) html += `<div class="nav-sub-sep">${qx.open.isNew ? "גרסה חדשה" : esc(folderDate(qx.open.folder))}</div>`;
-      html += TABS.map(([k, label, icon]) => `<button class="nav-sub-item ${editing && qx.tab === k ? "active" : ""} ${qx.open.dirty.has(DIRTY_KEY[k]) ? "dirty" : ""}" data-qx="tab" data-tab="${k}"><span class="nav-icon">${icon}</span><span class="nav-label">${label}</span><span class="nav-count">${counts[k]}</span></button>`).join("");
-      if (editing) { const tab = TABS.find(t => t[0] === qx.tab); if (kicker && title && tab) { kicker.textContent = "גיבוי קיוליקס · " + (qx.open.isNew ? "גרסה חדשה" : folderDate(qx.open.folder)); title.textContent = tab[1]; } }
-    }
-    if (directActive && kicker && title) { kicker.textContent = "גיבוי קיוליקס · הכרטיס"; title.textContent = "ניהול פתקים"; }
-    nav.innerHTML = html; nav.classList.remove("hidden");
+    if (!qx.open) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
+    const counts = tabCounts(qx.open.data), editing = onPage && qx.view === "editor";
+    nav.innerHTML = TABS.map(([k, label, icon]) => `<button class="nav-sub-item ${editing && qx.tab === k ? "active" : ""} ${qx.open.dirty.has(DIRTY_KEY[k]) ? "dirty" : ""}" data-qx="tab" data-tab="${k}"><span class="nav-icon">${icon}</span><span class="nav-label">${label}</span><span class="nav-count">${counts[k]}</span></button>`).join("");
+    nav.classList.remove("hidden");
+    if (editing) { const kicker = document.getElementById("page-kicker"), title = document.getElementById("page-title"); const tab = TABS.find(t => t[0] === qx.tab); if (kicker && title && tab) { kicker.textContent = "גיבוי קיוליקס · " + (qx.open.isNew ? "גרסה חדשה" : folderDate(qx.open.folder)); title.textContent = tab[1]; } }
   }
   function sourceBar() {
     const on = !!qx.adapter;
@@ -773,16 +785,17 @@
     const d = qx.open.data; for (const r of g.calls) { r.e.calls = r.e.calls.filter(c => c !== r.call); r.e._dirty = true; }
     d.callog.entries = d.callog.entries.filter(e => e.calls.length); dirty("callog"); render();
   }
-  const FILL_LABELS = { space: "רווחים (לא נראים)", dot: "נקודות (נראות, משני הצדדים)", tab: "טאבים (רוחב מוערך)" };
   /* עורך הפתקים משותף ללשונית "הפתקים שלי" של הגרסה ול"ניהול פתקים" של הכרטיס — ההבדל רק במקור ובשמירה. */
   function memosTab() {
     const st = memoStore(); const m = st.memos[st.idx];
     const when = x => { const t = x.modified || x.created || ""; const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(t); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : ""; };
     const list = st.memos.map((x, i) => `<button class="${i === st.idx ? "active" : ""}" data-qx="memo" data-i="${i}"><strong>${esc(x.text.split("\n").map(l => l.trim()).find(Boolean) || "(פתק ריק)")}</strong><span>${esc(when(x))} · ${x.text.length} תווים${x._dirty ? " · לא נשמר" : ""}</span></button>`).join("");
-    const align = `<div class="qx-align"><div class="qx-align-head"><strong>יישור למרכז מסך הטלפון</strong><span class="qx-note">שורה שארוכה מהמסך נשברת קודם לכמה שורות מאוזנות (כמו שהטלפון היה שובר), ואז כל שורה ממורכזת. מירכוז חוזר לא מצטבר.</span></div>
-      <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="center-line">מרכז את השורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="center-all">מרכז את כל הפתק</button><label class="modal-field qx-inline">תו המילוי<select id="qx-memo-fill">${Object.entries(FILL_LABELS).map(([k, v]) => `<option value="${k}" ${qx.memoFill === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><button class="btn btn-quiet btn-sm" data-qx="calibrate">כיול רוחב</button></div></div>`;
+    const align = `<div class="qx-align"><div class="qx-align-head"><strong>יישור למרכז מסך הטלפון</strong><span class="qx-note">שורה שארוכה מהמסך נשברת קודם לכמה שורות מאוזנות (כמו שהטלפון היה שובר), ואז כל שורה ממורכזת ברווחים. מירכוז חוזר לא מצטבר.</span></div>
+      <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="center-line">מרכז את השורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="center-all">מרכז את כל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="calibrate">כיול רוחב</button></div>
+      <div class="qx-align-head"><strong>נקודה וטאב</strong><span class="qx-note">השורה מתחילה בנקודה, טאב ואז המשפט — כמו סעיף ברשימה. לחיצה נוספת על אותה שורה מסירה.</span></div>
+      <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="bullet-line">נקודה וטאב לשורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="bullet-all">לכל השורות בפתק</button></div></div>`;
     const editor = m ? `<div class="qx-editor">${align}<div class="qx-row"><label class="modal-field qx-inline">מגבלת הטלפון<select id="qx-memo-limit"><option value="1000" ${qx.memoLimit === 1000 ? "selected" : ""}>1000 תווים</option><option value="3000" ${qx.memoLimit === 3000 ? "selected" : ""}>3000 תווים</option></select></label><div class="spacer"></div><button class="btn btn-danger btn-sm" data-qx="delete-memo">מחיקה</button></div><textarea id="qx-memo-text" dir="auto">${esc(m.text)}</textarea><div id="qx-memo-counter" class="qx-counter"></div><div class="qx-note">כך זה ייראה על מסך הטלפון (הערכה לפי רוחב האותיות; שורות שהטלפון שובר בעצמו מסומנות בחום):</div><div id="qx-memo-preview" class="qx-phone"></div></div>` : `<div class="empty-box"><div class="empty-icon">✎</div><h3>אין פתקים</h3><p>צרו פתק חדש.</p></div>`;
-    const note = st.direct ? "" : `<div class="qx-warn qx-memo-note"><b>שימו לב לשחזור:</b> ${esc(MEMO_RESTORE_NOTE)}</div>`;
+    const note = st.direct ? "" : `<div class="qx-warn qx-memo-note"><b>שימו לב לשחזור:</b> ${esc(MEMO_RESTORE_NOTE)}<div class="qx-row" style="margin-top:8px"><button class="btn btn-secondary btn-sm" data-qx="direct-memos">✎ מעבר לניהול פתקים ישיר</button></div></div>`;
     return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="new-memo">＋ פתק</button><span class="qx-note">${st.memos.length} פתקים · ${st.direct ? "תיקיית Memo של הכרטיס — הטלפון קורא אותם ישירות" : "קבצי טקסט פשוטים בתיקיית Memo"}</span></div>${note}<div class="qx-split"><div class="qx-list">${list}</div>${editor}</div>`;
   }
   function calendarTab() {
@@ -833,6 +846,7 @@
         case "tab": qx.tab = el.dataset.tab; qx.view = "editor"; if (document.getElementById("app-shell")?.dataset.activePage !== "qualix") { qx.keepView = true; return A().setPage("qualix"); } return render();
         case "save": return saveAsNew();
         case "direct-memos": return openDirectMemos();
+        case "to-versions": qx.keepView = !!qx.open; return A().setPage("qualix");
         case "direct-reload": qx.direct = null; return openDirectMemos();
         case "direct-save": return saveDirectMemos();
         case "cloud-login": await A().login(); return syncCloud(true);
@@ -859,6 +873,8 @@
         case "delete-memo": return deleteMemo();
         case "center-line": return centerMemo(false);
         case "center-all": return centerMemo(true);
+        case "bullet-line": return bulletMemo(false);
+        case "bullet-all": return bulletMemo(true);
         case "calibrate": return calibrate();
         case "add-event": return editEvent(-1);
         case "day-add": return editEvent(-1, el.dataset.date);
@@ -886,12 +902,11 @@
   });
   document.addEventListener("change", event => {
     if (event.target.id === "qx-memo-limit") { qx.memoLimit = Number(event.target.value) || 1000; localStorage.setItem(LIMIT_KEY, String(qx.memoLimit)); memoCounter(); }
-    if (event.target.id === "qx-memo-fill") { qx.memoFill = Q.FILLS[event.target.value] ? event.target.value : "space"; try { localStorage.setItem(FILL_KEY, qx.memoFill); } catch (_) { } }
   });
   document.addEventListener("keydown", event => { if (event.key === "Enter" && event.target.id === "qx-word") { event.preventDefault(); addWord(); } });
   window.addEventListener("beforeunload", event => { if (qx.open?.dirty.size || qx.direct?.dirty) { event.preventDefault(); event.returnValue = ""; } });
 
   // connect מאפשר לבדיקות דפדפן להזרים מתאם בזיכרון במקום כרטיס אמיתי
   // לחיצה על "גיבוי קיוליקס" בתפריט מציגה את הגרסאות (כמו "הרשימות שלי"); מעבר מקטגוריה בתפריט שומר על העורך.
-  window.ANKAL_QUALIX_UI = { show: () => { if (!qx.keepView) qx.view = "versions"; qx.keepView = false; render(); if (!qx.adapter && window.electronAPI?.qualix) detectCards(true); if (qx.adapter && cloudUser() && !qx.cloud.loaded && !qx.cloud.uploading) syncCloud(); }, state: qx, connect, render, importList };
+  window.ANKAL_QUALIX_UI = { show: () => { if (!qx.keepView) qx.view = "versions"; qx.keepView = false; render(); if (!qx.adapter && window.electronAPI?.qualix) detectCards(true); if (qx.adapter && cloudUser() && !qx.cloud.loaded && !qx.cloud.uploading) syncCloud(); }, showMemos, state: qx, connect, render, importList };
 })();

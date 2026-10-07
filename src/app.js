@@ -12,14 +12,14 @@
   const LABELS = { name: "שם", mobile: "נייד", home: "בית", work: "עבודה", fax: "פקס", email: "מייל", note: "הערה", group: "קבוצה", ringtone: "צלצול" };
   // תרגום קודי הפעולה של היומן לעברית שאומרת מה קרה.
   const ACTION_HE = { create_list: "יצירת רשימה חדשה", delete_list: "העברת רשימה לסל", import: "ייבוא קובץ אנשי קשר", export_vcf: "ייצוא קובץ VCF", export_xlsx: "ייצוא קובץ Excel", export_csv: "ייצוא קובץ CSV", download_app: "הורדת התוכנה למחשב", move_contacts: "העברת אנשי קשר בין רשימות", copy_contacts: "העתקת אנשי קשר בין רשימות" };
-  const PAGE_TITLES = { lists: ["מרכז העבודה", "הרשימות שלי"], contacts: ["ניהול רשימה", "אנשי קשר"], clean: ["כלי עבודה", "ניקוי והחלפה"], duplicates: ["בקרת איכות", "בדיקת כפולים"], smart: ["איכות נתונים", "ניהול חכם"], transfer: ["קבצים", "ייבוא וייצוא"], qualix: ["הטלפון הכשר", "גיבוי קיוליקס"], help: ["מרכז מידע", "עזרה והסברים"], admin: ["למנהל בלבד", "ניהול מערכת"] };
+  const PAGE_TITLES = { lists: ["מרכז העבודה", "הרשימות שלי"], contacts: ["ניהול רשימה", "אנשי קשר"], clean: ["כלי עבודה", "ניקוי והחלפה"], duplicates: ["בקרת איכות", "בדיקת כפולים"], smart: ["איכות נתונים", "ניהול חכם"], transfer: ["קבצים", "ייבוא וייצוא"], qualix: ["הטלפון הכשר", "גיבוי קיוליקס"], memos: ["הטלפון הכשר", "ניהול פתקים"], help: ["מרכז מידע", "עזרה והסברים"], admin: ["למנהל בלבד", "ניהול מערכת"] };
   const HELP = {
     start: `<h2>התחלה מהירה</h2><div class="help-step"><b>1</b><div><strong>צרו או פתחו רשימה</strong><p>במסך הרשימות לחצו “רשימה חדשה”, או ייבאו קובץ קיים.</p></div></div><div class="help-step"><b>2</b><div><strong>בדקו את המיפוי</strong><p>בייבוא Excel בחרו גיליון, שורת כותרות והעמודה המתאימה לכל אחד משבעת השדות.</p></div></div><div class="help-step"><b>3</b><div><strong>נקו ובדקו כפולים</strong><p>השתמשו בכלי הניקוי ולאחר מכן הפעילו בדיקת כפולים. מיזוג אוטומטי מתבצע רק כשאין סתירה.</p></div></div><div class="help-step"><b>4</b><div><strong>ייצאו</strong><p>עברו לייבוא וייצוא ובחרו VCF, Excel או CSV.</p></div></div>`,
     import: `<h2>ייבוא קבצים</h2><h3>אילו קבצים אפשר לייבא?</h3><p>VCF, XLSX, XLS ו־CSV בלבד. קובץ אחר לא ישנה את הרשימה.</p><h3>Excel עם כמה גיליונות</h3><p>בחרו גיליון אחד או כמה גיליונות. לכל גיליון ניתן לבחור את שורת הכותרות ולמפות את העמודות.</p><h3>מה קורה לערך נוסף?</h3><p>אם המקום שנבחר כבר מלא, אנק״ל ישאל אם להחליף את הערך. אפשר גם לחזור לבחירה או לא לייבא את הערך.</p><h3>ייבוא לרשימה קיימת</h3><p>בחרו אם להוסיף לרשימה או להחליף אותה. אם אותו קובץ כבר יובא, תוצג אזהרה.</p>`,
     duplicates: `<h2>בדיקת כפולים</h2><p>אנק״ל בודק מספרי טלפון, מיילים ושמות דומים. אותו מספר ישראלי מזוהה בכל צורות הכתיבה — עם 0, עם ‎+972, וגם כשאקסל אכל את האפס המוביל.</p><h3>איך עוברים על זה</h3><p>אחרי הסריקה מופיע מסך סיכום עם כרטיס לכל סוג בעיה. בכל סוג אפשר <b>לאשר את כולם בבת אחת</b> או <b>לעבור אחד אחד</b>, ותמיד אפשר לדלג על סוג שלם.</p><h3>מה המערכת מציעה לבד</h3><p>את השם הנקי ביותר (“מרים הריס” ולא “מרים הריס_1”), וכל מספר במשבצת שהקידומת שלו מכתיבה — 05x לנייד, 02/03/04/08/09 ו‑07x לקווי. אפשר לשנות כל שיוך.</p><h3>סוגי הכפילות</h3><p><b>זהים לגמרי</b> — אותו שם ואותם פרטים. <b>מיזוג בטוח</b> — אין סתירה, רק מידע שחסר בכרטיס אחד. <b>שם שונה</b> / <b>מספרים שונים</b> / <b>שם ומספרים שונים</b> — יש ברירת מחדל מוצעת. <b>מייל או הערה שונים</b> ו<b>שם דומה, מספרים שונים</b> — כאן אין ברירת מחדל אמינה וצריך להחליט אחד אחד.</p><h3>השאר נפרדים</h3><p>מסמן שאלה אנשים שונים. ההחלטה נשמרת ברשימה ולא חוזרת בסריקה הבאה.</p>`,
-    sync: `<h2>שמירה וסנכרון</h2><p>במצב מקומי הרשימות נשמרות במחשב או בדפדפן. לאחר כניסה עם Google, השינויים ממתינים בתור ונשלחים ברקע.</p><ul><li><strong>נשמר במחשב</strong> — העותק המקומי מעודכן.</li><li><strong>ממתין לסנכרון</strong> — העבודה שמורה מקומית ותישלח כשאפשר.</li><li><strong>מסנכרן</strong> — מתבצעת שמירה בענן.</li><li><strong>נשמר בענן</strong> — השרת אישר את השמירה.</li></ul><p>אם אותה רשימה שונתה במכשיר אחר, המערכת לא תדרוס אותה ותציע להשוות או לשמור עותק.</p>`,
+    sync: `<h2>שמירה וסנכרון</h2><p>באתר עובדים תמיד עם חשבון Google: כל רשימה וכל גיבוי קיוליקס נשמרים בענן של אנק״ל, זמינים מכל מחשב, ולא הולכים לאיבוד. בתוכנה למחשב אפשר לבחור גם <b>מצב אופליין</b> (הגדרות החשבון ← מעבר למצב אופליין), ואז הכול נשאר במחשב בלבד.</p><p>ליד כל רשימה מופיע סימון: <b>☁ נשמר בענן</b>, <b>⟳ ממתין לסנכרון</b> או <b>▮ נשמר מקומית</b>. ליד כל גיבוי קיוליקס: <b>בכרטיס</b>, <b>בשרת</b> או שניהם.</p><ul><li><strong>נשמר במחשב</strong> — העותק המקומי מעודכן.</li><li><strong>ממתין לסנכרון</strong> — העבודה שמורה מקומית ותישלח כשאפשר.</li><li><strong>מסנכרן</strong> — מתבצעת שמירה בענן.</li><li><strong>נשמר בענן</strong> — השרת אישר את השמירה.</li></ul><p>אם אותה רשימה שונתה במכשיר אחר, המערכת לא תדרוס אותה ותציע להשוות או לשמור עותק.</p>`,
     export: `<h2>ייצוא</h2><h3>VCF</h3><p>מתאים לייבוא בטלפון ושומר את שבעת השדות: שם, נייד, בית, עבודה, פקס, מייל והערה.</p><h3>Excel</h3><p>יוצר גיליון מסודר עם עמודה לכל שדה.</p><h3>CSV</h3><p>כולל הגנה כדי ש־Excel לא יפעיל טקסט כנוסחה. עברית נשמרת עם סימון מתאים ל־Excel.</p><h3>קבוצה וצלצול</h3><p>שני השדות של הטלפון הכשר מיוצאים רק כשמסמנים את התיבה בייצוא. הטלפון מתעלם מהם בייבוא VCF ומכבד אותם רק דרך גיבוי קיוליקס.</p>`,
-    qualix: `<h2>גיבוי קיוליקס</h2><p>הטלפון הכשר שומר גיבוי בכרטיס הזיכרון, בתיקייה <b>ibphone</b>, תיקייה לכל גיבוי לפי תאריך ושעה. אנק״ל קורא את הגיבוי, נותן לערוך הכל, ושומר <b>גרסה חדשה</b> שהטלפון יודע לשחזר. הגיבוי המקורי לעולם לא נדרס.</p><div class="help-step"><b>1</b><div><strong>חברו את הכרטיס למחשב</strong><p>בתוכנה למחשב הכרטיס מזוהה לבד. באתר לחצו “בחירת תיקייה” ובחרו את הכרטיס (או את תיקיית ibphone). אפשר גם לעבוד על תיקייה שהועתקה למחשב.</p></div></div><div class="help-step"><b>2</b><div><strong>פתחו גרסה</strong><p>כל גיבוי הוא גרסה. בתוך גרסה יש לשוניות: אנשי קשר, יומן שיחות, פתקים, לוח שנה, רשימות השמעה וחיזוי טקסט. ההגדרות נשמרות כמו שהן.</p></div></div><div class="help-step"><b>3</b><div><strong>ערכו</strong><p>אנשי קשר עם קבוצה וצלצול אישי, שיחות שאפשר למחוק או להוסיף עם מספר, סוג, זמן ומשך, פתקים עם תצוגה ברוחב מסך הטלפון ומירכוז, אירועים ביומן, שירים ברשימות.</p></div></div><div class="help-step"><b>4</b><div><strong>שמרו כגרסה חדשה</strong><p>בטלפון: גיבוי ושחזור ← שחזור ← בחרו את הגרסה החדשה לפי השעה ← סמנו מה לשחזר.</p></div></div><h3>אנשי קשר מול הרשימות</h3><p>“העבר לרשימה” יוצר רשימה רגילה באנק״ל עם הקבוצה והצלצול. בכיוון ההפוך, בגרסה חדשה אפשר לקחת את אנשי הקשר מרשימה קיימת או מקובץ VCF/Excel.</p><h3>פתקים: מה קורה בשחזור</h3><p>בשחזור, הטלפון מזהה פתק לפי <b>שם הקובץ</b>, לא לפי התוכן. פתק שערכתם באנק״ל ושמו לא השתנה לא יתעדכן בטלפון כל עוד הפתק הישן קיים בו. לפני השחזור מחקו בטלפון את הפתקים שערכתם (או את כולם), ורק אז שחזרו את “הפתקים שלי”. ביומן זה לא קורה: אירוע שכבר קיים בדיוק כזה פשוט לא מתווסף שוב.</p><h3>ניהול פתקים ישיר</h3><p>הפתקים שבטלפון הם קבצי טקסט בתיקיית <b>Memo</b> של הכרטיס. בתפריט הצד, מתחת ל“גיבוי קיוליקס”, יש <b>ניהול פתקים</b> שכותב ישירות לתיקייה הזו: עורכים, לוחצים “שמירה לטלפון”, מחזירים את הכרטיס — והפתקים מעודכנים מיד, בלי גיבוי ובלי שחזור. היישור למרכז שובר שורה ארוכה לכמה שורות מאוזנות לפני המירכוז, ואפשר לבחור תו מילוי: רווחים, נקודות או טאבים.</p><h3>הגיבויים בשרת</h3><p>אחרי כניסה עם Google, כל גיבוי שבכרטיס מועלה אוטומטית גם לשרת (לדרייב של אנק״ל), ובעמוד הגרסאות מסומן ליד כל גרסה אם היא <b>בכרטיס</b>, <b>בשרת</b> או בשניהם. גיבוי שיש רק בשרת אפשר להוריד חזרה לכרטיס, וממנו לשחזר בטלפון.</p><h3>מה עדיין ניסיוני</h3><p>הוספת מילים לחיזוי הטקסט נכתבת בפורמט שפוענח חלקית. אחרי שחזור ראשון כדאי לוודא בטלפון שהמילון נשאר שלם.</p>`
+    qualix: `<h2>גיבוי קיוליקס</h2><p>הטלפון הכשר שומר גיבוי בכרטיס הזיכרון, בתיקייה <b>ibphone</b>, תיקייה לכל גיבוי לפי תאריך ושעה. אנק״ל קורא את הגיבוי, נותן לערוך הכל, ושומר <b>גרסה חדשה</b> שהטלפון יודע לשחזר. הגיבוי המקורי לעולם לא נדרס.</p><div class="help-step"><b>1</b><div><strong>חברו את הכרטיס למחשב</strong><p>בתוכנה למחשב הכרטיס מזוהה לבד. באתר לחצו “בחירת תיקייה” ובחרו את הכרטיס (או את תיקיית ibphone). אפשר גם לעבוד על תיקייה שהועתקה למחשב.</p></div></div><div class="help-step"><b>2</b><div><strong>פתחו גרסה</strong><p>כל גיבוי הוא גרסה. בתוך גרסה יש לשוניות: אנשי קשר, יומן שיחות, פתקים, לוח שנה, רשימות השמעה וחיזוי טקסט. ההגדרות נשמרות כמו שהן.</p></div></div><div class="help-step"><b>3</b><div><strong>ערכו</strong><p>אנשי קשר עם קבוצה וצלצול אישי, שיחות שאפשר למחוק או להוסיף עם מספר, סוג, זמן ומשך, פתקים עם תצוגה ברוחב מסך הטלפון ומירכוז, אירועים ביומן, שירים ברשימות.</p></div></div><div class="help-step"><b>4</b><div><strong>שמרו כגרסה חדשה</strong><p>בטלפון: גיבוי ושחזור ← שחזור ← בחרו את הגרסה החדשה לפי השעה ← סמנו מה לשחזר.</p></div></div><h3>אנשי קשר מול הרשימות</h3><p>“העבר לרשימה” יוצר רשימה רגילה באנק״ל עם הקבוצה והצלצול. בכיוון ההפוך, בגרסה חדשה אפשר לקחת את אנשי הקשר מרשימה קיימת או מקובץ VCF/Excel.</p><h3>פתקים: מה קורה בשחזור</h3><p>בשחזור, הטלפון מזהה פתק לפי <b>שם הקובץ</b>, לא לפי התוכן. פתק שערכתם באנק״ל ושמו לא השתנה לא יתעדכן בטלפון כל עוד הפתק הישן קיים בו. לפני השחזור מחקו בטלפון את הפתקים שערכתם (או את כולם), ורק אז שחזרו את “הפתקים שלי”. ביומן זה לא קורה: אירוע שכבר קיים בדיוק כזה פשוט לא מתווסף שוב.</p><h3>ניהול פתקים ישיר</h3><p>הפתקים שבטלפון הם קבצי טקסט בתיקיית <b>Memo</b> של הכרטיס. בתפריט הצד, מתחת ל“גיבוי קיוליקס”, יש <b>ניהול פתקים</b> שכותב ישירות לתיקייה הזו: עורכים, לוחצים “שמירה לטלפון”, מחזירים את הכרטיס — והפתקים מעודכנים מיד, בלי גיבוי ובלי שחזור. היישור למרכז שובר שורה ארוכה לכמה שורות מאוזנות לפני המירכוז, ו“נקודה וטאב” הופך שורה לסעיף: נקודה, טאב ואז המשפט.</p><h3>הגיבויים בשרת</h3><p>אחרי כניסה עם Google, כל גיבוי שבכרטיס מועלה אוטומטית גם לשרת (לדרייב של אנק״ל), ובעמוד הגרסאות מסומן ליד כל גרסה אם היא <b>בכרטיס</b>, <b>בשרת</b> או בשניהם. גיבוי שיש רק בשרת אפשר להוריד חזרה לכרטיס, וממנו לשחזר בטלפון.</p><h3>מה עדיין ניסיוני</h3><p>הוספת מילים לחיזוי הטקסט נכתבת בפורמט שפוענח חלקית. אחרי שחזור ראשון כדאי לוודא בטלפון שהמילון נשאר שלם.</p>`
   };
 
   const state = {
@@ -153,18 +153,21 @@
   function logAction(action, listId = state.activeListId) { if (state.user) enqueue("log", { action, listId, at: now(), device: /Electron/i.test(navigator.userAgent) ? "desktop" : "web" }); }
 
   function setPage(page) {
-    if (page !== "lists" && !currentList() && !["help", "admin", "qualix"].includes(page)) page = "lists";
+    if (page !== "lists" && !currentList() && !["help", "admin", "qualix", "memos"].includes(page)) page = "lists";
     state.page = page;
     // כל עמוד נושא גוון משלו. הסימון כאן מאפשר ל-CSS לצבוע את הכותרת, האייקון
     // ופס ההדגשה לפי העמוד הפעיל, כך שהמיקום במערכת מזוהה בצבע ולא רק בטקסט.
     document.getElementById("app-shell").dataset.activePage = page;
     document.querySelectorAll(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.page === page));
-    document.querySelectorAll("[data-page-panel]").forEach(el => el.classList.toggle("active", el.dataset.pagePanel === page));
+    // "ניהול פתקים" הוא פריט ראשי בתפריט, אבל הוא מצויר באותה מכולה של גיבוי קיוליקס (אותו מודול, אותו כרטיס)
+    const panel = page === "memos" ? "qualix" : page;
+    document.querySelectorAll("[data-page-panel]").forEach(el => el.classList.toggle("active", el.dataset.pagePanel === panel));
     const [kicker, title] = PAGE_TITLES[page] || PAGE_TITLES.lists;
     document.getElementById("page-kicker").textContent = kicker; document.getElementById("page-title").textContent = title;
     if (page === "help") showHelp("start");
     if (page === "admin") loadAdmin();
     if (page === "qualix") window.ANKAL_QUALIX_UI?.show();
+    if (page === "memos") window.ANKAL_QUALIX_UI?.showMemos();
     renderAll();
   }
   const ENTRY_CHOICE_KEY = "ankal.entryChoice";
@@ -179,9 +182,26 @@
   /* בכניסה שואלים פעם אחת איך לעבוד: חשבון Google (הרשימות נשמרות בענן וזמינות
      מכל מכשיר) או מצב אופליין. מי שכבר בחר, או שכבר מחובר, לא נשאל שוב — אפשר
      לשנות בכל רגע מכרטיס החשבון בתחתית התפריט. */
+  /* מדיניות (אוקטובר 2026): באתר הכניסה עם Google חובה — כל מה שמעלים נשמר בענן של אנק״ל, ואין מצב
+     אופליין. בתוכנה למחשב יש בחירה (חשבון Google או עבודה מקומית), ואפשר לשנות אותה בהגדרות החשבון.
+     ?offline=1 בכתובת מאפשר את הבחירה גם בדפדפן — לבדיקות האוטומטיות, שאין להן חשבון Google. */
+  function offlineAllowed() { return isDesktopApp() || new URLSearchParams(location.search).has("offline"); }
+  async function requireLogin(reason) {
+    if (state.user) return true;
+    const choice = await modal({
+      kicker: "כניסה לאנק״ל", title: `${reason} צריך להיכנס עם Google`, dismissible: false,
+      html: `<p>כל מה שתעלו ותערכו נשמר בענן של אנק״ל: זמין מכל מחשב, מסומן “נשמר בענן”, ולא הולך לאיבוד אם משהו קורה למחשב. הכניסה היא בלחיצה אחת, בלי סיסמה חדשה.</p><p class="login-terms">הכניסה מהווה אישור <a href="terms.html" target="_blank">לתנאי השימוש</a> ו<a href="privacy.html" target="_blank">למדיניות הפרטיות</a>.</p>`,
+      buttons: [{ id: "google", label: "כניסה עם Google", primary: true }, { id: "back", label: "חזרה" }]
+    });
+    if (choice !== "google") return false;
+    await googleLogin();
+    return state.user ? true : requireLogin(reason); // ביטול בחלון של Google: שואלים שוב
+  }
   async function askHowToWork() {
-    if (state.user || localStorage.getItem(ENTRY_CHOICE_KEY)) return;
+    if (state.user) return;
     if (String(CFG.GOOGLE_WEB_CLIENT_ID || "").includes("PASTE_")) return; // כניסה לא מוגדרת
+    if (!offlineAllowed()) { if (!(await requireLogin("כדי לעבוד באתר"))) showLanding(); return; }
+    if (localStorage.getItem(ENTRY_CHOICE_KEY)) return;
     const choice = await modal({
       kicker: "ברוכים הבאים לאנק״ל",
       title: "איך תרצו לעבוד?",
@@ -215,6 +235,8 @@
   /* הורדת תוכנת Windows מדף הנחיתה. הקישור מגיע מ-config.js כדי שאפשר יהיה
      לעדכן אותו בלי לגעת בקוד. */
   async function downloadApp() {
+    // גם ההורדה דורשת חשבון: מי שמוריד את התוכנה הוא משתמש שלנו, והגיבויים שלו נשמרים אצלנו
+    if (!offlineAllowed() && !(await requireLogin("כדי להוריד את התוכנה למחשב"))) return;
     const url = String(CFG.DOWNLOAD_URL || "").trim();
     if (url && await fileExists(url)) {
       window.open(url, "_blank", "noopener");
@@ -257,7 +279,13 @@
     const lists = state.lists.filter(x => !x.deletedAt && (!q || x.name.toLowerCase().includes(q))).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
     document.getElementById("lists-empty").classList.toggle("hidden", lists.length > 0);
     // אותו גוון-לפי-שם כמו בכרטיסי אנשי הקשר, כדי שרשימה תזוהה בעין ולא בקריאה.
-    grid.innerHTML = lists.map(list => `<article class="list-card" style="--tint:${avatarHue(list.name)}"><button class="open-list" data-open-list="${esc(list.id)}" aria-label="פתיחת ${esc(list.name)}"></button><div class="list-mark">${esc(initialOf(list.name))}</div><button class="icon-btn card-menu" data-list-menu="${esc(list.id)}" aria-label="אפשרויות רשימה">⋮</button><h3>${esc(list.name)}</h3><p>${list.contacts.length} אנשי קשר</p><footer><span>${list.dirty && state.user ? "ממתין לסנכרון" : "עודכן " + fmtDate(list.updatedAt)}</span></footer></article>`).join("");
+    grid.innerHTML = lists.map(list => `<article class="list-card" style="--tint:${avatarHue(list.name)}"><button class="open-list" data-open-list="${esc(list.id)}" aria-label="פתיחת ${esc(list.name)}"></button><div class="list-mark">${esc(initialOf(list.name))}</div><button class="icon-btn card-menu" data-list-menu="${esc(list.id)}" aria-label="אפשרויות רשימה">⋮</button><h3>${esc(list.name)}</h3><p>${list.contacts.length} אנשי קשר</p><footer><span>עודכן ${fmtDate(list.updatedAt)}</span>${syncBadge(list)}</footer></article>`).join("");
+  }
+  /* איפה הרשימה שמורה: בענן של אנק״ל, ממתינה לשליחה, או רק במחשב הזה (מצב אופליין / עדיין לא נשלחה). */
+  function syncBadge(list) {
+    if (!state.user) return `<span class="sync-badge local" title="מצב אופליין: הרשימה שמורה במחשב הזה בלבד">▮ נשמר מקומית</span>`;
+    if (list.dirty || state.syncQueue.some(job => job.key === `save:${list.id}`)) return `<span class="sync-badge pending" title="השינויים יישלחו לענן ברקע">⟳ ממתין לסנכרון</span>`;
+    return list.remoteVersion ? `<span class="sync-badge cloud" title="הרשימה שמורה בענן של אנק״ל">☁ נשמר בענן</span>` : `<span class="sync-badge local" title="הרשימה עדיין לא נשלחה לענן">▮ נשמר מקומית</span>`;
   }
   // מפתח הטלפון נושא קידומת סוג (IL:/INT:) שלא אמורה להשתתף בחיפוש החופשי.
   function searchablePhone(value) { return normalizePhone(value).replace(/^(?:IL|INT):/, ""); }
@@ -1484,11 +1512,12 @@
     localStorage.removeItem("ankal.sessionHint");
     persistLocal();
     if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect(); updateAccount(); setSyncState("", "נשמר במחשב"); toast("יצאתם מהחשבון");
+    if (!offlineAllowed()) showLanding(); // באתר אין עבודה בלי חשבון
   }
   function updateAccount() {
     const hint = state.user || {};
-    document.getElementById("account-name").textContent = hint.name || "מצב מקומי";
-    document.getElementById("account-email").textContent = hint.email || "לא מחובר";
+    document.getElementById("account-name").textContent = hint.name || "לא מחוברים";
+    document.getElementById("account-email").textContent = hint.email || "לחצו לכניסה עם Google";
     const avatar = document.getElementById("account-avatar");
     // תמונת הפרופיל מ-Google כשיש, ואות ראשונה כשאין (או כשהתמונה לא נטענת).
     if (hint.picture) avatar.innerHTML = `<img src="${esc(hint.picture)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">`;
@@ -1497,9 +1526,11 @@
     renderShell();
   }
   async function accountSettings() {
-    const html = `<p>${state.user ? `מחוברים כעת כ־${esc(state.user.email)}.` : "העבודה נשמרת כרגע במחשב זה."}</p><p>גרסת תנאים: ${esc(CFG.TERMS_VERSION || "—")} · גרסת פרטיות: ${esc(CFG.PRIVACY_VERSION || "—")}</p>`;
-    const buttons = state.user ? [{ id: "delete", label: "מחיקת החשבון" }, { id: "close", label: "סגירה", primary: true }] : [{ id: "login", label: "כניסה עם Google", primary: true }, { id: "close", label: "סגירה" }]; const choice = await modal({ kicker: "חשבון", title: "הגדרות", html, buttons });
-    if (choice === "login") googleLogin(); if (choice === "delete") { const ok = await confirmBox("מחיקת חשבון", "החשבון והרשימות יועברו לסל ויימחקו סופית לאחר 30 יום. כניסה מחדש עם החשבון בתוך התקופה מבטלת את המחיקה. להמשיך?", "העברה לסל"); if (ok) { await api("deleteAccount"); logout(); toast("החשבון הועבר לסל המחזור"); } }
+    const html = `<p>${state.user ? `מחוברים כעת כ־${esc(state.user.email)}. הרשימות והגיבויים נשמרים בענן של אנק״ל.` : "מצב אופליין: העבודה נשמרת במחשב זה בלבד, ולא בענן."}</p>${isDesktopApp() ? `<p class="qx-note">בתוכנה למחשב אפשר לעבוד גם בלי חשבון. ${state.user ? "מעבר למצב אופליין מנתק את החשבון; הרשימות נשארות במחשב." : "כניסה עם Google מעלה את הרשימות לענן ושומרת כל גיבוי גם בשרת."}</p>` : ""}<p>גרסת תנאים: ${esc(CFG.TERMS_VERSION || "—")} · גרסת פרטיות: ${esc(CFG.PRIVACY_VERSION || "—")}</p>`;
+    const buttons = state.user ? [...(isDesktopApp() ? [{ id: "offline", label: "מעבר למצב אופליין" }] : []), { id: "delete", label: "מחיקת החשבון" }, { id: "close", label: "סגירה", primary: true }] : [{ id: "login", label: "כניסה עם Google", primary: true }, { id: "close", label: "סגירה" }]; const choice = await modal({ kicker: "חשבון", title: "הגדרות", html, buttons });
+    if (choice === "login") googleLogin();
+    if (choice === "offline") { localStorage.setItem(ENTRY_CHOICE_KEY, "offline"); logout(); toast("עובדים במצב אופליין: הכול נשמר במחשב הזה בלבד"); }
+    if (choice === "delete") { const ok = await confirmBox("מחיקת חשבון", "החשבון והרשימות יועברו לסל ויימחקו סופית לאחר 30 יום. כניסה מחדש עם החשבון בתוך התקופה מבטלת את המחיקה. להמשיך?", "העברה לסל"); if (ok) { await api("deleteAccount"); logout(); toast("החשבון הועבר לסל המחזור"); } }
   }
 
   /* enterConfirms=false לחלונות שמאשרים פעולה גורפת (מיזוג עשרות קבוצות, מחיקה
@@ -1513,7 +1544,9 @@
   async function confirmBox(title, text, accept = "אישור", options = {}) { return (await modal({ title, html: `<p>${esc(text)}</p>`, buttons: [{ id: "yes", label: accept, primary: true }, { id: "no", label: "ביטול" }], ...options })) === "yes"; }
 
   function handleAction(action) {
-    const actions = { "toggle-theme": toggleTheme, "enter-app": () => enterApp(), "show-landing": showLanding, "open-help": () => { enterApp("help"); }, "quick-import": quickImport, "toggle-sidebar": () => { const side = document.getElementById("sidebar"); side.classList.toggle(innerWidth <= 760 ? "mobile-open" : "collapsed"); }, "new-list": createList, "refresh-lists": () => state.user ? pullLists() : renderLists(), "rename-list": renameList, "add-contact": () => openDrawer(), "close-drawer": closeDrawer, "save-contact": () => saveDrawer(true), "drawer-delete": deleteDrawer, undo, redo, "select-all": selectAll, "clear-selection": clearSelection, "delete-selected": deleteSelected, "move-selected": moveSelected, "toggle-density": () => { state.dense = !state.dense; persistLocal(); renderContacts(); }, "preview-add-text": previewAddText, "preview-replace": previewReplace, "download-template": downloadTemplate, "google-login": googleLogin, logout, "account-settings": accountSettings, "account-menu": () => document.getElementById("account-menu").classList.toggle("hidden"), "admin-refresh": loadAdmin, "download-app": downloadApp,
+    const actions = { "toggle-theme": toggleTheme, "enter-app": () => enterApp(), "show-landing": showLanding, "open-help": () => { enterApp("help"); }, "quick-import": quickImport, "toggle-sidebar": () => { const side = document.getElementById("sidebar"); side.classList.toggle(innerWidth <= 760 ? "mobile-open" : "collapsed"); }, "new-list": createList, "refresh-lists": () => state.user ? pullLists() : renderLists(), "rename-list": renameList, "add-contact": () => openDrawer(), "close-drawer": closeDrawer, "save-contact": () => saveDrawer(true), "drawer-delete": deleteDrawer, undo, redo, "select-all": selectAll, "clear-selection": clearSelection, "delete-selected": deleteSelected, "move-selected": moveSelected, "toggle-density": () => { state.dense = !state.dense; persistLocal(); renderContacts(); }, "preview-add-text": previewAddText, "preview-replace": previewReplace, "download-template": downloadTemplate, "google-login": googleLogin, logout, "account-settings": accountSettings, "account-menu": () => document.getElementById("account-menu").classList.toggle("hidden"),
+      // כרטיס החשבון עצמו לחיץ: בלי חשבון — ישר לכניסה; עם חשבון — התפריט (הגדרות / יציאה)
+      "account-card": () => { if (state.user) document.getElementById("account-menu").classList.toggle("hidden"); else googleLogin(); }, "admin-refresh": loadAdmin, "download-app": downloadApp,
       "scan-duplicates": () => scanReview("duplicates"), "scan-symbols": () => scanReview("smart"),
       "review-start": reviewStart, "review-overview": reviewOverview, "review-one-by-one": reviewOneByOne,
       "review-bulk": reviewBulk, "review-skip-step": reviewSkipStep, "review-apply": reviewApplyItem,
