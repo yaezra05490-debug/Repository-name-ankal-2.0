@@ -622,7 +622,11 @@
     if (qx.cloud.uploading || !cloudUser()) return;
     const pending = pendingUploads();
     if (!pending.length) { if (explicit) A().toast("כל הגיבויים שבכרטיס כבר בשרת"); return; }
-    const todo = explicit ? pending : [latestFull(pending)];
+    /* לבד עולה רק הגיבוי המלא האחרון מבין כל הגיבויים בכרטיס. אם הוא כבר בשרת — לא מעלים את הבא בתור
+       (כך עלה גיבוי ישן נוסף בכל סנכרון); השאר רק בלחיצה. */
+    const newestFull = latestFull(qx.backups.filter(b => isBackupName(b.folder)));
+    if (!explicit && (!newestFull || !pending.some(b => b.folder === newestFull.folder))) return;
+    const todo = explicit ? pending : [newestFull];
     A().toast(explicit ? `מעלה ${todo.length} גיבויים לשרת ברקע — אפשר להמשיך לעבוד` : `מעלה לשרת את הגיבוי המלא האחרון (${folderDate(todo[0].folder)}) ברקע — אפשר להמשיך לעבוד`);
     for (const bk of todo) { if (!(await uploadVersion(bk.folder, true))) break; }
     if (!qx.cloud.error) A().toast(explicit ? "כל הגיבויים שבכרטיס שמורים עכשיו גם בשרת" : `הגיבוי ${folderDate(todo[0].folder)} שמור בשרת`);
