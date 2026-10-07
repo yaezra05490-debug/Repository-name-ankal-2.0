@@ -673,6 +673,68 @@
     return `<div class="qx-cloud on"><i>☁</i><div><strong>השרת · ${esc(user.email)}</strong><span>${state}</span></div><div class="spacer"></div>${pending && !qx.cloud.uploading && qx.cloud.loaded ? `<button class="btn btn-secondary btn-sm" data-qx="cloud-upload-all">העלה את כל השאר (${pending})</button>` : ""}<button class="btn btn-quiet btn-sm" data-qx="cloud-refresh">רענון</button></div>`;
   }
 
+  /* ---------- ייבוא קטגוריה מגרסה אחרת ----------
+     בראש כל קטגוריה: אילו גיבויים אחרים בכרטיס מכילים אותה (לפי ibphone_head.in), תצוגה מקדימה של הנתונים
+     שלהם, וייבוא לגרסה הפתוחה — החלפה או הוספה (בלי כפולים). גרסה נקראת פעם אחת ונשמרת בזיכרון. */
+  const IMPORT_CATS = {
+    phonebook: { label: "אנשי קשר", pick: d => d.contacts || [] }, callog: { label: "שיחות", pick: d => d.callog?.entries || [] },
+    memo: { label: "פתקים", pick: d => d.memos || [] }, schedule: { label: "אירועים", pick: d => d.events || [] },
+    playlist: { label: "רשימות השמעה", pick: d => d.playlists || [] }, udb: { label: "מילים לחיזוי", pick: d => (d.dictionary?.words || []).filter((w, i, a) => a.indexOf(w) === i) }
+  };
+  const versionCache = new Map();
+  async function loadVersionData(folder) {
+    if (versionCache.has(folder)) return versionCache.get(folder);
+    const bk = qx.backups.find(b => b.folder === folder); if (!bk) throw new Error("הגרסה לא נמצאה בכרטיס");
+    const names = (await qx.adapter.list(bk.rel)).filter(e => e.kind === "file").map(e => e.name);
+    const data = await Q.readBackup({ folder: bk.folder, listFiles: async () => names, readFile: n => qx.adapter.read(join(bk.rel, n)) });
+    versionCache.set(folder, data); return data;
+  }
+  function importSources(cat) { return qx.backups.filter(b => isBackupName(b.folder) && b.folder !== qx.open?.folder && b.categories.includes(cat)); }
+  function importBarHtml(cat, currentCount) {
+    if (!qx.open || !qx.layout || qx.layout.mode === "single") return "";
+    const sources = importSources(cat); if (!sources.length) return "";
+    const meta = IMPORT_CATS[cat];
+    return `<div class="qx-import-bar"><i>⇩</i><span>${currentCount ? `להביא ${meta.label} מגרסה אחרת?` : `<b>בגרסה הזו אין ${meta.label}.</b> אפשר להביא מגרסה אחרת שיש בה:`}</span><select id="qx-import-src-${cat}">${sources.map(b => `<option value="${esc(b.folder)}">${esc(folderDate(b.folder))}</option>`).join("")}</select><button class="btn btn-quiet btn-sm" data-qx="import-preview" data-cat="${cat}">תצוגה מקדימה</button><button class="btn btn-secondary btn-sm" data-qx="import-apply" data-cat="${cat}">ייבוא לגרסה הזו</button></div>`;
+  }
+  function importPreviewRows(cat, items) {
+    const row = (a, b) => `<div class="modal-list-row"><span>${esc(a)}</span><b dir="auto">${esc(b)}</b></div>`;
+    if (cat === "phonebook") return items.map(c => row(c.name || "ללא שם", [c.mobile, c.home, c.work].filter(Boolean).join(" · ") + (c.group ? " · " + c.group : "")));
+    if (cat === "callog") return items.map(e => row((Q.CALL_TYPE_HE[e.type] || e.type) + ` (${e.calls.length})`, e.number));
+    if (cat === "memo") return items.map(m => row(m.created ? m.created.slice(0, 10).split("-").reverse().join(".") : "", m.text.split("\n").map(l => l.trim()).find(Boolean) || "(ריק)"));
+    if (cat === "schedule") return items.slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map(e => row(e.date.split("-").reverse().join(".") + " " + e.time, e.title));
+    if (cat === "playlist") return items.map(p => row(p.entries.length + " שירים", p.name.replace(/\.lst$/i, "")));
+    if (cat === "udb") return [row("מילים", items.join(", "))];
+    return [];
+  }
+  async function importPreview(cat) {
+    const folder = document.getElementById(`qx-import-src-${cat}`)?.value; if (!folder) return;
+    setBusy("קורא את הגרסה…");
+    try {
+      const data = await loadVersionData(folder); const items = IMPORT_CATS[cat].pick(data); setBusy("");
+      const rows = importPreviewRows(cat, items.slice(0, 80));
+      const choice = await A().modal({ kicker: `${IMPORT_CATS[cat].label} בגרסה ${folderDate(folder)}`, title: `${items.length} ${IMPORT_CATS[cat].label}`, html: `<div class="modal-list">${rows.join("") || `<div class="modal-list-row"><span>ריק</span><b>אין נתונים</b></div>`}</div>${items.length > 80 ? `<p class="qx-note">מוצגים 80 הראשונים מתוך ${items.length}.</p>` : ""}`, buttons: [{ id: "import", label: "ייבוא לגרסה הפתוחה", primary: true }, { id: "close", label: "סגירה" }] });
+      if (choice === "import") await importApply(cat, folder);
+    } catch (error) { A().toast("לא הצלחנו לקרוא את הגרסה: " + (error.message || error), "error"); } finally { setBusy(""); }
+  }
+  async function importApply(cat, folder) {
+    folder = folder || document.getElementById(`qx-import-src-${cat}`)?.value; if (!folder || !qx.open) return;
+    const d = qx.open.data, meta = IMPORT_CATS[cat], current = meta.pick(d).length;
+    const mode = current ? await A().modal({ kicker: "ייבוא מגרסה", title: `${meta.label} מהגרסה ${folderDate(folder)}`, html: `<p>בגרסה הפתוחה יש כבר ${current} ${meta.label}. איך להכניס את הנתונים?</p><p class="qx-note">בהוספה, פריט שכבר קיים (אותו שם קובץ / אותו אירוע / אותו מספר) לא נכנס פעמיים.</p>`, buttons: [{ id: "add", label: "להוסיף לקיימים", primary: true }, { id: "replace", label: "להחליף את הקיימים" }, { id: "cancel", label: "ביטול" }] }) : "replace";
+    if (mode === "cancel") return;
+    setBusy("מייבא…");
+    try {
+      const items = meta.pick(await loadVersionData(folder)); let n = 0;
+      if (cat === "phonebook") { const incoming = items.map(c => Object.assign({}, c, { _raw: undefined, _dirty: true })); if (mode === "replace") d.contacts = incoming; else d.contacts.push(...incoming); n = incoming.length; }
+      if (cat === "schedule") { const key = e => e.date + "|" + e.time + "|" + e.title; const have = new Set(mode === "replace" ? [] : d.events.map(key)); const incoming = items.filter(e => !have.has(key(e))).map(e => Object.assign({}, e, { _raw: undefined, _dirty: true })); if (mode === "replace") d.events = incoming; else d.events.push(...incoming); n = incoming.length; }
+      if (cat === "memo") { const have = new Set(mode === "replace" ? [] : d.memos.map(m => m.fileName)); const incoming = items.filter(m => !have.has(m.fileName)).map(m => Object.assign({}, m, { _dirty: true })); if (mode === "replace") d.memos = incoming; else d.memos.unshift(...incoming); n = incoming.length; }
+      if (cat === "callog") { const incoming = items.map(e => Object.assign({}, e, { _raw: undefined, _dirty: true })); if (mode === "replace") d.callog.entries = incoming; else for (const e of incoming) { const cur = d.callog.entries.find(x => x.number === e.number && x.type === e.type); if (cur) { cur.calls = cur.calls.concat(e.calls).sort((a, b) => a.time - b.time).slice(-10); cur._dirty = true; } else d.callog.entries.push(e); } n = incoming.length; }
+      if (cat === "playlist") { const incoming = items.map(p => Object.assign({}, p, { _dirty: true })); if (mode === "replace") d.playlists = incoming; else for (const p of incoming) { const k = d.playlists.findIndex(x => x.name === p.name); if (k >= 0) d.playlists[k] = p; else d.playlists.push(p); } n = incoming.length; }
+      if (cat === "udb") { for (const w of items) if (pushWord(w) === true) n++; }
+      if (n) dirty(cat);
+      render(); A().toast(n ? `יובאו ${n} ${meta.label} מהגרסה ${folderDate(folder)}. לחצו “שמירה כגרסה חדשה” כדי לכתוב לכרטיס.` : `אין ${meta.label} חדשים לייבא — הכול כבר קיים בגרסה`);
+    } catch (error) { A().toast("הייבוא נכשל: " + (error.message || error), "error"); } finally { setBusy(""); }
+  }
+
   /* ---------- ציור ---------- */
   function setBusy(text) { qx.busy = text; const el = document.getElementById("qx-busy"); if (el) { el.textContent = text; el.classList.toggle("hidden", !text); } }
   function render() {
@@ -764,7 +826,7 @@
   }
   function contactsTab() {
     const d = qx.open.data; const groups = allGroups(d); const grouped = qx.contactView === "groups";
-    return contactsGuide() + `<div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="qx-search" type="search" value="${esc(qx.search)}" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn ${grouped ? "btn-secondary" : "btn-quiet"} btn-sm" data-qx="contacts-view" data-view="${grouped ? "list" : "groups"}">${grouped ? "☰ תצוגת רשימה" : "⊞ לפי קבוצות"}</button><button class="btn btn-secondary btn-sm" data-qx="add-contact">＋ איש קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-to-list">⇄ העבר לניהול אנשי קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-list">⇐ מרשימה באנק״ל</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-file">⇐ מקובץ VCF/Excel</button>${grouped ? "" : `<span class="qx-note">קבוצות: ${groups.map(esc).join(", ") || "אין"}</span>`}</div><div id="qx-contacts-list">${contactsBodyHtml()}</div>`;
+    return contactsGuide() + importBarHtml("phonebook", d.contacts.length) + `<div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="qx-search" type="search" value="${esc(qx.search)}" placeholder="חיפוש בשם, טלפון, מייל או הערה…"></label><button class="btn ${grouped ? "btn-secondary" : "btn-quiet"} btn-sm" data-qx="contacts-view" data-view="${grouped ? "list" : "groups"}">${grouped ? "☰ תצוגת רשימה" : "⊞ לפי קבוצות"}</button><button class="btn btn-secondary btn-sm" data-qx="add-contact">＋ איש קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-to-list">⇄ העבר לניהול אנשי קשר</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-list">⇐ מרשימה באנק״ל</button><button class="btn btn-quiet btn-sm" data-qx="contacts-from-file">⇐ מקובץ VCF/Excel</button>${grouped ? "" : `<span class="qx-note">קבוצות: ${groups.map(esc).join(", ") || "אין"}</span>`}</div><div id="qx-contacts-list">${contactsBodyHtml()}</div>`;
   }
   function contactsBodyHtml() { return qx.contactView === "groups" ? groupsViewHtml() : contactsListHtml(); }
 
@@ -846,7 +908,7 @@
         body += `<div class="qx-call ${last.e.type}" data-qx="call-group" data-key="${esc(g.key)}" role="button"><i class="qx-call-ico" title="${Q.CALL_TYPE_HE[last.e.type] || ""}">${CALL_ICON[last.e.type] || "•"}</i><div class="qx-call-main"><b>${esc(g.name || g.number)}${g.calls.length > 1 ? ` <span class="qx-call-count">(${g.calls.length})</span>` : ""}</b><small dir="ltr">${g.name ? esc(g.number) + " · " : ""}${Q.CALL_TYPE_HE[last.e.type] || ""}${last.call.duration ? " · " + dur(last.call.duration) : ""}</small></div><span class="qx-call-time">${day === todayIso ? hm : dayLabel(day)}</span><button class="icon-btn" data-qx="delete-group" data-key="${esc(g.key)}" aria-label="מחיקת כל השיחות">✕</button></div>`;
       }
     }
-    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-call">＋ שיחה</button><span class="qx-note">הטלפון שומר עד 100 מספרים ועד 10 שיחות לכל מספר</span></div>
+    return importBarHtml("callog", rows.length) + `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-call">＋ שיחה</button><span class="qx-note">הטלפון שומר עד 100 מספרים ועד 10 שיחות לכל מספר</span></div>
       <div class="qx-phone-panel"><div class="qx-filters">${chips}</div><div class="qx-calls">${body || `<p class="qx-note" style="padding:20px;text-align:center">אין שיחות</p>`}</div></div>`;
   }
   async function callInfo(ei, ci) {
@@ -876,7 +938,7 @@
     const note = st.direct ? "" : `<div class="qx-memo-note"><div class="qx-memo-note-head"><i>⚠</i><strong>לפני שחזור של פתקים בטלפון</strong></div>
       <ol><li>הטלפון מזהה פתק לפי <b>שם הקובץ</b>, לא לפי התוכן.</li><li>פתק שערכתם כאן <b>לא יתעדכן</b> כל עוד הפתק הישן קיים בטלפון.</li><li>לכן: מחקו בטלפון את הפתקים שערכתם (או את כולם), ורק אז שחזרו את “הפתקים שלי”.</li></ol>
       <div class="qx-memo-note-foot"><span>רוצים שהשינוי ייכנס מיד, בלי שחזור?</span><button class="btn btn-secondary btn-sm" data-qx="direct-memos">✎ ניהול פתקים ישיר</button></div></div>`;
-    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="new-memo">＋ פתק</button><span class="qx-note">${st.memos.length} פתקים · ${st.direct ? "תיקיית Memo של הכרטיס — הטלפון קורא אותם ישירות" : "קבצי טקסט פשוטים בתיקיית Memo"} · הסדר ברשימה הוא הסדר בטלפון (▲▼ לשינוי)</span></div>${note}<div class="qx-split"><div class="qx-list">${list}</div>${editor}</div>`;
+    return (st.direct ? "" : importBarHtml("memo", st.memos.length)) + `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="new-memo">＋ פתק</button><span class="qx-note">${st.memos.length} פתקים · ${st.direct ? "תיקיית Memo של הכרטיס — הטלפון קורא אותם ישירות" : "קבצי טקסט פשוטים בתיקיית Memo"} · הסדר ברשימה הוא הסדר בטלפון (▲▼ לשינוי)</span></div>${note}<div class="qx-split"><div class="qx-list">${list}</div>${editor}</div>`;
   }
   function calendarTab() {
     const d = qx.open.data; if (!qx.calMonth) qx.calMonth = localIso(new Date()).slice(0, 7);
@@ -890,18 +952,18 @@
     }
     const monthEvents = d.events.map((e, i) => ({ e, i })).filter(x => x.e.date.startsWith(qx.calMonth)).sort((a, b) => (a.e.date + a.e.time).localeCompare(b.e.date + b.e.time));
     const list = qx.calView === "list" ? `<div class="qx-table-wrap" style="margin-top:12px"><table class="qx-table"><thead><tr><th>תאריך</th><th>שעה</th><th>כותרת</th><th>תזכורת</th><th></th></tr></thead><tbody>${d.events.map((e, i) => ({ e, i })).sort((a, b) => (b.e.date + b.e.time).localeCompare(a.e.date + a.e.time)).map(({ e, i }) => `<tr data-qx="edit-event" data-i="${i}" style="cursor:pointer"><td class="num">${esc(e.date.split("-").reverse().join("."))}</td><td class="num">${esc(e.time)}</td><td>${esc(e.title)}</td><td>${e.reminder ? "🔔" : ""}</td><td class="act"><button class="icon-btn" aria-label="עריכה">✎</button></td></tr>`).join("")}</tbody></table></div>` : "";
-    return `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-event">＋ אירוע</button><button class="btn btn-quiet btn-sm" data-qx="cal-prev">‹ חודש קודם</button><button class="btn btn-quiet btn-sm" data-qx="cal-today">היום</button><button class="btn btn-quiet btn-sm" data-qx="cal-next">חודש הבא ›</button><strong style="font-size:15px">${esc(monthName)}</strong><span class="qx-note">${esc(hebRange(first, new Date(y, m - 1, daysInMonth)))}</span><span class="qx-note">${monthEvents.length} אירועים החודש · ${d.events.length} בסך הכל</span><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="cal-toggle">${qx.calView === "list" ? "הסתר רשימה" : "הצג גם כרשימה"}</button></div>
+    return importBarHtml("schedule", d.events.length) + `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-event">＋ אירוע</button><button class="btn btn-quiet btn-sm" data-qx="cal-prev">‹ חודש קודם</button><button class="btn btn-quiet btn-sm" data-qx="cal-today">היום</button><button class="btn btn-quiet btn-sm" data-qx="cal-next">חודש הבא ›</button><strong style="font-size:15px">${esc(monthName)}</strong><span class="qx-note">${esc(hebRange(first, new Date(y, m - 1, daysInMonth)))}</span><span class="qx-note">${monthEvents.length} אירועים החודש · ${d.events.length} בסך הכל</span><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="cal-toggle">${qx.calView === "list" ? "הסתר רשימה" : "הצג גם כרשימה"}</button></div>
       <div class="qx-cal-head">${["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"].map(n => `<span>${n}</span>`).join("")}</div><div class="qx-cal">${cells}</div><p class="qx-note" style="margin:8px 0 0">לחיצה על יום מוסיפה אירוע באותו תאריך. לחיצה על אירוע פותחת אותו לעריכה.</p>${list}`;
   }
   function playlistsTab() {
     const d = qx.open.data; const p = d.playlists[qx.plIdx];
     const picks = d.playlists.map((x, i) => `<button class="${i === qx.plIdx ? "active" : ""}" data-qx="playlist" data-i="${i}">♪ ${esc(x.name.replace(/\.lst$/i, ""))} <small>(${x.entries.length})</small></button>`).join("");
     const body = p ? `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="add-song">＋ שיר</button><button class="btn btn-danger btn-sm" data-qx="delete-playlist">מחיקת הרשימה</button><span class="qx-note">${p.entries.length} שירים</span></div><div class="qx-table-wrap"><table class="qx-table"><thead><tr><th>#</th><th>קובץ</th><th>גודל</th><th></th></tr></thead><tbody>${p.entries.map((e, i) => `<tr><td>${i + 1}</td><td class="num" style="white-space:normal;direction:ltr">${esc(e.path)}</td><td class="num">${e.fileSize ? (e.fileSize / 1048576).toFixed(1) + " MB" : ""}</td><td class="act"><button class="icon-btn" data-qx="song-up" data-i="${i}" aria-label="למעלה">↑</button><button class="icon-btn" data-qx="song-down" data-i="${i}" aria-label="למטה">↓</button><button class="icon-btn" data-qx="song-remove" data-i="${i}" aria-label="הסרה">✕</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty-box"><div class="empty-icon">♪</div><h3>אין רשימות השמעה</h3></div>`;
-    return `<div class="qx-pl">${picks}<button data-qx="new-playlist">＋ רשימה חדשה</button></div>${body}`;
+    return importBarHtml("playlist", d.playlists.length) + `<div class="qx-pl">${picks}<button data-qx="new-playlist">＋ רשימה חדשה</button></div>${body}`;
   }
   function dictionaryTab() {
     const d = qx.open.data;
-    return `<div class="qx-warn">ניסיוני: המבנה של קובץ חיזוי הטקסט פוענח, אבל ערך הביקורת שלו רק בחלקו. אחרי שחזור של “חיזוי טקסט” מגרסה שנערכה כאן, בדקו בטלפון שהמילים נשמרו.</div>
+    return importBarHtml("udb", d.dictionaryWords.length) + `<div class="qx-warn">ניסיוני: המבנה של קובץ חיזוי הטקסט פוענח, אבל ערך הביקורת שלו רק בחלקו. אחרי שחזור של “חיזוי טקסט” מגרסה שנערכה כאן, בדקו בטלפון שהמילים נשמרו.</div>
       <div class="qx-toolbar" style="margin-top:12px"><input id="qx-word" class="qinline" placeholder="מילה חדשה לחיזוי" style="max-width:260px"><button class="btn btn-secondary btn-sm" data-qx="add-word">＋ הוספה</button><button class="btn btn-quiet btn-sm" data-qx="import-words">⇐ מאקסל / מקובץ טקסט</button><span class="qx-note">${d.dictionaryWords.length} מילים${d.dictAdd.length ? ` · ${d.dictAdd.length} חדשות` : ""}${d.dictRemove.length ? ` · ${d.dictRemove.length} להסרה` : ""} · מקום לעוד כ-${Math.max(0, Math.floor(udbFreeBytes() / 26))} מילים</span></div>
       <div class="qx-words">${d.dictionaryWords.map(w => `<span class="qx-word">${esc(w)}<button data-qx="remove-word" data-w="${esc(w)}" aria-label="הסרה">✕</button></span>`).join("") || "<span class='qx-note'>המילון ריק</span>"}</div>`;
   }
@@ -961,6 +1023,8 @@
         case "contacts-view": qx.contactView = el.dataset.view; qx.selected = new Set(); return render();
         case "group-pick": qx.groupSel = el.dataset.group; return render();
         case "clear-search": qx.search = ""; return render();
+        case "import-preview": return importPreview(el.dataset.cat);
+        case "import-apply": return importApply(el.dataset.cat);
         case "group-new": return newGroup();
         case "group-rename": return renameGroup();
         case "group-select-all": for (const { c, i: ci } of filteredQxContacts()) if ((c.group || "") === qx.groupSel) qx.selected.add(ci); return render();

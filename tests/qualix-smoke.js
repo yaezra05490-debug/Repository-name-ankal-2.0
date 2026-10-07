@@ -306,6 +306,22 @@ server.listen(PORT, async () => {
   await step("פתיחת הגרסה החדשה בלי שאלה", click('[data-qx="open"]'));
   await wait(500);
   await step("אין חלון פתוח", `document.getElementById("modal-backdrop").classList.contains("open") ? "פתוח" : "סגור"`, "סגור");
+  // ייבוא קטגוריה מגרסה אחרת: בר בראש הלשונית, תצוגה מקדימה, וייבוא בלי כפולים
+  await step("בר הייבוא מציע את הגרסה האחרת", `document.querySelectorAll("#qx-import-src-phonebook option").length`, 1);
+  await step("תצוגה מקדימה של אנשי הקשר מהגרסה האחרת", click('[data-qx="import-preview"][data-cat="phonebook"]'));
+  await wait(600);
+  await step("החלון מציג 3 אנשי קשר", `document.getElementById("modal-title")?.textContent`, v => /^3 /.test(v));
+  await step("סגירת התצוגה המקדימה", click('[data-modal-choice="close"]'));
+  await step("לשונית לוח שנה", click('[data-qx="tab"][data-tab="calendar"]'));
+  await wait(200);
+  await step("ייבוא אירועים מהגרסה האחרת", click('[data-qx="import-apply"][data-cat="schedule"]'));
+  await wait(400);
+  await step("נשאלנו איך להכניס (יש כבר אירועים)", `document.getElementById("modal-title")?.textContent`, v => /אירועים/.test(v));
+  await step("להוסיף לקיימים", click('[data-modal-choice="add"]'));
+  await wait(600);
+  await step("האירוע הזהה לא נוסף פעמיים", `window.ANKAL_QUALIX_UI.state.open.data.events.length`, 2);
+  await step("חזרה ללשונית אנשי קשר", click('[data-qx="tab"][data-tab="contacts"]'));
+  await wait(200);
   await step("העברה לניהול אנשי קשר", click('[data-qx="contacts-to-list"]'));
   await wait(300);
   await step("יצירת הרשימה", click('[data-modal-choice="go"]'));

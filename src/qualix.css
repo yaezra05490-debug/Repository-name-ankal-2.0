@@ -191,6 +191,10 @@ html[data-theme="dark"] .qx-memo-note-foot,:root:not([data-theme]) .qx-memo-note
 .qx-badge.card{color:#087455;background:#dff8ef}.qx-badge.cloud{color:#0b5fa8;background:#e1efff}.qx-badge.off{color:#9a670a;background:#fff3d9}
 .qx-version.cloud-only{border-style:dashed}
 .qx-version.cloud-only:hover{transform:none;cursor:default}
+/* בר ייבוא מגרסה אחרת בראש קטגוריה */
+.qx-import-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:12px;border-radius:12px;background:hsl(var(--page) 60% 55% / .08);border:1px dashed hsl(var(--page) 60% 55% / .45);font-size:13px}
+.qx-import-bar i{font-style:normal;font-size:16px;color:hsl(var(--page) 50% 45%)}
+.qx-import-bar select{padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit}
 /* תצוגה לפי קבוצות: לשוניות מימין, כרטיסים משמאל, גרירה בין לשוניות */
 .qx-groups{display:grid;grid-template-columns:230px 1fr;gap:14px;align-items:start}
 .qx-group-tabs{display:flex;flex-direction:column;gap:6px;position:sticky;top:0}
