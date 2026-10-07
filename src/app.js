@@ -360,12 +360,17 @@
     const CHUNK = 250, token = (state.renderToken = (state.renderToken || 0) + 1);
     grid.innerHTML = shown.slice(0, CHUNK).map(cardHtml).join("");
     let next = CHUNK;
+    const moreBar = document.getElementById("contacts-more"), moreBtn = moreBar?.querySelector('[data-action="show-more-contacts"]');
+    const updateBar = () => { if (!moreBar) return; const left = shown.length - next; moreBar.classList.toggle("hidden", left <= 0); if (moreBtn && left > 0) moreBtn.textContent = `הצג עוד ${Math.min(left, CHUNK)} (נשארו ${left} מתוך ${shown.length})`; };
     const appendMore = () => {
-      if (token !== state.renderToken || !grid.isConnected || next >= shown.length) return;
+      if (token !== state.renderToken || !grid.isConnected || next >= shown.length) return false;
       grid.insertAdjacentHTML("beforeend", shown.slice(next, next + CHUNK).map(cardHtml).join(""));
-      next += CHUNK; setTimeout(appendMore, 0);
+      next += CHUNK; updateBar(); return true;
     };
-    if (shown.length > CHUNK) setTimeout(appendMore, 0);
+    state.appendMoreContacts = all => { if (all) { while (appendMore()) { /* עד הסוף */ } } else appendMore(); };
+    // רשימה עד 600: השאר נטען לבד בנתחים ברקע. רשימה ארוכה יותר: לפי לחיצה — כדי שתוסף שסורק את הדף לא יתקע אותו
+    if (shown.length <= 600) { const auto = () => { if (appendMore()) setTimeout(auto, 0); }; if (shown.length > CHUNK) setTimeout(auto, 0); }
+    updateBar();
     document.getElementById("contacts-empty").classList.toggle("hidden", !!shown.length || !currentList());
     updateSelectionUi();
   }
@@ -1611,7 +1616,7 @@
     const actions = { "toggle-theme": toggleTheme, "enter-app": () => enterApp(), "show-landing": showLanding, "open-help": () => { enterApp("help"); }, "quick-import": quickImport, "toggle-sidebar": () => { const side = document.getElementById("sidebar"); side.classList.toggle(innerWidth <= 760 ? "mobile-open" : "collapsed"); }, "new-list": createList, "refresh-lists": () => state.user ? pullLists() : renderLists(), "rename-list": renameList, "add-contact": () => openDrawer(), "close-drawer": closeDrawer, "save-contact": () => saveDrawer(true), "drawer-delete": deleteDrawer, undo, redo, "select-all": selectAll, "clear-selection": clearSelection, "delete-selected": deleteSelected, "move-selected": moveSelected, "toggle-density": () => { state.dense = !state.dense; persistLocal(); renderContacts(); }, "preview-add-text": previewAddText, "preview-replace": previewReplace, "download-template": downloadTemplate, "google-login": googleLogin, logout, "account-settings": accountSettings,
       // כרטיס החשבון (וה-⋮ שבו): בלי חשבון — ישר לכניסה; עם חשבון — חלון החשבון במרכז המסך, לא תפריט צף
       "account-menu": () => state.user ? accountSettings() : googleLogin(),
-      "account-card": () => state.user ? accountSettings() : googleLogin(), "admin-refresh": loadAdmin, "download-app": downloadApp, "to-top": () => document.querySelector(".page-wrap")?.scrollTo({ top: 0, behavior: "smooth" }),
+      "account-card": () => state.user ? accountSettings() : googleLogin(), "admin-refresh": loadAdmin, "download-app": downloadApp, "show-more-contacts": () => state.appendMoreContacts?.(false), "show-all-contacts": () => state.appendMoreContacts?.(true), "to-top": () => document.querySelector(".page-wrap")?.scrollTo({ top: 0, behavior: "smooth" }),
       "scan-duplicates": () => scanReview("duplicates"), "scan-symbols": () => scanReview("smart"),
       "review-start": reviewStart, "review-overview": reviewOverview, "review-one-by-one": reviewOneByOne,
       "review-bulk": reviewBulk, "review-skip-step": reviewSkipStep, "review-apply": reviewApplyItem,
