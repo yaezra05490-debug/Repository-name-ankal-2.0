@@ -1390,7 +1390,7 @@
     /* ברשומת יומן הכותרת היא הפעולה ומתחתיה מי ומתי; בשורת משתמש הכותרת היא
        המשתמש עצמו. בלי ההבחנה הזו השם היה מסתיר את הפעולה שהתרחשה. */
     const rowTitle = item => item.action ? (ACTION_HE[item.action] || item.action) : (item.area || item.name || item.email || "פריט");
-    const rowSub = item => [item.action || item.area ? (item.name || item.email) : item.email, item.at ? fmtDate(item.at) : item.updatedAt ? fmtDate(item.updatedAt) : "", item.lists != null ? `${item.lists} רשימות · ${item.backups || 0} גיבויים · ${item.storage || ""}` : ""].filter(Boolean).join(" · ");
+    const rowSub = item => [item.action || item.area ? (item.name || item.email) : item.email, item.at ? fmtDate(item.at) : item.updatedAt ? fmtDate(item.updatedAt) : "", item.lists != null ? `${item.lists} רשימות · ${item.contacts || 0} אנשי קשר · ${item.backups || 0} גיבויים · ${item.storage || ""}` : ""].filter(Boolean).join(" · ");
     content.innerHTML = `<div class="modal-list">${items.map(item => `<div class="modal-list-row"><span><b>${esc(rowTitle(item))}</b><small>${esc(rowSub(item))}</small></span><span>${item.blocked !== undefined ? `<button class="btn btn-quiet" data-admin-lists="${esc(item.sub)}">רשימות</button> <button class="btn btn-quiet" data-admin-block="${esc(item.sub)}">${item.blocked ? "ביטול חסימה" : "חסימה"}</button>` : esc(item.message || item.status || "")}</span></div>`).join("")}</div>`;
   }
   async function adminBlock(sub) { try { await api("adminToggleBlock", { sub }); toast("מצב המשתמש עודכן"); loadAdmin(); } catch (error) { toast(error.message, "error"); } }
@@ -1571,7 +1571,7 @@
     const actions = { "toggle-theme": toggleTheme, "enter-app": () => enterApp(), "show-landing": showLanding, "open-help": () => { enterApp("help"); }, "quick-import": quickImport, "toggle-sidebar": () => { const side = document.getElementById("sidebar"); side.classList.toggle(innerWidth <= 760 ? "mobile-open" : "collapsed"); }, "new-list": createList, "refresh-lists": () => state.user ? pullLists() : renderLists(), "rename-list": renameList, "add-contact": () => openDrawer(), "close-drawer": closeDrawer, "save-contact": () => saveDrawer(true), "drawer-delete": deleteDrawer, undo, redo, "select-all": selectAll, "clear-selection": clearSelection, "delete-selected": deleteSelected, "move-selected": moveSelected, "toggle-density": () => { state.dense = !state.dense; persistLocal(); renderContacts(); }, "preview-add-text": previewAddText, "preview-replace": previewReplace, "download-template": downloadTemplate, "google-login": googleLogin, logout, "account-settings": accountSettings,
       // כרטיס החשבון (וה-⋮ שבו): בלי חשבון — ישר לכניסה; עם חשבון — חלון החשבון במרכז המסך, לא תפריט צף
       "account-menu": () => state.user ? accountSettings() : googleLogin(),
-      "account-card": () => state.user ? accountSettings() : googleLogin(), "admin-refresh": loadAdmin, "download-app": downloadApp,
+      "account-card": () => state.user ? accountSettings() : googleLogin(), "admin-refresh": loadAdmin, "download-app": downloadApp, "to-top": () => document.querySelector(".page-wrap")?.scrollTo({ top: 0, behavior: "smooth" }),
       "scan-duplicates": () => scanReview("duplicates"), "scan-symbols": () => scanReview("smart"),
       "review-start": reviewStart, "review-overview": reviewOverview, "review-one-by-one": reviewOneByOne,
       "review-bulk": reviewBulk, "review-skip-step": reviewSkipStep, "review-apply": reviewApplyItem,
@@ -1582,6 +1582,9 @@
     actions[action]?.();
   }
   function bindEvents() {
+    // כפתור צף "למעלה": מופיע אחרי גלילה של העמוד (רשימות ארוכות של אנשי קשר)
+    const wrap = document.querySelector(".page-wrap"), toTop = document.getElementById("to-top");
+    if (wrap && toTop) wrap.addEventListener("scroll", () => toTop.classList.toggle("hidden", wrap.scrollTop < 400), { passive: true });
     document.addEventListener("click", event => {
       const modalButton = event.target.closest("[data-modal-choice]"); if (modalButton) return closeModal(modalButton.dataset.modalChoice);
       const page = event.target.closest("[data-page]")?.dataset.page; if (page) return setPage(page);

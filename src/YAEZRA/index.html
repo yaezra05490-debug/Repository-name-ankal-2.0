@@ -48,6 +48,10 @@
   .muted{color:var(--muted);font-size:12px}
   .err{padding:13px;border-radius:11px;background:#ffe3e7;color:#a72f42;font-size:13px;margin-bottom:14px}
   .load{padding:40px;text-align:center;color:var(--muted)}
+  .sub-h{font-size:14px;margin:22px 0 10px;color:var(--muted)}
+  /* כפתור צף "למעלה": מופיע אחרי גלילה בטבלאות ארוכות */
+  .to-top{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;width:46px;height:46px;border-radius:50%;border:0;background:var(--cyan-2,#10b9a7);color:#fff;font-size:22px;box-shadow:0 10px 26px rgba(2,8,23,.35);cursor:pointer;transition:.18s}
+  .to-top[hidden]{display:none}.to-top:hover{transform:translateX(-50%) translateY(-2px)}
   .gate-mark{width:60px;height:60px;margin:0 auto 14px;border-radius:19px;display:grid;place-items:center;
     font-size:26px;background:hsl(172 60% 45% / .15)}
   .code-input{width:100%;padding:14px;border:2px solid var(--line);border-radius:13px;font:700 24px var(--display);
@@ -378,7 +382,7 @@
       ${pic}
       <span class="u-copy"><strong>${esc(name)}</strong><span dir="ltr">${esc(user.email || "")}</span>
         <span>נראה לאחרונה: ${esc(fmtDate(user.lastSeen))}</span>
-        ${user.lists != null ? `<span class="u-counts">${user.lists} רשימות · ${user.backups || 0} גיבויי קיוליקס · ${esc(user.storage || "")}</span>` : ""}</span>
+        ${user.lists != null ? `<span class="u-counts">${user.lists} רשימות · ${(user.contacts || 0).toLocaleString("he")} אנשי קשר · ${user.backups || 0} גיבויי קיוליקס · ${esc(user.storage || "")}</span>` : ""}</span>
       ${user.blocked ? '<span class="u-tag">חסום</span>' : ""}
     </button>`;
   }
@@ -391,8 +395,11 @@
     view.innerHTML = `<div class="load">טוען רשימות…</div>`;
     try {
       const data = await api("adminUserLists", { sub });
-      state.lists = data.lists || [];
+      state.lists = data.lists || []; state.backups = data.backups || [];
       const name = state.user.name || state.user.email || "משתמש";
+      const totalContacts = state.lists.reduce((n, l) => n + (l.contacts || []).length, 0);
+      const folderDate = (f) => { const m = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/.exec(f); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : f; };
+      const CAT_HE = { phonebook: "אנשי קשר", callog: "שיחות", schedule: "לוח שנה", memo: "פתקים", playlist: "השמעה", udb: "חיזוי", settings: "הגדרות" };
       view.innerHTML = `
         ${crumbs([{ label: "משתמשים", go: "users" }, { label: name }])}
         <div class="panel">
@@ -401,13 +408,21 @@
             <span class="spacer"></span>
             <button class="btn btn-secondary" id="block-btn">${state.user.blocked ? "ביטול חסימת סנכרון" : "חסימת סנכרון"}</button>
           </div>
-          <p>${esc(state.user.email || "")} · ${state.lists.length} רשימות · הצטרפות: ${esc(fmtDate(state.user.createdAt))}</p>
+          <p>${esc(state.user.email || "")} · ${state.lists.length} רשימות · ${totalContacts.toLocaleString("he")} אנשי קשר · ${state.backups.length} גיבויי קיוליקס בשרת · הצטרפות: ${esc(fmtDate(state.user.createdAt))}</p>
           <div class="grid">${state.lists.map((list) => `
             <button class="u" style="--tint:${hue(list.name)}" data-list="${esc(list.id)}">
               <span class="u-pic">${esc(initial(list.name || "רשימה"))}</span>
               <span class="u-copy"><strong>${esc(list.name || "ללא שם")}</strong>
                 <span>${(list.contacts || []).length} אנשי קשר · עודכן ${esc(fmtDate(list.updatedAt))}</span></span>
             </button>`).join("") || '<p class="muted">למשתמש הזה אין רשימות.</p>'}
+          </div>
+          <h3 class="sub-h">גיבויי קיוליקס בשרת</h3>
+          <div class="grid">${state.backups.map((b) => `
+            <div class="u" style="--tint:${hue(b.folder)}">
+              <span class="u-pic">☏</span>
+              <span class="u-copy"><strong>${esc(folderDate(b.folder))}</strong><span dir="ltr">${esc(b.folder)}</span>
+                <span>${b.files} קבצים · ${esc(b.storage || "")} · ${esc((b.categories || []).map((c) => CAT_HE[c] || c).join(", "))}</span></span>
+            </div>`).join("") || '<p class="muted">אין גיבויים בשרת. גיבוי עולה מהתוכנה אחרי כניסה עם Google.</p>'}
           </div>
         </div>`;
       bindCrumbs();
@@ -542,6 +557,11 @@
   }
 
   /* ───────── התחלה ───────── */
+
+  // כפתור צף "למעלה" — הטבלאות של רשימה גדולה ארוכות מאוד
+  const toTop = document.createElement("button"); toTop.className = "to-top"; toTop.hidden = true; toTop.textContent = "↑"; toTop.title = "למעלה"; toTop.setAttribute("aria-label", "למעלה"); document.body.appendChild(toTop);
+  window.addEventListener("scroll", () => { toTop.hidden = window.scrollY < 400; }, { passive: true });
+  toTop.onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   if (code) signInWithCode(); else renderCodeGate("");
 })();

@@ -173,9 +173,9 @@ async function adminOverview(user, payload) {
     // לכל משתמש: כמה רשימות (לא מחוקות), כמה גיבויי קיוליקס (תיקיות בתוך qualix), וכמה נפח
     const perUser = {};
     const listFilesAll = [];
-    folders.forEach((folder, k) => { const sub = /^user_/.test(folder.name) ? folder.name.slice(5) : ""; const mine = { lists: 0, backups: 0, bytes: 0 }; for (const f of perFolder[k]) { bytes += f.size || 0; mine.bytes += f.size || 0; if (/^list_/.test(f.name)) listFilesAll.push(Object.assign(f, { _sub: sub })); } if (sub) perUser[sub] = mine; });
+    folders.forEach((folder, k) => { const sub = /^user_/.test(folder.name) ? folder.name.slice(5) : ""; const mine = { lists: 0, contacts: 0, backups: 0, bytes: 0 }; for (const f of perFolder[k]) { bytes += f.size || 0; mine.bytes += f.size || 0; if (/^list_/.test(f.name)) listFilesAll.push(Object.assign(f, { _sub: sub })); } if (sub) perUser[sub] = mine; });
     const items = await Promise.all(listFilesAll.map(readList));
-    items.forEach((item, k) => { if (!item || item.deletedAt) return; listCount++; if (Array.isArray(item.contacts)) contacts += item.contacts.length; const sub = listFilesAll[k]._sub; if (perUser[sub]) perUser[sub].lists++; });
+    items.forEach((item, k) => { if (!item || item.deletedAt) return; listCount++; const n = Array.isArray(item.contacts) ? item.contacts.length : 0; contacts += n; const sub = listFilesAll[k]._sub; if (perUser[sub]) { perUser[sub].lists++; perUser[sub].contacts += n; } });
     const qualixDirs = await Promise.all(folders.map(f => S().listChildren(f.id, { foldersOnly: true }).then(subs => subs.find(s => s.name === "qualix") || null).catch(() => null)));
     const versionLists = await Promise.all(qualixDirs.map(q => q ? S().listChildren(q.id, { foldersOnly: true }).catch(() => []) : []));
     folders.forEach((folder, k) => { const sub = folder.name.slice(5); if (perUser[sub]) perUser[sub].backups = versionLists[k].filter(v => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(v.name)).length; });
@@ -190,7 +190,7 @@ async function adminOverview(user, payload) {
   if (payload.tab === "logs") { const rows = await S().readTab(LOGS.tab, LOGS.headers); total = Math.max(0, rows.length - 1); items = withNames(rowsAsObjects(rows, limit)); }
   else if (payload.tab === "errors") { const rows = await S().readTab(ERRORS.tab, ERRORS.headers); total = Math.max(0, rows.length - 1); items = withNames(rowsAsObjects(rows, limit)); }
   else if (payload.tab === "trash") { items = users.filter(r => cell(r, 7)).map(r => ({ sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), deletedAt: cell(r, 7), status: "יימחק לאחר 30 יום" })); total = items.length; }
-  else { items = users.map(r => { const mine = perUserMap[String(cell(r, 0)).replace(/[^A-Za-z0-9_-]/g, "")] || {}; return { sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), picture: cell(r, 3), createdAt: cell(r, 4), lastSeen: cell(r, 5), blocked: isTrue(cell(r, 6)), deletedAt: cell(r, 7), termsVersion: cell(r, 8), privacyVersion: cell(r, 9), lists: mine.lists || 0, backups: mine.backups || 0, storage: formatBytes(mine.bytes || 0) }; }); total = items.length; }
+  else { items = users.map(r => { const mine = perUserMap[String(cell(r, 0)).replace(/[^A-Za-z0-9_-]/g, "")] || {}; return { sub: cell(r, 0), email: cell(r, 1), name: cell(r, 2), picture: cell(r, 3), createdAt: cell(r, 4), lastSeen: cell(r, 5), blocked: isTrue(cell(r, 6)), deletedAt: cell(r, 7), termsVersion: cell(r, 8), privacyVersion: cell(r, 9), lists: mine.lists || 0, contacts: mine.contacts || 0, backups: mine.backups || 0, storage: formatBytes(mine.bytes || 0) }; }); total = items.length; }
   return { stats, items, total };
 }
 async function adminToggleBlock(user, payload) {
@@ -198,9 +198,19 @@ async function adminToggleBlock(user, payload) {
   await S().updateCells(USERS.tab, found.row, { 7: !isTrue(cell(found.values, 6)) }); return { updated: true };
 }
 async function adminUserLists(user, payload) {
-  requireAdmin(user); const folder = await userFolder(payload.sub, false); if (!folder) return { lists: [] };
+  requireAdmin(user); const folder = await userFolder(payload.sub, false); if (!folder) return { lists: [], backups: [] };
   const items = await Promise.all((await listFiles(folder.id)).map(readList));
-  return { lists: items.filter(item => item && !item.deletedAt) };
+  // גיבויי קיוליקס של המשתמש בשרת: תיקייה לכל גרסה, עם מספר הקבצים והנפח
+  let backups = [];
+  try {
+    const qualix = (await S().listChildren(folder.id, { foldersOnly: true, name: "qualix" }))[0];
+    if (qualix) {
+      const versions = (await S().listChildren(qualix.id, { foldersOnly: true })).filter(v => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(v.name));
+      const files = await Promise.all(versions.map(v => S().listChildren(v.id, { filesOnly: true }).catch(() => [])));
+      backups = versions.map((v, k) => { const bytes = files[k].reduce((n, f) => n + (f.size || 0), 0); return { folder: v.name, files: files[k].length, bytes, storage: formatBytes(bytes), updatedAt: v.modifiedTime || "", categories: files[k].filter(f => /\.ib$/.test(f.name)).map(f => f.name.replace(/\.ib$/, "")) }; }).sort((a, b) => b.folder.localeCompare(a.folder));
+    }
+  } catch (_) { backups = []; }
+  return { lists: items.filter(item => item && !item.deletedAt), backups };
 }
 
 /* ---------- מצב השרת (נשמר בלשונית "הגדרות" של אותו גיליון) ---------- */

@@ -364,7 +364,7 @@ function adminOverview_(user, payload) {
       var folder = folders.next();
       var folderName = folder.getName();
       var sub = /^user_/.test(folderName) ? folderName.slice(5) : "";
-      var mine = { lists: 0, backups: 0, bytes: 0 };
+      var mine = { lists: 0, contacts: 0, backups: 0, bytes: 0 };
       var files = folder.getFiles();
       while (files.hasNext()) {
         var file = files.next();
@@ -377,6 +377,7 @@ function adminOverview_(user, payload) {
             listCount++;
             mine.lists++;
             contacts += (parsed.contacts || []).length;
+            mine.contacts += (parsed.contacts || []).length;
           } catch (_) {}
         }
       }
@@ -412,7 +413,7 @@ function adminOverview_(user, payload) {
   } else {
     items = users.map(function (r) {
       var mine = perUserMap[safeId_(r[0])] || {};
-      return { sub:r[0], email:r[1], name:r[2], picture:r[3], createdAt:r[4], lastSeen:r[5], blocked:String(r[6]).toLowerCase()==="true", deletedAt:r[7], termsVersion:r[8], privacyVersion:r[9], lists: mine.lists || 0, backups: mine.backups || 0, storage: formatBytes_(mine.bytes || 0) };
+      return { sub:r[0], email:r[1], name:r[2], picture:r[3], createdAt:r[4], lastSeen:r[5], blocked:String(r[6]).toLowerCase()==="true", deletedAt:r[7], termsVersion:r[8], privacyVersion:r[9], lists: mine.lists || 0, contacts: mine.contacts || 0, backups: mine.backups || 0, storage: formatBytes_(mine.bytes || 0) };
     });
     total = items.length;
   }
@@ -441,7 +442,7 @@ function adminToggleBlock_(user, payload) {
 function adminUserLists_(user, payload) {
   requireAdmin_(user);
   var folder = userFolder_(payload.sub, false);
-  if (!folder) return { lists: [] };
+  if (!folder) return { lists: [], backups: [] };
   var files = folder.getFilesByType(getMimeType("PLAIN_TEXT"));
   var lists = [];
   while (files.hasNext()) {
@@ -452,7 +453,21 @@ function adminUserLists_(user, payload) {
       if (!list.deletedAt) lists.push(list);
     } catch (_) {}
   }
-  return { lists: lists };
+  // גיבויי קיוליקס של המשתמש בשרת: תיקייה לכל גרסה, עם מספר הקבצים והנפח
+  var backups = [];
+  var qualixFolders = folder.getFoldersByName(QUALIX_FOLDER);
+  if (qualixFolders.hasNext()) {
+    var versions = qualixFolders.next().getFolders();
+    while (versions.hasNext()) {
+      var v = versions.next();
+      if (!QUALIX_NAME_RE.test(v.getName())) continue;
+      var vf = v.getFiles(); var count = 0, bytes = 0, names = [];
+      while (vf.hasNext()) { var f = vf.next(); count++; bytes += f.getSize(); names.push(f.getName()); }
+      backups.push({ folder: v.getName(), files: count, bytes: bytes, storage: formatBytes_(bytes), updatedAt: v.getLastUpdated().toISOString(), categories: names.filter(function (n) { return /\.ib$/.test(n); }).map(function (n) { return n.replace(/\.ib$/, ""); }) });
+    }
+  }
+  backups.sort(function (a, b) { return String(b.folder).localeCompare(String(a.folder)); });
+  return { lists: lists, backups: backups };
 }
 
 /* ---------- גיבוי קיוליקס בדרייב ----------

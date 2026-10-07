@@ -348,6 +348,9 @@ html[data-theme="light"] .account-card{border-top-color:var(--line)}
 /* כרטיס החשבון לחיץ כולו (כניסה / תפריט), לא רק ה-⋮ הקטן */
 .account-card{cursor:pointer;border-radius:12px;transition:.16s}.account-card:hover{background:rgba(255,255,255,.05)}
 /* איפה הרשימה שמורה: ענן / ממתין / מקומי */
+/* כפתור צף "למעלה" במרכז התחתית — לא מתנגש עם ההודעות (שמאל) ולא עם התפריט (ימין) */
+.to-top{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;width:46px;height:46px;border-radius:50%;border:0;background:var(--cyan-2);color:#fff;font-size:22px;box-shadow:var(--shadow);cursor:pointer;transition:.18s}
+.to-top:hover{transform:translateX(-50%) translateY(-2px)}
 .sync-badge{margin-right:auto;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:var(--paper);color:var(--muted);white-space:nowrap}
 .sync-badge.cloud{color:#0b5fa8;background:#e1efff}.sync-badge.pending{color:#9a670a;background:#fff3d9}
 html[data-theme="light"] .account-copy strong{color:#172033}
