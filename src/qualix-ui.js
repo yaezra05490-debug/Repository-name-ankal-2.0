@@ -19,8 +19,8 @@
 
   /* view: "versions" = רשימת הגרסאות (כמו "הרשימות שלי"), "editor" = הקטגוריות של הגרסה הפתוחה (כמו "אנשי קשר") */
   /* direct: הפתקים של תיקיית Memo בכרטיס ("ניהול פתקים", בלי גרסה). cloud: הגרסאות ששמורות בשרת (דרייב). */
-  const qx = { adapter: null, layout: null, backups: [], open: null, view: "versions", tab: "contacts", busy: "", search: "", memoLimit: 1000, widths: null, memoFill: "space", memoIdx: 0, plIdx: 0, rendered: false, keepView: false, direct: null, contactView: "list", groupSel: null, selected: new Set(), cloud: { loaded: false, versions: [], uploading: "", error: "" } };
-  try { qx.memoLimit = Number(localStorage.getItem(LIMIT_KEY)) || 1000; qx.widths = JSON.parse(localStorage.getItem(WIDTH_KEY) || "null"); qx.memoFill = localStorage.getItem(FILL_KEY) || "space"; localStorage.removeItem(OLD_WIDTH_KEY); } catch (_) { }
+  const qx = { adapter: null, layout: null, backups: [], open: null, view: "versions", tab: "contacts", busy: "", search: "", memoLimit: 3000, widths: null, memoFill: "space", memoIdx: 0, plIdx: 0, rendered: false, keepView: false, direct: null, contactView: "list", groupSel: null, selected: new Set(), cloud: { loaded: false, versions: [], uploading: "", error: "" } };
+  try { qx.memoLimit = Number(localStorage.getItem(LIMIT_KEY)) || 3000; qx.widths = JSON.parse(localStorage.getItem(WIDTH_KEY) || "null"); qx.memoFill = localStorage.getItem(FILL_KEY) || "space"; localStorage.removeItem(OLD_WIDTH_KEY); } catch (_) { }
   const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n ? n + " B" : "";
   const widths = () => qx.widths ? Object.assign({}, Q.WIDTHS, qx.widths) : Q.WIDTHS;
 
@@ -59,7 +59,7 @@
     try {
       const layout = await detectLayout(adapter);
       if (!layout) { A().toast("בתיקייה שנבחרה אין גיבוי של קיוליקס. בחרו את הכרטיס עצמו או את תיקיית ibphone.", "warning"); return false; }
-      qx.adapter = adapter; qx.layout = layout; qx.open = null; qx.direct = null; qx.cardSounds = null; versionCache.clear(); qx.cloud = { loaded: false, versions: [], uploading: "", error: "" };
+      qx.adapter = adapter; qx.layout = layout; qx.open = null; qx.direct = null; qx.cardSounds = null; versionCache.clear(); qx.phoneGroups = null; qx.cloud = { loaded: false, versions: [], uploading: "", error: "" };
       await loadBackups(); render(); A().toast(`נמצאו ${qx.backups.length} גיבויים`);
       syncCloud(); // ברקע: מה כבר בשרת, והעלאה של מה שחסר
       return true;
@@ -166,8 +166,10 @@
     try {
       let folder = Q.backupFolderName(new Date()); while (await qx.adapter.exists(join(qx.layout.ibphoneRel, folder))) folder = Q.backupFolderName(new Date(Date.now() + 1000));
       const udb = d.udb ? { phoneCache: d.udb.phoneCache, cardCache: (d.dictAdd.length || d.dictRemove.length) ? Q.updateUdbWords(d.udb.cardCache, { add: d.dictAdd, remove: d.dictRemove }) : d.udb.cardCache } : null;
+      // קבוצה חדשה מקבלת מספר שלא תפוס בטלפון — לפי הקבוצות שבכל הגיבויים בכרטיס, לא רק בגרסה הזאת
+      const knownGroups = hasCategory(d, "phonebook") ? await loadPhoneGroups() : null;
       // הפתקים נכתבים מהתחתון לעליון: בשחזור הטלפון מעתיק אותם לפי הסדר, והאחרון שהועתק הוא החדש ביותר ומוצג ראשון
-      const files = Q.assembleBackup({ folder, cardLetter: "E", contacts: hasCategory(d, "phonebook") ? d.contacts : null, recordSize: d.recordSize || 1200, callog: hasCategory(d, "callog") ? d.callog : null, events: hasCategory(d, "schedule") ? d.events : null, memos: hasCategory(d, "memo") ? d.memos.slice().reverse() : null, playlists: hasCategory(d, "playlist") ? d.playlists : null, settings: d.settings || null, udb });
+      const files = Q.assembleBackup({ folder, cardLetter: "E", contacts: hasCategory(d, "phonebook") ? d.contacts : null, recordSize: d.recordSize || 1200, groupBits: knownGroups, callog: hasCategory(d, "callog") ? d.callog : null, events: hasCategory(d, "schedule") ? d.events : null, memos: hasCategory(d, "memo") ? d.memos.slice().reverse() : null, playlists: hasCategory(d, "playlist") ? d.playlists : null, settings: d.settings || null, udb });
       const rel = join(qx.layout.ibphoneRel, folder); await qx.adapter.mkdir(rel);
       for (const f of files) await qx.adapter.write(join(rel, f.name), f.bytes);
       // בתוכנה למחשב גם זמני הקבצים בתיקיית הגיבוי מקבלים את הסדר (העליון החדש ביותר), למקרה שהטלפון שומר אותם בשחזור
@@ -181,7 +183,7 @@
       }
       const memosChanged = qx.open.dirty.has("memo") && hasCategory(d, "memo");
       if (qx.pendingName) { setVersionName(folder, qx.pendingName); qx.pendingName = ""; }
-      await loadBackups(); qx.open.dirty.clear(); qx.open.folder = folder; qx.open.rel = rel; qx.open.isNew = false; d.contacts.forEach(c => { c._ringDirty = false; });
+      await loadBackups(); qx.phoneGroups = null; qx.open.dirty.clear(); qx.open.folder = folder; qx.open.rel = rel; qx.open.isNew = false; d.contacts.forEach(c => { c._ringDirty = false; });
       render();
       syncCloud(); // הגרסה החדשה עולה לשרת ברקע, כמו כל גיבוי שבכרטיס
       await A().modal({ kicker: "נשמר", title: `הגרסה ${folderDate(folder)} מוכנה`, html: `<p>בטלפון: <b>תפריט ← גיבוי ושחזור ← שחזור</b>, בחרו את הגיבוי לפי השעה <b dir="ltr">${esc(folder)}</b>, וסמנו אילו קטגוריות לשחזר.</p>${rings ? `<p>נכתבו ${rings} קובצי צלצול אישי לתיקיית PB.</p>` : ""}${memosChanged ? `<div class="qx-warn"><b>שיניתם פתקים:</b> ${esc(MEMO_RESTORE_NOTE)}</div>` : ""}<p class="qx-note">ההגדרות הועתקו כמו שהן. אם זו הפעם הראשונה, מומלץ לשחזר קודם קטגוריה אחת ולבדוק.</p>`, buttons: [{ id: "ok", label: "סגירה", primary: true }] });
@@ -216,7 +218,7 @@
     finally { setBusy(""); }
   }
   function pickFile() { return new Promise(resolve => { const input = document.createElement("input"); input.type = "file"; input.accept = ".vcf,.xlsx,.xls,.csv"; input.onchange = () => resolve(input.files[0] || null); input.oncancel = () => resolve(null); input.click(); }); }
-  function fromAppContact(c) { const out = { id: 0, name: c.name || "", mobile: c.mobile || "", home: c.home || "", work: c.work || "", fax: c.fax || "", email: c.email || "", note: c.note || "", group: c.group || "", groupBit: 0, ringtone: c.ringtone ? Q.RINGTONE_FILE : 0, ringtonePath: c.ringtone || "", _dirty: true, _ringDirty: !!c.ringtone }; return out; }
+  function fromAppContact(c) { const out = { id: 0, name: c.name || "", mobile: c.mobile || "", home: c.home || "", work: c.work || "", fax: c.fax || "", email: c.email || "", note: c.note || "", group: c.group || "", groupMask: 0, ringtone: c.ringtone ? Q.RINGTONE_FILE : 0, ringtonePath: c.ringtone || "", _dirty: true, _ringDirty: !!c.ringtone }; return out; }
   function toAppContact(c) { return { name: c.name, mobile: c.mobile, home: c.home, work: c.work, fax: c.fax, email: c.email, note: c.note, group: c.group || "", ringtone: c.ringtone === Q.RINGTONE_FILE ? (c.ringtonePath || "") : "" }; }
   async function versionMenu(folder) {
     const bk = qx.backups.find(b => b.folder === folder); if (!bk) return;
@@ -257,7 +259,7 @@
 
   /* ---------- אנשי קשר ---------- */
   async function editContact(idx) {
-    const d = qx.open.data; const c = idx >= 0 ? d.contacts[idx] : { id: 0, name: "", mobile: "", home: "", work: "", fax: "", email: "", note: "", group: "", groupBit: 0, ringtone: 0, ringtonePath: "" };
+    const d = qx.open.data; const c = idx >= 0 ? d.contacts[idx] : { id: 0, name: "", mobile: "", home: "", work: "", fax: "", email: "", note: "", group: "", groupMask: 0, ringtone: 0, ringtonePath: "" };
     const groups = [...new Set([...(d.groups || []), ...d.contacts.map(x => x.group).filter(Boolean)])];
     const field = (key, label, extra = "") => `<label class="modal-field">${label}<input id="qx-c-${key}" value="${esc(c[key] || "")}" ${extra}></label>`;
     const html = `<div class="qx-form">${field("name", "שם", 'class="full" maxlength="80"')}${field("mobile", "נייד", 'dir="ltr"')}${field("home", "בית", 'dir="ltr"')}${field("work", "עבודה", 'dir="ltr"')}${field("fax", "פקס", 'dir="ltr"')}${field("email", "מייל / כתובת", 'class="full" maxlength="40"')}
@@ -280,8 +282,8 @@
     const ring = ringSel === "builtin" ? (Math.max(1, Math.min(65535, Number(v("ringcode")) || 201))) : (Number(ringSel) || 0);
     const next = { name: v("name"), mobile: v("mobile"), home: v("home"), work: v("work"), fax: v("fax"), email: v("email"), note: v("note"), group: v("group"), ringtone: ring === Q.RINGTONE_FILE && !ringPath ? 0 : ring, ringtonePath: ring === Q.RINGTONE_FILE ? ringPath : "" };
     // קבוצה שהשתנתה מאפסת את הביט: אחרת הביט הישן היה נודד עם איש הקשר לקבוצה החדשה ומתנגש עם הקבוצה הישנה
-    if (idx >= 0) { const changedRing = next.ringtone !== c.ringtone || next.ringtonePath !== (c.ringtonePath || ""); Object.assign(c, next, { _dirty: true, _ringDirty: c._ringDirty || changedRing }, next.group !== (c.group || "") ? { groupBit: 0 } : {}); }
-    else d.contacts.push(Object.assign(next, { id: 0, groupBit: 0, _dirty: true, _ringDirty: next.ringtone === Q.RINGTONE_FILE }));
+    if (idx >= 0) { const changedRing = next.ringtone !== c.ringtone || next.ringtonePath !== (c.ringtonePath || ""); Object.assign(c, next, { _dirty: true, _ringDirty: c._ringDirty || changedRing }, next.group !== (c.group || "") ? { groupMask: 0 } : {}); }
+    else d.contacts.push(Object.assign(next, { id: 0, groupMask: 0, _dirty: true, _ringDirty: next.ringtone === Q.RINGTONE_FILE }));
     dirty("phonebook"); render();
   }
   /* דפדפן תיקיות לכרטיס: תיקיות ושירים כמו בסייר, עם השמעה מקדימה לפני הבחירה */
@@ -869,45 +871,65 @@
 
   /* ---------- תצוגה לפי קבוצות ----------
      מימין לשוניות הקבוצות (וגם "בלי קבוצה"), משמאל כרטיסי אנשי הקשר של הקבוצה שנבחרה. כרטיס נגרר
-     ללשונית אחרת כדי לעבור קבוצה; כרטיסים מסומנים נגררים יחד, או עוברים דרך "העבר מסומנים".
-     הטלפון מאפשר עד 8 קבוצות (ביט לכל קבוצה), ולכן המעבר נבדק מראש. */
-  const GROUP_MAX = 8;
-  function allGroups(d) { return [...new Set([...(d.groups || []), ...d.contacts.map(c => c.group).filter(Boolean)])]; }
+     ללשונית אחרת כדי לעבור קבוצה; כרטיסים מסומנים נגררים יחד, או עוברים דרך "העבר מסומנים". */
+  /* קבוצות הטלפון: טבלת המספר→שם יושבת רק בטלפון, ולכן לומדים אותה מכל הגיבויים שבכרטיס — מהחדש לישן,
+     ורק שמות אמיתיים ("קבוצה N" = ביט בלי שם ברשומה, כנראה קבוצה שנמחקה). נטען פעם אחת לכל חיבור/שמירה. */
+  async function loadPhoneGroups() {
+    if (qx.phoneGroups) return qx.phoneGroups;
+    const known = {};
+    for (const bk of qx.backups) {
+      if (!bk.categories.includes("phonebook")) continue;
+      try {
+        const pb = Q.parsePhonebook(await qx.adapter.read(join(bk.rel, "phonebook.ib")));
+        for (const [name, bit] of Object.entries(Q.groupBits(pb.contacts))) if (bit >= Q.FIRST_USER_GROUP && !/^קבוצה \d+$/.test(name) && !known[name] && !Object.values(known).includes(bit)) known[name] = bit;
+      } catch (_) { }
+    }
+    return (qx.phoneGroups = known);
+  }
+  // שם → ביט לגרסה הפתוחה: אותו חישוב כמו בשמירה, כולל קבוצה חדשה שעוד אין בה אף אחד (היא אחרונה ולכן לא מזיזה את האחרות)
+  function groupTable(d) { try { return Q.groupBits([...d.contacts, ...(d.groups || []).map(group => ({ group }))], qx.phoneGroups || {}); } catch (_) { return Object.assign({}, Q.PHONE_GROUPS); } }
+  // המספר כמו ברשימת הקבוצות בטלפון: 1–2 הן סים 1/סים 2, משפחה 3 … חברים לכיתה 6, ואחריהן הקבוצות שהמשתמש יצר (0x80 = 7)
+  const groupNumber = (group, bits) => Q.groupNames(group).map(n => bits[n] ? Q.groupNumberOf(bits[n]) : "?").join("+");
+  function allGroups(d, withBuiltins = false) {
+    const names = [...new Set([...(withBuiltins ? Object.keys(Q.PHONE_GROUPS) : []), ...(d.groups || []), ...d.contacts.map(c => c.group).filter(Boolean)])];
+    const bits = groupTable(d), first = g => Math.min(...Q.groupNames(g).map(n => bits[n] || Infinity));
+    return names.sort((a, b) => (first(a) - first(b)) || 0);
+  }
   function groupsViewHtml() {
-    const d = qx.open.data; const groups = allGroups(d);
+    const d = qx.open.data; const groups = allGroups(d, true), bits = groupTable(d);
+    if (!qx.phoneGroups && !qx.phoneGroupsLoading && qx.backups.length) qx.phoneGroupsLoading = loadPhoneGroups().finally(() => { qx.phoneGroupsLoading = null; if (qx.open && qx.contactView === "groups") render(); });
     if (qx.groupSel == null || (qx.groupSel && !groups.includes(qx.groupSel))) qx.groupSel = groups[0] || "";
     const counts = {}; for (const c of d.contacts) counts[c.group || ""] = (counts[c.group || ""] || 0) + 1;
-    const tab = (name, label) => `<button class="qx-group-tab ${qx.groupSel === name ? "active" : ""}" data-qx="group-pick" data-group="${esc(name)}" data-drop-group="${esc(name)}"><b>${esc(label)}</b><span>${counts[name] || 0}</span></button>`;
+    const tab = (name, label) => `<button class="qx-group-tab ${qx.groupSel === name ? "active" : ""}" data-qx="group-pick" data-group="${esc(name)}" data-drop-group="${esc(name)}"><b>${name ? `<i class="qx-group-num">${groupNumber(name, bits)}</i>` : ""}${esc(label)}</b><span>${counts[name] || 0}</span></button>`;
     const tabs = groups.map(g => tab(g, g)).join("") + tab("", "בלי קבוצה") + `<button class="qx-group-tab new" data-qx="group-new">＋ קבוצה חדשה</button>`;
     const rows = filteredQxContacts().filter(({ c }) => (c.group || "") === qx.groupSel);
     const total = counts[qx.groupSel] || 0; // המונה בלשונית סופר את כולם; הרשימה כאן מסוננת גם לפי תיבת החיפוש
     const cards = rows.slice(0, 1500).map(({ c, i }) => contactCardHtml(c, i, true)).join("") || (total && rows.length !== total ? `<div class="empty-box"><div class="empty-icon">⌕</div><h3>בקבוצה יש ${total} אנשי קשר, אבל אף אחד לא מתאים לחיפוש</h3><p>נקו את תיבת החיפוש כדי לראות את כולם.</p></div>` : "");
     const sel = [...qx.selected].filter(i => d.contacts[i]).length;
     const moveTo = `<select id="qx-move-to">${groups.filter(g => g !== qx.groupSel).map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("")}${qx.groupSel ? `<option value="">בלי קבוצה</option>` : ""}</select>`;
-    return `<div class="qx-groups"><aside class="qx-group-tabs">${tabs}<p class="qx-note">גררו כרטיס ללשונית של קבוצה אחרת (כרטיסים מסומנים נגררים יחד). הטלפון מאפשר עד ${GROUP_MAX} קבוצות.</p></aside>
+    return `<div class="qx-groups"><aside class="qx-group-tabs">${tabs}<p class="qx-note">גררו כרטיס ללשונית של קבוצה אחרת (כרטיסים מסומנים נגררים יחד). המספר ליד כל קבוצה הוא המקום שלה ברשימת הקבוצות בטלפון; קבוצה חדשה מקבלת את המספר הפנוי הבא. 1 ו-2 בטלפון שמורות לאנשי הקשר שבכרטיס הסים (סים 1, סים 2), ולכן אינן מוצגות כאן.</p></aside>
       <div class="qx-group-main"><div class="qx-toolbar"><strong>${esc(qx.groupSel || "בלי קבוצה")}</strong><span class="qx-note">${rows.length !== total ? `${rows.length} מתוך ${total} אנשי קשר (מסונן לפי החיפוש “${esc(qx.search.trim())}”)` : `${total} אנשי קשר`}<span id="qx-sel-count">${sel ? ` · ${sel} מסומנים` : ""}</span></span>${rows.length !== total ? `<button class="btn btn-quiet btn-sm" data-qx="clear-search">נקה חיפוש</button>` : ""}<div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="group-select-all">סמן הכל</button><button class="btn btn-quiet btn-sm" data-qx="group-clear">נקה סימון</button><label class="modal-field qx-inline">העבר מסומנים ל${moveTo}</label><button class="btn btn-secondary btn-sm" id="qx-move-btn" data-qx="group-move-selected" ${sel ? "" : "disabled"}>העבר</button>${qx.groupSel ? `<button class="btn btn-quiet btn-sm" data-qx="group-rename">✎ שינוי שם הקבוצה</button>` : ""}</div>
       <div class="contact-grid">${cards || `<div class="empty-box"><div class="empty-icon">◫</div><h3>אין אנשי קשר בקבוצה</h3><p>גררו לכאן כרטיסים מקבוצה אחרת, או סמנו והעבירו.</p></div>`}</div></div></div>`;
   }
   function moveContacts(indexes, group) {
     const d = qx.open?.data; if (!d) return;
     const target = String(group || ""), ids = new Set(indexes.map(Number));
-    const after = new Set(d.contacts.map((c, i) => ids.has(i) ? target : (c.group || "")).filter(Boolean));
-    if (after.size > GROUP_MAX) return A().toast(`הטלפון מאפשר עד ${GROUP_MAX} קבוצות — רוקנו קבוצה לפני שמוסיפים חדשה`, "warning");
     let n = 0;
-    for (const i of ids) { const c = d.contacts[i]; if (!c || (c.group || "") === target) continue; c.group = target; c.groupBit = 0; c._dirty = true; n++; }
+    for (const i of ids) { const c = d.contacts[i]; if (!c || (c.group || "") === target) continue; c.group = target; c.groupMask = 0; c._dirty = true; n++; }
     if (!n) return;
     qx.selected = new Set(); dirty("phonebook"); render();
     A().toast(target ? `${n} אנשי קשר עברו לקבוצה “${target}”` : `${n} אנשי קשר הוסרו מהקבוצה`);
   }
   async function newGroup() {
-    const d = qx.open.data; if (allGroups(d).length >= GROUP_MAX) return A().toast(`הטלפון מאפשר עד ${GROUP_MAX} קבוצות`, "warning");
+    const d = qx.open.data; await loadPhoneGroups();
     const choice = await A().modal({ kicker: "קבוצת מתקשרים", title: "שם הקבוצה החדשה", html: `<label class="modal-field">שם<input id="qx-group-name" maxlength="40" placeholder="לדוגמה: עבודה"></label><p class="qx-note">הקבוצה נכתבת לטלפון רק כשיש בה לפחות איש קשר אחד.</p>`, buttons: [{ id: "go", label: "יצירה", primary: true }, { id: "cancel", label: "ביטול" }] });
     if (choice !== "go") return; const name = (document.getElementById("qx-group-name")?.value || "").trim(); if (!name) return;
-    if (!allGroups(d).includes(name)) (d.groups = d.groups || []).push(name);
+    if (!allGroups(d, true).includes(name)) (d.groups = d.groups || []).push(name);
     qx.groupSel = name; qx.contactView = "groups"; render();
   }
   async function renameGroup() {
     const d = qx.open.data; const old = qx.groupSel; if (!old) return;
+    if (Q.PHONE_GROUPS[old]) return A().toast(`“${old}” היא קבוצה מובנית של הטלפון — את השם שלה קובע הטלפון`, "warning");
     const choice = await A().modal({ kicker: "קבוצת מתקשרים", title: `שינוי השם “${old}”`, html: `<label class="modal-field">שם חדש<input id="qx-group-name" maxlength="40" value="${esc(old)}"></label>`, buttons: [{ id: "go", label: "שמירה", primary: true }, { id: "cancel", label: "ביטול" }] });
     if (choice !== "go") return; const name = (document.getElementById("qx-group-name")?.value || "").trim(); if (!name || name === old) return;
     for (const c of d.contacts) if (c.group === old) { c.group = name; c._dirty = true; }
@@ -971,7 +993,7 @@
       <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="center-line">מרכז את השורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="center-all">מרכז את כל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="uncenter-line">בטל מירכוז לשורה</button><button class="btn btn-quiet btn-sm" data-qx="uncenter-all">בטל מירכוז לכל הפתק</button><button class="btn btn-quiet btn-sm" data-qx="calibrate">כיול רוחב${qx.widths ? ` (פעיל: ${Object.keys(qx.widths).length} תווים)` : ""}</button></div>
       <div class="qx-align-head"><strong>נקודה וטאב</strong><span class="qx-note">השורה מתחילה בנקודה, טאב ואז המשפט — כמו סעיף ברשימה. לחיצה נוספת על אותה שורה מסירה.</span></div>
       <div class="qx-row"><button class="btn btn-secondary btn-sm" data-qx="bullet-line">נקודה וטאב לשורה הנוכחית</button><button class="btn btn-secondary btn-sm" data-qx="bullet-all">לכל השורות בפתק</button><button class="btn btn-quiet btn-sm" data-qx="unbullet-all">הסר נקודה וטאב מכל הפתק</button><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-qx="memo-undo" ${m && m._history?.length ? "" : "disabled"}>↶ בטל את הפעולה האחרונה</button></div></div>`;
-    const editor = m ? `<div class="qx-editor">${align}<div class="qx-row"><label class="modal-field qx-inline">מגבלת הטלפון<select id="qx-memo-limit"><option value="1000" ${qx.memoLimit === 1000 ? "selected" : ""}>1000 תווים</option><option value="3000" ${qx.memoLimit === 3000 ? "selected" : ""}>3000 תווים</option></select></label><div class="spacer"></div><button class="btn btn-danger btn-sm" data-qx="delete-memo">מחיקה</button></div><textarea id="qx-memo-text" dir="auto">${esc(m.text)}</textarea><div id="qx-memo-counter" class="qx-counter"></div><div class="qx-note">כך זה ייראה על מסך הטלפון (הערכה לפי רוחב האותיות; שורות שהטלפון שובר בעצמו מסומנות בחום):</div><div id="qx-memo-preview" class="qx-phone"></div></div>` : `<div class="empty-box"><div class="empty-icon">✎</div><h3>אין פתקים</h3><p>צרו פתק חדש.</p></div>`;
+    const editor = m ? `<div class="qx-editor">${align}<div class="qx-row"><label class="modal-field qx-inline">מגבלת הטלפון<select id="qx-memo-limit"><option value="1000" ${qx.memoLimit === 1000 ? "selected" : ""}>1000 תווים (Q7)</option><option value="3000" ${qx.memoLimit === 3000 ? "selected" : ""}>3000 תווים (Q8)</option></select></label><div class="spacer"></div><button class="btn btn-danger btn-sm" data-qx="delete-memo">מחיקה</button></div><textarea id="qx-memo-text" dir="auto">${esc(m.text)}</textarea><div id="qx-memo-counter" class="qx-counter"></div><div class="qx-note">כך זה ייראה על מסך הטלפון (הערכה לפי רוחב האותיות; שורות שהטלפון שובר בעצמו מסומנות בחום):</div><div id="qx-memo-preview" class="qx-phone"></div></div>` : `<div class="empty-box"><div class="empty-icon">✎</div><h3>אין פתקים</h3><p>צרו פתק חדש.</p></div>`;
     const note = st.direct ? "" : `<div class="qx-memo-note"><div class="qx-memo-note-head"><i>⚠</i><strong>לפני שחזור של פתקים בטלפון</strong></div>
       <ol><li>הטלפון מזהה פתק לפי <b>שם הקובץ</b>, לא לפי התוכן.</li><li>פתק שערכתם כאן <b>לא יתעדכן</b> כל עוד הפתק הישן קיים בטלפון.</li><li>לכן: מחקו בטלפון את הפתקים שערכתם (או את כולם), ורק אז שחזרו את “הפתקים שלי”.</li></ol>
       <div class="qx-memo-note-foot"><span>רוצים שהשינוי ייכנס מיד, בלי שחזור?</span><button class="btn btn-secondary btn-sm" data-qx="direct-memos">✎ ניהול פתקים ישיר</button></div></div>`;
@@ -1171,7 +1193,7 @@
     if (event.target.id === "qx-memo-text") { const st = memoStore(); const m = st.memos[st.idx]; if (m) { m.text = event.target.value; m._dirty = true; st.mark(); memoCounter(); markUnsaved(); } }
   });
   document.addEventListener("change", event => {
-    if (event.target.id === "qx-memo-limit") { qx.memoLimit = Number(event.target.value) || 1000; localStorage.setItem(LIMIT_KEY, String(qx.memoLimit)); memoCounter(); }
+    if (event.target.id === "qx-memo-limit") { qx.memoLimit = Number(event.target.value) || 3000; localStorage.setItem(LIMIT_KEY, String(qx.memoLimit)); memoCounter(); }
   });
   document.addEventListener("keydown", event => { if (event.key === "Enter" && event.target.id === "qx-word") { event.preventDefault(); addWord(); } });
   window.addEventListener("beforeunload", event => { if (qx.open?.dirty.size || qx.direct?.dirty) { event.preventDefault(); event.returnValue = ""; } });

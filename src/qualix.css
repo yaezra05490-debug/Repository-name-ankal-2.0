@@ -208,6 +208,7 @@ html[data-theme="dark"] .qx-memo-note-foot,:root:not([data-theme]) .qx-memo-note
 .qx-group-tab.active{border-color:hsl(var(--page) 60% 55%);background:hsl(var(--page) 60% 55% / .12)}
 .qx-group-tab.over{outline:2px dashed hsl(var(--page) 60% 55%);outline-offset:2px;background:hsl(var(--page) 60% 55% / .18)}
 .qx-group-tab.new{border-style:dashed;color:var(--muted);justify-content:center}
+.qx-group-num{font-style:normal;font-size:11px;font-weight:500;color:var(--muted);margin-inline-end:6px}
 #qualix-root .contact-card[draggable="true"]{cursor:grab}
 #qualix-root .contact-card.selected{box-shadow:0 0 0 2px var(--cyan-2);border-color:var(--cyan-2)}
 @media(max-width:900px){.qx-groups{grid-template-columns:1fr}.qx-group-tabs{flex-direction:row;flex-wrap:wrap;position:static}}

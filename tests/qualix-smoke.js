@@ -119,11 +119,12 @@ server.listen(PORT, async () => {
   // תצוגה לפי קבוצות: לשוניות מימין, כרטיסים משמאל, סימון, העברה וגרירה
   await step("תצוגה לפי קבוצות", click('[data-qx="contacts-view"][data-view="groups"]'));
   await wait(200);
-  await step("לשוניות: משפחה, חברים, בלי קבוצה", `[...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("b").textContent + ":" + b.querySelector("span").textContent).join("|")`, "משפחה:2|חברים:1|בלי קבוצה:1");
+  // ארבע הקבוצות המובנות של הטלפון תמיד מוצגות, עם המספר שלהן ברשימת הקבוצות בטלפון
+  await step("לשוניות: ארבע המובנות עם מספר, ובלי קבוצה", `[...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("b").textContent + ":" + b.querySelector("span").textContent).join("|")`, "3משפחה:2|4חברים:1|5עסקים:0|6חברים לכיתה:0|בלי קבוצה:1");
   await step("הקבוצה הראשונה נבחרת: שני כרטיסים", `document.querySelectorAll('#qualix-root .qx-group-main .contact-card').length`, 2);
   await step("סימון כרטיס בתיבה לא פותח אותו לעריכה", `(() => { document.querySelector('#qualix-root [data-qx-select]').click(); return document.querySelectorAll('#qualix-root .contact-card.selected').length + " " + (document.getElementById("modal-backdrop").classList.contains("open") ? "modal" : "no-modal"); })()`, "1 no-modal");
-  await step("העברת המסומנים לחברים", `(() => { document.getElementById("qx-move-to").value = "חברים"; document.querySelector('[data-qx="group-move-selected"]').click(); return [...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("span").textContent).join("|"); })()`, "1|2|1");
-  await step("גרירת כרטיס ללשונית חברים", `(() => { const card = document.querySelector('#qualix-root .qx-group-main .contact-card[data-drag-i]'); const dt = new DataTransfer(); card.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: dt })); const target = document.querySelector('#qualix-root [data-drop-group="חברים"]'); target.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: dt })); return [...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("span").textContent).join("|"); })()`, "0|3|1");
+  await step("העברת המסומנים לחברים", `(() => { document.getElementById("qx-move-to").value = "חברים"; document.querySelector('[data-qx="group-move-selected"]').click(); return [...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("span").textContent).join("|"); })()`, "1|2|0|0|1");
+  await step("גרירת כרטיס ללשונית חברים", `(() => { const card = document.querySelector('#qualix-root .qx-group-main .contact-card[data-drag-i]'); const dt = new DataTransfer(); card.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: dt })); const target = document.querySelector('#qualix-root [data-drop-group="חברים"]'); target.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: dt })); return [...document.querySelectorAll('#qualix-root .qx-group-tab[data-qx="group-pick"]')].map(b => b.querySelector("span").textContent).join("|"); })()`, "0|3|0|0|1");
   await step("חזרה לתצוגת רשימה", click('[data-qx="contacts-view"][data-view="list"]'));
   await wait(200);
 
@@ -158,7 +159,8 @@ server.listen(PORT, async () => {
   await step("פתק חדש", click('[data-qx="new-memo"]'));
   await wait(200);
   await step("הקלדת טקסט", fill("qx-memo-text", "שלום\nעולם גדול"), "ok");
-  await step("מונה תווים", `document.getElementById("qx-memo-counter")?.textContent`, v => /^\d+ \/ 1000/.test(v));
+  // ברירת המחדל Q8: פתק של עד 3000 תווים (בכרטיס יש פתק של 3000 בדיוק; Q7 מחזיק 1000)
+  await step("מונה תווים", `document.getElementById("qx-memo-counter")?.textContent`, v => /^\d+ \/ 3000/.test(v));
   await step("מירכוז הכל", click('[data-qx="center-all"]'));
   await step("הטקסט מורכז ברווחים", `document.getElementById("qx-memo-text").value`, v => v.startsWith(" ") && v.includes("\n "));
   await step("תצוגת הטלפון", `document.querySelectorAll("#qx-memo-preview div").length`, 2);
@@ -295,8 +297,8 @@ server.listen(PORT, async () => {
     const lst = Q.parseLst(get("שירים.lst"));
     const udb = Q.parseUdb(get("000000000000001")).words;
     const crcOk = head.crcs[2] === Q.crc16arc(get("phonebook.ib")) && head.crcs[0] === Q.crc16arc(get("schedule.ib")) && head.crcs[1] === Q.crc16arc(get("callog.ib"));
-    return [pb.contacts.length, added ? added.mobile + "/" + added.group + "/bit" + added.groupBit : "חסר", calls, events, memoMan, lst.map(e => e.path).join(","), udb.join(","), head.categories.length, crcOk ? "crc-ok" : "crc-bad", head.folder === folder ? "folder-ok" : "folder-bad"].join(" | ");
-  })()`, v => v === "4 | 0501112222/חברים/bit1 | 2 | 2 | 2 | E:\\b.mp3,E:\\a.mp3 | אנקל | 7 | crc-ok | folder-ok");
+    return [pb.contacts.length, added ? added.mobile + "/" + added.group + "/bit" + added.groupMask : "חסר", calls, events, memoMan, lst.map(e => e.path).join(","), udb.join(","), head.categories.length, crcOk ? "crc-ok" : "crc-bad", head.folder === folder ? "folder-ok" : "folder-bad"].join(" | ");
+  })()`, v => v === "4 | 0501112222/חברים/bit16 | 2 | 2 | 2 | E:\\b.mp3,E:\\a.mp3 | אנקל | 7 | crc-ok | folder-ok");
   await step("אין שינויים אחרי השמירה", `document.querySelector(".qx-save .qx-dirty") ? "יש" : "אין"`, "אין");
   await step("אין שורת מקור בתוך קטגוריה", `document.querySelector("#qualix-root .qx-source") ? "יש" : "אין"`, "אין");
   await step("שתי גרסאות ברשימה", `(() => { document.querySelector('[data-page="qualix"]').click(); return document.querySelectorAll("#qualix-root .qx-version").length; })()`, 2);

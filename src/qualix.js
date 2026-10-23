@@ -67,15 +67,32 @@
   const SLOTS = [0x10, 0x26, 0x3C, 0x52], SLOT_FIELDS = ["mobile", "home", "work", "fax"];
   const NAME_MAX = 80, EMAIL_MAX = 40, NOTE_MAX = 163, GROUP_MAX = 250;
   function lenStr(bytes, off, max) { const len = bytes[off] | (bytes[off + 1] << 8); return readU16(bytes, off + 2, Math.min(len, max)); }
-  /* +0x04: ביט הקבוצה (קבוצה אחת = ביט אחד, עד 8 קבוצות; "משפחה" הייתה 0x08, קבוצה שנוצרה אחר כך קיבלה 0x80).
+  /* +0x04: מסכת הקבוצות, u32 — כל קבוצה היא ביט, ואיש קשר יכול להיות בכמה קבוצות.
+     טבלת ביט→שם יושבת בזיכרון הפנימי של הטלפון בלבד (לא בגיבוי ולא בשום קובץ בכרטיס), והטלפון משייך לפי
+     הביט בלבד: גרסה שבה 0x08 נקראה "קיבוץ א'" הוצגה בטלפון תחת "משפחה" (אומת בטלפון, אוקטובר 2026).
+     המספר ברשימת הקבוצות בטלפון = log2 של הביט. שש ברירות המחדל (המשתמש, אוקטובר 2026): 1 סים 1, 2 סים 2
+     (אנשי הקשר שבכרטיס הסים — אף גיבוי שהטלפון כתב לא סימן איש קשר ב-0x01..0x04, ולכן אלה לא מוקצים ולא
+     מוצגים), 3 משפחה 0x08 … 6 חברים לכיתה 0x40. קבוצה שהמשתמש יוצר מקבלת את הביט הפנוי הבא מ-0x80 (מספר 7)
+     והלאה, בלי מגבלה של מספר: באפריל 2026 הטלפון עצמו החזיק שבע קבוצות של המשתמש (0x80..0x2000).
      +0x08: צלצול אישי — 0 = ברירת מחדל, 0x80 = קובץ מהכרטיס (הנתיב ב-PB\<0x2010000+id>_Ring.ini), ערך אחר = צלצול מובנה.
-     +0x2AA: קבוע 6 כשיש קבוצה, ואחריו שם הקבוצה (רק ברשומות 1200). */
+     +0x2AA: 6 לקבוצה אחת, 0x0E לשתיים; ואחריו שמות הקבוצות מופרדים ב-", " לפי סדר הביטים (רק ברשומות 1200). */
+  const PHONE_GROUPS = { "משפחה": 0x08, "חברים": 0x10, "עסקים": 0x20, "חברים לכיתה": 0x40 };
+  const FIRST_USER_GROUP = 0x80, GROUP_SEP = ", ";
+  const groupMaskBits = mask => { const out = []; for (let bit = 0x08; bit && bit <= 0x80000000; bit = (bit * 2) >>> 0) if (mask & bit) out.push(bit >>> 0); return out; };
+  const builtinGroupName = bit => Object.keys(PHONE_GROUPS).find(n => PHONE_GROUPS[n] === bit) || "";
+  // המספר כמו ברשימת הקבוצות בטלפון: משפחה 3, ו-0x80 היא 7
+  const groupNumberOf = bit => Math.round(Math.log2(bit));
+  // קבוצה של המשתמש שאין לה שם ברשומה (הפורמט הישן 684 לא שמר שמות)
+  const unnamedGroup = bit => `קבוצה ${groupNumberOf(bit)}`;
   function parsePhonebookRecord(rec) {
-    const c = { id: rec[0] | (rec[1] << 8), name: lenStr(rec, 0x68, NAME_MAX), email: lenStr(rec, 0x10C, EMAIL_MAX), note: lenStr(rec, 0x160, NOTE_MAX), group: "", groupBit: rec[4], ringtone: rec[8] | (rec[9] << 8), ringtonePath: "" };
+    const mask = (rec[4] | (rec[5] << 8) | (rec[6] << 16) | (rec[7] << 24)) >>> 0;
+    const c = { id: rec[0] | (rec[1] << 8), name: lenStr(rec, 0x68, NAME_MAX), email: lenStr(rec, 0x10C, EMAIL_MAX), note: lenStr(rec, 0x160, NOTE_MAX), group: "", groupMask: mask, ringtone: rec[8] | (rec[9] << 8), ringtonePath: "" };
     SLOT_FIELDS.forEach((field, k) => { c[field] = slotToNumber(rec, SLOTS[k]); });
     c._slotTypes = SLOTS.map(off => rec[off + 1]);
-    if (rec.length > 0x2AC) c.group = readU16z(rec, 0x2AC, GROUP_MAX);
-    else if (rec[4] & 0x08) c.group = "משפחה"; // הפורמט הישן (684) שמר רק את הביט; הקבוצה היחידה שנראתה בו היא משפחה
+    /* שם לכל ביט: קבוצה מובנית — השם שהטלפון מציג (גם אם ברשומה כתוב אחר); קבוצה של המשתמש — החלק המתאים
+       מרשימת השמות שברשומה, ואם הרשימה לא תואמת למספר הביטים — "קבוצה N". */
+    const bits = groupMaskBits(mask), written = rec.length > 0x2AC ? readU16z(rec, 0x2AC, GROUP_MAX).split(GROUP_SEP) : [];
+    c.group = bits.map((bit, k) => builtinGroupName(bit) || (written.length === bits.length && written[k].trim() ? written[k].trim() : unnamedGroup(bit))).join(GROUP_SEP);
     c._raw = rec;
     return c;
   }
@@ -88,9 +105,9 @@
   function charClass(c) { if (c === 32) return 0; if (c >= 0x30 && c <= 0x39) return 2; if ((c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)) return 3; if (c >= 0x5D0 && c <= 0x5EA) return 4; if (c < 0x80) return 1; return 5; }
   function nameSortKey(name) { let key = ""; for (const ch of String(name || "")) { const c = ch.charCodeAt(0); key += String.fromCharCode(0x30 + charClass(c)) + ch.toLowerCase(); } return key; }
   function compareNames(a, b) { const ka = nameSortKey(a), kb = nameSortKey(b); return ka < kb ? -1 : ka > kb ? 1 : 0; }
-  function buildPhonebookRecord(c, recordSize, groupBit) {
-    const rec = new Uint8Array(recordSize);
-    rec[0] = c.id & 255; rec[1] = c.id >> 8; rec[2] = 1; rec[3] = 2; rec[4] = c.group ? (groupBit & 255) : 0; rec[8] = (c.ringtone || 0) & 255; rec[9] = ((c.ringtone || 0) >> 8) & 255; rec[0x0B] = 1;
+  function buildPhonebookRecord(c, recordSize, groupMask) {
+    const rec = new Uint8Array(recordSize), mask = c.group ? groupMask >>> 0 : 0;
+    rec[0] = c.id & 255; rec[1] = c.id >> 8; rec[2] = 1; rec[3] = 2; rec[4] = mask & 255; rec[5] = (mask >>> 8) & 255; rec[6] = (mask >>> 16) & 255; rec[7] = mask >>> 24; rec[8] = (c.ringtone || 0) & 255; rec[9] = ((c.ringtone || 0) >> 8) & 255; rec[0x0B] = 1;
     SLOT_FIELDS.forEach((field, k) => {
       const { intl, bcd } = numberToSlot(c[field]); if (!bcd.length) return;
       const kept = c._slotTypes && c._slotTypes[k]; // הטלפון כותב 0x01 כמעט תמיד, לפעמים 0x00; שומרים את מה שהיה כשהמספר לא השתנה
@@ -98,18 +115,30 @@
     });
     const put = (off, text, max) => { const s = String(text || "").slice(0, max); rec[off] = s.length & 255; rec[off + 1] = s.length >> 8; putU16(rec, off + 2, s); };
     put(0x68, c.name, NAME_MAX); put(0x10C, c.email, EMAIL_MAX); put(0x160, String(c.note || "").replace(/\r\n/g, "\n"), NOTE_MAX);
-    if (recordSize > 0x2AC && c.group) { rec[0x2AA] = 6; putU16(rec, 0x2AC, String(c.group).slice(0, GROUP_MAX)); }
+    // הטלפון מתעלם מהשמות כאן ומציג לפי הביט, אבל כותבים אותם כמוהו: 6 לקבוצה אחת, 0x0E לשתיים
+    if (recordSize > 0x2AC && mask) { const names = groupNames(c.group); rec[0x2AA] = 8 * names.length - 2; putU16(rec, 0x2AC, names.join(GROUP_SEP).slice(0, GROUP_MAX)); }
     return rec;
   }
-  /* מפת קבוצות: שם → ביט. קודם מה שכבר כתוב ברשומות, ואז ביט פנוי לכל קבוצה חדשה (עד 8). */
+  const groupNames = group => String(group || "").split(GROUP_SEP).map(s => s.trim()).filter(Boolean);
+  /* מפת קבוצות: שם → ביט. ארבע הקבוצות המובנות קבועות; אחריהן קבוצות שכבר ידועות — preset (קבוצות הטלפון
+     מהגיבוי האחרון שבכרטיס) ומה שכתוב ברשומות; וקבוצה חדשה מקבלת את הביט הפנוי הבא מ-0x80 והלאה.
+     ביט שמופיע על איש קשר כלשהו תפוס גם בלי שם, כדי שקבוצה חדשה לא תתערבב בקבוצה שהטלפון כבר מכיר. */
   function groupBits(contacts, preset) {
-    const bits = Object.assign({}, preset || {});
-    // ביט שכבר שייך לקבוצה אחרת לא נלקח (איש קשר שעבר קבוצה ונשאר עם ביט ישן)
-    for (const c of contacts) if (c.group && c.groupBit && !bits[c.group] && !Object.values(bits).includes(c.groupBit)) bits[c.group] = c.groupBit;
-    const taken = new Set(Object.values(bits));
-    for (const c of contacts) { if (!c.group || bits[c.group]) continue; let bit = 1; while (taken.has(bit) && bit < 256) bit <<= 1; if (bit > 128) throw new Error("TOO_MANY_GROUPS"); bits[c.group] = bit; taken.add(bit); }
+    const bits = Object.assign({}, PHONE_GROUPS);
+    const learn = (name, bit) => { if (name && bit >= FIRST_USER_GROUP && !bits[name] && !Object.values(bits).includes(bit)) bits[name] = bit; };
+    for (const [name, bit] of Object.entries(preset || {})) learn(name, bit);
+    for (const c of contacts) if (c.groupMask) { const names = groupNames(c.group), mb = groupMaskBits(c.groupMask); if (names.length === mb.length) names.forEach((n, k) => learn(n, mb[k])); }
+    const taken = new Set(Object.values(bits)); for (const c of contacts) for (const bit of groupMaskBits(c.groupMask || 0)) taken.add(bit);
+    for (const c of contacts) for (const name of groupNames(c.group)) {
+      if (bits[name]) continue;
+      let bit = FIRST_USER_GROUP; while (bit && taken.has(bit)) bit = (bit * 2) >>> 0;
+      if (!bit) throw new Error("TOO_MANY_GROUPS");
+      bits[name] = bit; taken.add(bit);
+    }
     return bits;
   }
+  // מסכה שנקראה מהטלפון נשמרת כל עוד הקבוצה לא שונתה (הממשק מאפס אותה בשינוי); אחרת לפי השמות
+  const contactGroupMask = (c, bits) => c.groupMask ? c.groupMask >>> 0 : groupNames(c.group).reduce((m, n) => (m | (bits[n] || 0)) >>> 0, 0);
   /* בונה phonebook.ib: רשומות ממוינות כמו שהטלפון כותב, מזהה חריץ לכל איש קשר, וביט לכל קבוצה.
      איש קשר שלא השתנה (יש לו _raw ואין _dirty) נכתב בית-בבית כפי שנקרא. */
   function buildPhonebook(contacts, options = {}) {
@@ -122,7 +151,7 @@
     const records = sorted.map(c => {
       if (!c.id) c.id = freeId();
       if (c._raw && !c._dirty && c._raw.length === recordSize) return c._raw;
-      return buildPhonebookRecord(c, recordSize, c.group ? bits[c.group] : 0);
+      return buildPhonebookRecord(c, recordSize, contactGroupMask(c, bits));
     });
     return buildIb({ name: "phonebook.ib", type: TYPES.phonebook, records });
   }
@@ -273,12 +302,12 @@
   function memoDateFromName(name) { const m = /MEMO_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(name || ""); return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` : ""; }
 
   /* ---------- רוחב טקסט על מסך הטלפון (פונט פרופורציונלי). רוחב שורה = 1000 יחידות.
-     כויל מפתקים אמיתיים: 14 ש / 38 ו / 17 ~ / 32 ' / |+28 רווחים+| לשורה. "14 נכנסות" אומר רק שהרוחב
+     כויל מפתקים אמיתיים: 14 ש / 38 ו / 45 י / 16 מ / 17 ~ / 32 ' / 38 ! / 20 ? / |+28 רווחים+| לשורה. "14 נכנסות" אומר רק שהרוחב
      בין 1000/15 ל-1000/14, ולכן הערך הוא אמצע הטווח (1000/14.5 = 69) ולא הגבול העליון: עם הגבול העליון
      (71) שורה אמיתית של 999 יחידות — "חנוך לנער ע"פ דרכו..." — נשברה כאן למרות שבטלפון היא נכנסת.
      שאר האותיות הוערכו לפי יחסי הפונט ביחס ל-ש, ולכן קוטנו באותו יחס (69/71). ---------- */
   // רוחב הטאב בטלפון לא כויל — הערכה של ארבעה רווחים. אפשר לתקן דרך כיול (שורה של טאבים).
-  const WIDTHS = { " ": 33, "\t": 132, "ו": 26, "י": 25, "ז": 33, "ן": 25, "'": 31, "׳": 31, "‘": 31, "’": 31, "|": 26, "!": 27, ".": 27, ",": 27, ":": 27, ";": 27, "~": 57, "-": 35, "–": 35, "(": 35, ")": 35, '"': 37, "״": 37, "“": 37, "”": 37, "ש": 69, "ם": 60, "מ": 63, "ת": 60, "א": 59, "ב": 58, "ג": 45, "ד": 52, "ה": 59, "ח": 59, "ט": 59, "ך": 52, "כ": 52, "ל": 52, "נ": 43, "ס": 59, "ע": 59, "ף": 52, "פ": 59, "ץ": 53, "צ": 59, "ק": 59, "ר": 52 };
+  const WIDTHS = { " ": 33, "\t": 132, "ו": 26, "י": 22, "ז": 33, "ן": 25, "'": 31, "׳": 31, "‘": 31, "’": 31, "|": 26, "!": 26, "?": 49, ".": 27, ",": 27, ":": 27, ";": 27, "~": 57, "-": 35, "–": 35, "(": 35, ")": 35, '"': 37, "״": 37, "“": 37, "”": 37, "ש": 69, "ם": 60, "מ": 61, "ת": 60, "א": 59, "ב": 58, "ג": 45, "ד": 52, "ה": 59, "ח": 59, "ט": 59, "ך": 52, "כ": 52, "ל": 52, "נ": 43, "ס": 59, "ע": 59, "ף": 52, "פ": 59, "ץ": 53, "צ": 59, "ק": 59, "ר": 52 };
   const DEFAULT_WIDTH = 58, LINE_UNITS = 1000;
   function charWidth(ch, table) { const t = table || WIDTHS; if (t[ch] != null) return t[ch]; const c = ch.charCodeAt(0); if (c >= 0x30 && c <= 0x39) return 58; if (/[iljtfI1.,:;'!|]/.test(ch)) return 29; if (/[A-Z]/.test(ch)) return 70; if (/[a-z]/.test(ch)) return 56; return DEFAULT_WIDTH; }
   function textWidth(text, table) { let w = 0; for (const ch of String(text || "")) w += charWidth(ch, table); return w; }
@@ -428,10 +457,10 @@
   /* ---------- הרכבת תיקיית גיבוי שלמה ----------
      source: תוצאת readBackup (או null). changes: { contacts, callog, events, memos:[{fileName,text,bytes?}], playlists:[{name,paths,bytes?}] }
      מחזיר רשימת קבצים { name, bytes } לכתיבה בתיקייה E:\ibphone\<folder>. */
-  function assembleBackup({ folder, cardLetter = "E", contacts, recordSize, callog, events, memos, playlists, settings, udb }) {
+  function assembleBackup({ folder, cardLetter = "E", contacts, recordSize, groupBits: knownGroups, callog, events, memos, playlists, settings, udb }) {
     const files = [], ib = {};
     const dest = name => `${cardLetter}:\\ibphone\\${folder}\\${name}`;
-    if (contacts) { ib.phonebook = buildPhonebook(contacts, { recordSize }); files.push({ name: "phonebook.ib", bytes: ib.phonebook }); }
+    if (contacts) { ib.phonebook = buildPhonebook(contacts, { recordSize, groupBits: knownGroups }); files.push({ name: "phonebook.ib", bytes: ib.phonebook }); }
     if (callog) { ib.callog = buildCallog(callog.entries, { subHeader: callog.subHeader }); files.push({ name: "callog.ib", bytes: ib.callog }); }
     if (events) { ib.schedule = buildSchedule(events); files.push({ name: "schedule.ib", bytes: ib.schedule }); }
     if (settings) { ib.settings = settings; files.push({ name: "settings.ib", bytes: settings }); }
@@ -472,7 +501,7 @@
     return out;
   }
 
-  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, parseSoundPaths, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
+  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, groupNames, groupMaskBits, groupNumberOf, PHONE_GROUPS, FIRST_USER_GROUP, GROUP_SEP, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, parseSoundPaths, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
   root.ANKAL_QUALIX = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

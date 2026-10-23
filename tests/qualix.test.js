@@ -25,7 +25,7 @@ test("זמן הטלפון: שניות מ-1980 בשעון הקיר, ללא אזו
 
 test("ספר טלפונים: בנייה, קריאה, מיון, מזהים וקבוצות", () => {
   const contacts = [
-    { name: "דוד כהן", mobile: "050-1234567", home: "02-6417612", work: "", fax: "", email: "a@b.c", note: "שורה 1\nשורה 2", group: "משפחה", groupBit: 0x08 },
+    { name: "דוד כהן", mobile: "050-1234567", home: "02-6417612", work: "", fax: "", email: "a@b.c", note: "שורה 1\nשורה 2", group: "משפחה", groupMask: 0x08 },
     { name: "Voice Mail", mobile: "+972535353151", home: "", work: "", fax: "", email: "", note: "", group: "" },
     { name: "  אחורה", mobile: "*#0000#", home: "", work: "0533149353", fax: "0774179033", email: "", note: "", group: "חברים" },
     { name: "019 מובייל", mobile: "", home: "", work: "", fax: "", email: "", note: "", group: "" }
@@ -36,15 +36,39 @@ test("ספר טלפונים: בנייה, קריאה, מיון, מזהים וקב
   assert.deepEqual(back.contacts.map(c => c.name), ["  אחורה", "019 מובייל", "Voice Mail", "דוד כהן"], "סדר כמו בטלפון: רווחים, ספרות, לטינית, עברית");
   const david = back.contacts.find(c => c.name === "דוד כהן");
   assert.equal(david.mobile, "0501234567"); assert.equal(david.home, "026417612"); assert.equal(david.email, "a@b.c"); assert.equal(david.note, "שורה 1\nשורה 2");
-  assert.equal(david.group, "משפחה"); assert.equal(david.groupBit, 0x08);
+  assert.equal(david.group, "משפחה"); assert.equal(david.groupMask, 0x08);
   const vm = back.contacts.find(c => c.name === "Voice Mail"); assert.equal(vm.mobile, "+972535353151", "מספר בינלאומי חוזר עם פלוס");
   const back2 = back.contacts.find(c => c.name === "  אחורה"); assert.equal(back2.mobile, "*#0000#"); assert.equal(back2.work, "0533149353"); assert.equal(back2.fax, "0774179033");
-  assert.equal(back2.groupBit, 0x01, "קבוצה חדשה מקבלת ביט פנוי");
+  assert.equal(back2.groupMask, 0x10, "חברים היא קבוצה מובנית של הטלפון — הביט שלה קבוע");
   const ids = back.contacts.map(c => c.id); assert.equal(new Set(ids).size, 4); assert.ok(ids.every(id => id > 0));
   // סבב שני: רשומות גולמיות נשמרות בית-בבית
   assert.ok(Q.same(Q.buildPhonebook(back.contacts), bytes));
   // סבב שלישי: בנייה מחדש מהשדות בלבד נותנת את אותם בתים
   assert.ok(Q.same(Q.buildPhonebook(strip(back.contacts)), bytes));
+});
+
+test("קבוצות: מסכה של 32 ביט, קבוצות מובנות, כמה קבוצות לאיש קשר ומספור קבוצה חדשה", () => {
+  const blank = { mobile: "", home: "", work: "", fax: "", email: "", note: "" };
+  const parse = (contacts, opts) => Q.parsePhonebook(Q.buildPhonebook(contacts.map(c => Object.assign({}, blank, c)), opts)).contacts;
+  // הטלפון משייך לפי הביט בלבד: 0x08 היא "משפחה" גם כשברשומה כתוב שם אחר (הגרסה השבורה של 17.10.2026)
+  const [bad, low] = parse([{ name: "א", group: "קיבוץ א'", groupMask: 0x08 }, { name: "ב", group: "קיבוץ", groupMask: 0x01 }]);
+  assert.equal(bad.group, "משפחה"); assert.equal(low.group, "", "0x01..0x04 שמורים לסים 1/סים 2, לא לאנשי קשר בזיכרון הטלפון");
+  // שתי קבוצות לאיש קשר — כמו שהטלפון כתב ביוני 2026: 0x88, השמות מופרדים בפסיק ו-0x2AA=0x0E
+  const two = Q.buildPhonebook([Object.assign({ name: "ג", group: "משפחה, ivr2:", groupMask: 0x88 }, blank)]);
+  const rec = Q.parseIb(two).records[0]; assert.equal(rec[0x2AA], 0x0E);
+  const back = Q.parsePhonebook(two).contacts[0]; assert.equal(back.group, "משפחה, ivr2:"); assert.equal(back.groupMask, 0x88);
+  assert.ok(Q.same(Q.buildPhonebook(strip([back])), two), "בנייה מהשדות נותנת את אותם בתים");
+  // ביטים בבית השני (אפריל 2026, רשומות 684 בלי שמות): לא נבלעים, ומקבלים את המספר שלהם ברשימת הטלפון
+  const [old] = parse([{ name: "ד", group: "x, y", groupMask: 0x2400 }], { recordSize: 684 });
+  assert.equal(old.groupMask, 0x2400); assert.equal(old.group, "קבוצה 10, קבוצה 13");
+  assert.equal(Q.groupNumberOf(0x08), 3, "משפחה היא השלישית, אחרי סים 1 וסים 2"); assert.equal(Q.groupNumberOf(0x80), 7);
+  // מספור: המובנות קבועות, ivr2: שכבר בטלפון שומרת את 0x80, וקבוצה חדשה מקבלת את הפנוי הבא
+  const bits = Q.groupBits([{ group: "ivr2:", groupMask: 0x80 }, { group: "שיעור א'" }, { group: "עסקים" }, { group: "שיעור ב'" }]);
+  assert.equal(bits["שיעור א'"], 0x100); assert.equal(bits["שיעור ב'"], 0x200); assert.equal(bits["עסקים"], 0x20);
+  // קבוצה שידועה רק מגיבוי אחר בכרטיס (preset) תופסת את המספר שלה גם כשאין בה אף אחד בגרסה הזאת
+  assert.equal(Q.groupBits([{ group: "שיעור א'" }], { "ivr2:": 0x80, "אחרת": 0x100 })["שיעור א'"], 0x200, "התשיעית ברשימת הטלפון");
+  const built = parse([{ name: "ה", group: "שיעור א'" }], { groupBits: { "ivr2:": 0x80 } })[0];
+  assert.equal(built.groupMask, 0x100); assert.equal(built.group, "שיעור א'");
 });
 
 test("ספר טלפונים: צלצול אישי וקובץ ה-PB", () => {
@@ -138,7 +162,8 @@ test("רוחב טקסט ומירכוז לפי טבלת הרוחב של הטלפ�
   assert.ok(Q.textWidth(centered) <= 1000 && Q.textWidth(centered) > 450, "הרווחים מביאים את הטקסט לאמצע");
   const table = Q.calibrateFromMemo("ששששששששששששש\nוווווווווווווווווווווווווווווווווווווווו"); assert.equal(table["ש"], Math.round(1000 / 13.5)); assert.equal(table["ו"], 25);
   // פתק הכיול האמיתי: כל שורה שנכנסת בטלפון חייבת להיכנס גם בחישוב, ותו אחד נוסף כבר לא
-  for (const [line, extra] of [["~".repeat(17), "~"], ["'".repeat(32), "'"], ["|" + " ".repeat(28) + "|", " "], ["ש".repeat(14), "ש"], ["ו".repeat(38), "ו"]]) {
+  // (השורות של י / ! / ? / מ — מפתק הכיול של אוקטובר 2026, שהתצוגה המקדימה שברה)
+  for (const [line, extra] of [["~".repeat(17), "~"], ["'".repeat(32), "'"], ["|" + " ".repeat(28) + "|", " "], ["ש".repeat(14), "ש"], ["ו".repeat(38), "ו"], ["י".repeat(45), "י"], ["!".repeat(38), "!"], ["?".repeat(20), "?"], ["מ".repeat(16), "מ"]]) {
     assert.ok(Q.textWidth(line) <= Q.LINE_UNITS, line.slice(0, 5) + "… רחב מדי: " + Q.textWidth(line));
     assert.ok(Q.textWidth(line + extra) > Q.LINE_UNITS, line.slice(0, 5) + "… צר מדי: תו נוסף עדיין נכנס");
   }
