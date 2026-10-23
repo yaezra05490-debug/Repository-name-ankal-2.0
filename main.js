@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -13,6 +13,13 @@ function createWindow() {
   Menu.setApplicationMenu(null);
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url); return { action: "deny" }; });
   mainWindow.webContents.on("will-navigate", (event, url) => { if (!url.startsWith("file://")) { event.preventDefault(); if (/^https?:\/\//i.test(url)) shell.openExternal(url); } });
+  /* כשיש בקיוליקס שינויים שלא נשמרו הדף מבטל את הסגירה (beforeunload). בדפדפן זה מקפיץ שאלה, אבל ב-Electron
+     הסגירה פשוט מתבטלת בשקט — והאיקס "לא עשה כלום". כאן שואלים, ו-preventDefault פירושו: לצאת בכל זאת. */
+  mainWindow.webContents.on("will-prevent-unload", event => {
+    const choice = dialog.showMessageBoxSync(mainWindow, { type: "warning", title: 'אנק"ל', buttons: ["יציאה בלי לשמור", "ביטול"], defaultId: 1, cancelId: 1, noLink: true,
+      message: "יש שינויים בגיבוי הקיוליקס שעוד לא נשמרו", detail: "אם תצאו עכשיו הם יאבדו. כדי לשמור — בחרו \"ביטול\" ואז \"שמירה כגרסה\" (או \"שמירה לטלפון\" בניהול פתקים)." });
+    if (choice === 0) event.preventDefault();
+  });
   mainWindow.loadFile(path.join(__dirname, "src", "index.html"));
 }
 
@@ -39,7 +46,6 @@ ipcMain.handle("qualix:list-cards", () => {
   return cards;
 });
 ipcMain.handle("qualix:choose-folder", async () => {
-  const { dialog } = require("electron");
   const result = await dialog.showOpenDialog(mainWindow, { title: "בחירת תיקיית הגיבוי או כרטיס הזיכרון", properties: ["openDirectory"] });
   if (result.canceled || !result.filePaths.length) return null;
   const root = result.filePaths[0]; qualixRoots.add(root); return { root, label: root };

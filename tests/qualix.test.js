@@ -71,6 +71,17 @@ test("קבוצות: מסכה של 32 ביט, קבוצות מובנות, כמה �
   assert.equal(built.groupMask, 0x100); assert.equal(built.group, "שיעור א'");
 });
 
+test("פתקים: חלוקה לפי המגבלה והתפילון", () => {
+  assert.deepEqual(Q.splitMemoText("קצר", 10), ["קצר"], "טקסט שנכנס חוזר כמו שהוא");
+  assert.deepEqual(Q.splitMemoText("שורה א\nשורה ב\nשורה ג", 14), ["שורה א\nשורה ב", "שורה ג"], "חלוקה בסוף שורה");
+  const cut = Q.splitMemoText("אבג דהו זחט", 7); assert.ok(cut.every(p => p.length <= 7)); assert.equal(cut.join(" "), "אבג דהו זחט", "שורה ארוכה — ברווח");
+  // התפילון: 16 תפילות תקינות, וכל אחת נכנסת בפתקים של עד 3000
+  const holder = {}; new Function("window", require("fs").readFileSync(require("path").join(__dirname, "..", "src", "tfilon-data.js"), "utf8"))(holder);
+  const items = holder.ANKAL_TFILON.items; assert.equal(items.length, 16);
+  for (const it of items) { assert.ok(it.title && it.text && !/[\r\0�]/.test(it.text), it.title); assert.ok(Q.splitMemoText(it.text, 3000).every(p => p.length <= 3000)); }
+  assert.equal(Q.splitMemoText(items.find(i => i.title === "הלל שלם").text, 3000).length, 2, "הלל שלם (3015 תווים) — שני פתקים");
+});
+
 test("ספר טלפונים: צלצול אישי וקובץ ה-PB", () => {
   const bytes = Q.buildPhonebook([{ id: 3, name: "ivr2", mobile: "0772633681", ringtone: Q.RINGTONE_FILE, group: "" }]);
   const c = Q.parsePhonebook(bytes).contacts[0];

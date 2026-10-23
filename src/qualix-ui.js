@@ -417,6 +417,38 @@
     glyphCache = { font, unit }; return unit;
   }
   function newMemo() { const st = memoStore(); const now = new Date(); const iso = localIso(now) + "T" + now.toTimeString().slice(0, 8); st.memos.unshift({ fileName: Q.memoFileName(now), text: "", created: iso, modified: iso, _dirty: true, _new: true }); st.idx = 0; st.mark(); render(); setTimeout(() => document.getElementById("qx-memo-text")?.focus(), 50); }
+  /* פתקים חדשים בראש הרשימה (בטלפון: למעלה), לפי הסדר שהתקבל — הראשון עליון. */
+  function insertMemos(texts) {
+    const st = memoStore(), now = new Date(), iso = localIso(now) + "T" + now.toTimeString().slice(0, 8), taken = new Set(st.memos.map(m => m.fileName));
+    const fresh = texts.map(text => { let fileName; do fileName = Q.memoFileName(now); while (taken.has(fileName)); taken.add(fileName); return { fileName, text, created: iso, modified: iso, _dirty: true, _new: true }; });
+    st.memos.unshift(...fresh); st.idx = 0; st.mark(); render();
+  }
+
+  /* ---------- תפילון ----------
+     התפילות (tfilon-data.js) נטענות רק כשפותחים את החלון. תפילה ארוכה ממגבלת הפתק מתחלקת לכמה פתקים בסוף שורה,
+     וכל חלק אחרי הראשון מקבל בראשו את שם התפילה ו"2/2" — הטלפון מציג את השורה הראשונה כשם הפתק. */
+  function loadTfilon() {
+    if (window.ANKAL_TFILON) return Promise.resolve(window.ANKAL_TFILON);
+    return new Promise((resolve, reject) => { const s = document.createElement("script"); s.src = "tfilon-data.js"; s.onload = () => window.ANKAL_TFILON ? resolve(window.ANKAL_TFILON) : reject(new Error("TFILON_EMPTY")); s.onerror = () => reject(new Error("TFILON_LOAD")); document.head.appendChild(s); });
+  }
+  function tfilonMemos(item, limit) {
+    const head = n => `${item.title} (${n})`, reserve = head("99/99").length + 1;
+    let parts = Q.splitMemoText(item.text, limit); if (parts.length === 1) return parts;
+    parts = Q.splitMemoText(item.text, limit - reserve);
+    return parts.map((p, k) => k === 0 ? p : head(`${k + 1}/${parts.length}`) + "\n" + p);
+  }
+  async function addTfilonMemos() {
+    let data; try { data = await loadTfilon(); } catch (error) { console.error(error); return A().toast("לא הצלחנו לטעון את התפילון", "error"); }
+    const nusachim = [...new Set(data.items.map(i => i.nusach))];
+    const col = n => `<div class="qx-tfilon-col"><strong>${esc(n)}</strong>${data.items.map((it, i) => it.nusach !== n ? "" : `<label class="check-line"><input type="checkbox" data-tfilon="${i}"> ${esc(it.title)} <span class="qx-note">${it.text.length > qx.memoLimit ? `${tfilonMemos(it, qx.memoLimit).length} פתקים` : `${it.text.length} תווים`}</span></label>`).join("")}</div>`;
+    const html = `<div class="qx-tfilon">${nusachim.map(col).join("")}</div><p class="qx-note">${esc(data.source)}. תפילה ארוכה מ-${qx.memoLimit} תווים מתחלקת לכמה פתקים.</p>`;
+    const choice = await A().modal({ kicker: "פתקים", title: "הוספת תפילות מהתפילון", html, buttons: [{ id: "go", label: "הוספה לפתקים", primary: true }, { id: "cancel", label: "ביטול" }] });
+    if (choice !== "go") return;
+    const picked = [...document.querySelectorAll("#modal-body [data-tfilon]:checked")].map(el => data.items[Number(el.dataset.tfilon)]).filter(Boolean);
+    if (!picked.length) return A().toast("לא נבחרה אף תפילה", "warning");
+    const texts = picked.flatMap(it => tfilonMemos(it, qx.memoLimit));
+    insertMemos(texts); A().toast(`נוספו ${texts.length} פתקים מהתפילון — בראש הרשימה. ${memoStore().direct ? "כדי שיגיעו לטלפון: “שמירה לטלפון”." : "הם נכתבים בשמירת הגרסה."}`);
+  }
   async function deleteMemo() { const st = memoStore(); const m = st.memos[st.idx]; if (!m) return; if (!(await A().confirmBox("מחיקת פתק", st.direct ? "למחוק את הפתק מהכרטיס? המחיקה מתבצעת בלחיצה על “שמירה לטלפון”." : "למחוק את הפתק?", "מחיקה"))) return; st.memos.splice(st.idx, 1); if (st.direct && !m._new) qx.direct.removed.push(m.fileName); st.idx = Math.max(0, st.idx - 1); st.mark(); render(); }
   /* מירכוז כל הפתק או השורה שבה הסמן. שורה שרחבה ממסך הטלפון נשברת קודם לשורות מאוזנות (Q.centerText),
      ולכן שורה אחת יכולה להפוך לכמה. תו המילוי נבחר בבורר שליד הכפתורים ונשמר להבא. */
@@ -997,7 +1029,7 @@
     const note = st.direct ? "" : `<div class="qx-memo-note"><div class="qx-memo-note-head"><i>⚠</i><strong>לפני שחזור של פתקים בטלפון</strong></div>
       <ol><li>הטלפון מזהה פתק לפי <b>שם הקובץ</b>, לא לפי התוכן.</li><li>פתק שערכתם כאן <b>לא יתעדכן</b> כל עוד הפתק הישן קיים בטלפון.</li><li>לכן: מחקו בטלפון את הפתקים שערכתם (או את כולם), ורק אז שחזרו את “הפתקים שלי”.</li></ol>
       <div class="qx-memo-note-foot"><span>רוצים שהשינוי ייכנס מיד, בלי שחזור?</span><button class="btn btn-secondary btn-sm" data-qx="direct-memos">✎ ניהול פתקים ישיר</button></div></div>`;
-    return (st.direct ? "" : importBarHtml("memo", st.memos.length)) + `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="new-memo">＋ פתק</button><span class="qx-note">${st.memos.length} פתקים · ${st.direct ? "תיקיית Memo של הכרטיס — הטלפון קורא אותם ישירות" : "קבצי טקסט פשוטים בתיקיית Memo"} · הסדר ברשימה הוא הסדר בטלפון (▲▼ לשינוי)</span></div>${note}<div class="qx-split"><div class="qx-list">${list}</div>${editor}</div>`;
+    return (st.direct ? "" : importBarHtml("memo", st.memos.length)) + `<div class="qx-toolbar"><button class="btn btn-secondary btn-sm" data-qx="new-memo">＋ פתק</button><button class="btn btn-quiet btn-sm" data-qx="memo-tfilon">📖 תפילון</button><span class="qx-note">${st.memos.length} פתקים · ${st.direct ? "תיקיית Memo של הכרטיס — הטלפון קורא אותם ישירות" : "קבצי טקסט פשוטים בתיקיית Memo"} · הסדר ברשימה הוא הסדר בטלפון (▲▼ לשינוי)</span></div>${note}<div class="qx-split"><div class="qx-list">${list}</div>${editor}</div>`;
   }
   function calendarTab() {
     const d = qx.open.data; if (!qx.calMonth) qx.calMonth = localIso(new Date()).slice(0, 7);
@@ -1132,6 +1164,7 @@
         case "delete-call": return deleteCall(Number(el.dataset.ei), Number(el.dataset.ci));
         case "memo": memoStore().idx = i; return render();
         case "new-memo": return newMemo();
+        case "memo-tfilon": return addTfilonMemos();
         case "delete-memo": return deleteMemo();
         case "center-line": return centerMemo(false);
         case "center-all": return centerMemo(true);
@@ -1190,11 +1223,9 @@
   document.addEventListener("input", event => {
     if (event.target.id === "qx-search") { qx.search = event.target.value; clearTimeout(qx.searchTimer); qx.searchTimer = setTimeout(() => { const list = document.getElementById("qx-contacts-list"); if (list) list.innerHTML = contactsBodyHtml(); }, 160); }
     if (event.target.id === "qx-settings-find") settingsFind(event.target.value);
-    if (event.target.id === "qx-memo-text") { const st = memoStore(); const m = st.memos[st.idx]; if (m) { m.text = event.target.value; m._dirty = true; st.mark(); memoCounter(); markUnsaved(); } }
-  });
+    if (event.target.id === "qx-memo-text") { const st = memoStore(); const m = st.memos[st.idx]; if (m) { m.text = event.target.value; m._dirty = true; st.mark(); memoCounter(); markUnsaved(); } }  });
   document.addEventListener("change", event => {
-    if (event.target.id === "qx-memo-limit") { qx.memoLimit = Number(event.target.value) || 3000; localStorage.setItem(LIMIT_KEY, String(qx.memoLimit)); memoCounter(); }
-  });
+    if (event.target.id === "qx-memo-limit") { qx.memoLimit = Number(event.target.value) || 3000; localStorage.setItem(LIMIT_KEY, String(qx.memoLimit)); memoCounter(); }  });
   document.addEventListener("keydown", event => { if (event.key === "Enter" && event.target.id === "qx-word") { event.preventDefault(); addWord(); } });
   window.addEventListener("beforeunload", event => { if (qx.open?.dirty.size || qx.direct?.dirty) { event.preventDefault(); event.returnValue = ""; } });
 

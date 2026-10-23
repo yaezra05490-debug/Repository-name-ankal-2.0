@@ -218,6 +218,18 @@ server.listen(PORT, async () => {
   await step("שמירת הסדר אחרי הגרירה", click('[data-qx="direct-save"]'));
   await wait(500);
   await step("זמני הקבצים אחרי הגרירה: שלישי חדש יותר מראשון", `(() => { const u = (window.__utimes || []).slice(-2); const Q = window.ANKAL_QUALIX; const names = u.map(x => Q.parseMemo(window.__mem.get(x[0])).split("\\n")[0]); return names.join("|") + " " + (u[0][1] > u[1][1] ? "desc" : "bad"); })()`, "פתק שלישי|פתק ראשון desc");
+  // התפילון: נטען בפתיחת החלון; הלל שלם (3015 תווים) מתחלק לשני פתקים
+  await step("חלון התפילון", click('[data-qx="memo-tfilon"]'));
+  await wait(600);
+  await step("16 תפילות בשני נוסחים", `document.querySelectorAll("#modal-body [data-tfilon]").length + " " + document.querySelectorAll("#modal-body .qx-tfilon-col").length`, "16 2");
+  await step("בחירת אשר יצר והלל שלם (אשכנז)", `(() => { const boxes = [...document.querySelectorAll("#modal-body .qx-tfilon-col")][0].querySelectorAll("label"); const pick = t => [...boxes].find(l => l.textContent.includes(t)).querySelector("input").checked = true; pick("אשר יצר"); pick("הלל שלם"); return "ok"; })()`, "ok");
+  await step("הוספת התפילות", click('[data-modal-choice="go"]'));
+  await wait(300);
+  await step("שלושה פתקים חדשים למעלה, והחלק השני של ההלל עם כותרת", `(() => { const st = window.ANKAL_QUALIX_UI.state.direct; const top = st.memos.slice(0, 3); return top.map(m => m.text.length <= 3000 ? "ok" : "long").join(",") + " | " + top[2].text.split("\\n")[0]; })()`, "ok,ok,ok | הלל שלם (2/2)");
+  await step("שמירה לטלפון", click('[data-qx="direct-save"]'));
+  await wait(600);
+  await step("חמישה קבצים בתיקיית Memo", `[...window.__mem.keys()].filter(k => k.startsWith("Memo/")).length`, 5);
+  await step("אין כפתור אלפון", `document.querySelector('[data-qx="memo-alphon"]') ? "יש" : "אין"`, "אין");
   await step("קטגוריות הגרסה עדיין בתפריט הצד", `document.querySelectorAll('#qualix-subnav [data-qx="tab"]').length`, 7);
 
   await step("לשונית לוח שנה", click('[data-qx="tab"][data-tab="calendar"]'));

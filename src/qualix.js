@@ -389,6 +389,22 @@
      בטלפון להישבר כאן. */
   function calibrateFromMemo(text, table) { const out = Object.assign({}, table || WIDTHS); for (const line of String(text || "").split("\n")) { const t = line.replace(/\s+$/, ""); if (t.length >= 3 && [...t].every(ch => ch === t[0])) out[t[0]] = Math.round(LINE_UNITS / (t.length + 0.5)); } return out; }
 
+  /* ---------- טקסט ארוך ממגבלת הפתק (1000 ב-Q7, 3000 ב-Q8) ----------
+     מתחלק בסוף שורה; שורה שלבדה ארוכה מהמגבלה — ברווח האחרון שנכנס, ובלי רווח באמצע. טקסט שנכנס חוזר כמו שהוא. */
+  function splitMemoText(text, limit) {
+    const max = Math.max(1, Math.floor(limit) || 1), all = String(text || "");
+    if (all.length <= max) return [all];
+    const parts = []; let lines = [], len = -1; // len: אורך החלק כולל מעברי השורה
+    const flush = () => { const t = lines.join("\n").replace(/^\n+|\n+$/g, ""); if (t) parts.push(t); lines = []; len = -1; };
+    for (let line of all.split("\n")) {
+      while (line.length > max) { flush(); let cut = line.lastIndexOf(" ", max); if (cut <= 0) cut = max; parts.push(line.slice(0, cut)); line = line.slice(cut).replace(/^ /, ""); }
+      if (lines.length && len + 1 + line.length > max) flush();
+      lines.push(line); len += 1 + line.length;
+    }
+    flush();
+    return parts.length ? parts : [""];
+  }
+
   /* ---------- הגדרות (settings.ib): צילום NVRAM. לא עורכים, אבל קוראים ----------
      מה שקריא בו: שמות SIM, הגדרות APN, מספרי חירום ועותקי אירועי יומן. קוד הנעילה אינו טקסט גלוי,
      ולכן יש חיפוש ערך בכל הקידודים (ASCII, UTF-16, BCD, מספר) כדי לאתר את המקום שלו לפי ערך ידוע. */
@@ -501,7 +517,7 @@
     return out;
   }
 
-  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, groupNames, groupMaskBits, groupNumberOf, PHONE_GROUPS, FIRST_USER_GROUP, GROUP_SEP, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, parseSoundPaths, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
+  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, groupNames, groupMaskBits, groupNumberOf, splitMemoText, PHONE_GROUPS, FIRST_USER_GROUP, GROUP_SEP, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, parseSoundPaths, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
   root.ANKAL_QUALIX = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
