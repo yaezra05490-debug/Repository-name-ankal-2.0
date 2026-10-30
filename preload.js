@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   qualix: {
     listCards: () => ipcRenderer.invoke("qualix:list-cards"),
     chooseFolder: title => ipcRenderer.invoke("qualix:choose-folder", title),
+    reopen: root => ipcRenderer.invoke("qualix:reopen", root),
     list: (root, rel) => ipcRenderer.invoke("qualix:list", root, rel),
     read: (root, rel) => ipcRenderer.invoke("qualix:read", root, rel),
     readHeads: (root, rel, names, bytes) => ipcRenderer.invoke("qualix:read-heads", root, rel, names, bytes),

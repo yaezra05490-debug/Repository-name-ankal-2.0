@@ -63,11 +63,10 @@
       const layout = await detectLayout(adapter);
       if (!layout) { A().toast("בתיקייה שנבחרה אין גיבוי של קיוליקס. בחרו את הכרטיס עצמו או את תיקיית ibphone.", "warning"); return false; }
       qx.adapter = adapter; qx.layout = layout; qx.open = null; qx.direct = null; qx.cardSounds = null; versionCache.clear(); qx.phoneGroups = null; qx.cloud = { loaded: false, versions: [], uploading: "", error: "" };
-      stopRecording(); qx.rec = null; if (qx.view === "recordings" && layout.mode !== "card") qx.view = "versions";
       await loadBackups(); render(); A().toast(`נמצאו ${qx.backups.length} גיבויים`);
       syncCloud(); // ברקע: מה כבר בשרת, והעלאה של מה שחסר
-      // ברקע: הקלטות השיחה שבכרטיס — כדי שכרטיסי אנשי הקשר והיומן יראו 🎙 בלי לפתוח קודם את עמוד ההקלטות
-      if (layout.mode === "card") loadRecordings(true).then(rec => { if (rec && (qx.view === "recordings" || (qx.view === "editor" && ["contacts", "calls"].includes(qx.tab)))) render(); else if (rec) renderRecCount(); });
+      // ברקע: הקלטות השיחה שבכרטיס נכנסות לארכיון (recordings.js) — וכך 🎙 מופיע באנשי הקשר וביומן
+      REC()?.cardConnected(cardProvider());
       return true;
     } catch (error) { console.error(error); A().toast("לא הצלחנו לקרוא את התיקייה", "error"); return false; }
     finally { setBusy(""); }
@@ -653,259 +652,15 @@
     return head + info + memosTab() + save;
   }
 
-  /* ---------- הקלטות שיחה: תיקיית Audio בכרטיס ----------
-     הטלפון מקליט כל שיחה לקובץ <שם או מספר>_<תאריך ושעה>.wav (הפורמט ב-qualix.js). כאן: רשימה לפי יום, השמעה,
-     השלמת מי ומה מאנשי הקשר ומיומני השיחות של הגיבויים, 🎙 בכרטיס איש קשר ובפרטי שיחה, וניקוי — קבצים ריקים,
-     הקלטות קצרות, והעברה למחשב. בכרטיס לא משתנה כלום בלי מחיקה או העברה מפורשת. */
-  const REC_HEAD = 512, REC_PAGE = 200, REC_DIR = /^audio( \d+)?$/i;
-  // נגן אחד לכל העמוד: הוא עובר לתוך כל ציור חדש של העמוד, ולכן ההשמעה לא נעצרת כשהרשימה מתעדכנת
-  const recAudio = typeof Audio === "function" ? Object.assign(new Audio(), { controls: true, preload: "auto" }) : null;
-  let recUrl = null;
-  function stopRecording() { if (recAudio) { try { recAudio.pause(); } catch (_) { } recAudio.removeAttribute("src"); recAudio.load(); } if (recUrl) { URL.revokeObjectURL(recUrl); recUrl = null; } if (qx.rec) qx.rec.playing = null; }
-  async function readHeads(adapter, dir, names) {
-    const out = new Map();
-    if (adapter.readHeads) { const heads = await adapter.readHeads(dir, names, REC_HEAD); names.forEach((n, k) => { if (heads[k]) out.set(n, heads[k]); }); return out; }
-    for (const n of names) { try { out.set(n, (await adapter.read(join(dir, n))).subarray(0, REC_HEAD)); } catch (_) { } }
-    return out;
-  }
-  /* מי ומה: אנשי הקשר — מהגרסה הפתוחה ומהגיבוי האחרון שיש בו ספר טלפונים, ואם נשאר בהקלטות שם שלא נמצא — גם
-     מגיבויים ישנים יותר (עד שישה); השיחות — מהיומנים של כל הגיבויים יחד, כי כל יומן זוכר רק 100 מספרים. */
-  async function recordingContext(adapter, items) {
-    const contacts = qx.open ? qx.open.data.contacts.slice() : [], calls = [], seen = new Set();
-    const missing = new Set(items.map(r => r.name).filter(Boolean)); for (const c of contacts) missing.delete(c.name);
-    let books = 0;
-    for (const bk of qx.backups) {
-      if (bk.categories.includes("callog")) { try { for (const e of Q.parseCallog(await adapter.read(join(bk.rel, "callog.ib"))).entries) for (const c of e.calls) { const key = `${e.number}|${e.type}|${c.time}`; if (!seen.has(key)) { seen.add(key); calls.push({ number: e.number, type: e.type, time: c.time, duration: c.duration }); } } } catch (_) { } }
-      if (bk.categories.includes("phonebook") && books < 6 && (!books || missing.size)) { try { const pb = Q.parsePhonebook(await adapter.read(join(bk.rel, "phonebook.ib"))); contacts.push(...pb.contacts); for (const c of pb.contacts) missing.delete(c.name); books++; } catch (_) { } }
-    }
-    return { contacts, calls };
-  }
-  function setRecItems(list) {
-    const r = qx.rec; r.items = list; r.byTime = new Map();
-    for (const x of list) if (x.size) { if (!r.byTime.has(x.time)) r.byTime.set(x.time, []); r.byTime.get(x.time).push(x); }
-    r.forContact = Q.recordingIndex(list.filter(x => x.size));
-    if (r.contact) { const have = new Set(list.map(x => x.rel)); for (const rel of [...r.contact.files]) if (!have.has(rel)) r.contact.files.delete(rel); }
-  }
-  const dropRecordings = rels => setRecItems(qx.rec.items.filter(x => !rels.has(x.rel)));
-  /* quiet: קריאה ברקע אחרי חיבור הכרטיס (בלי חלון "קורא…"), כדי שכרטיסי אנשי הקשר והיומן יראו 🎙 */
-  function loadRecordings(quiet) {
-    if (!qx.adapter || qx.layout?.mode !== "card") return Promise.resolve(null);
-    if (qx.recLoading) return qx.recLoading;
-    const adapter = qx.adapter;
-    qx.recLoading = (async () => {
-      if (!quiet) setBusy("קורא את הקלטות השיחה מהכרטיס…");
-      try {
-        const dirs = (await adapter.list("")).filter(e => e.kind === "directory" && REC_DIR.test(e.name)).map(e => e.name).sort();
-        const items = [];
-        for (const dir of dirs) {
-          const recs = (await adapter.list(dir)).filter(e => e.kind === "file").map(f => { const r = Q.parseRecordingName(f.name); return r && Object.assign(r, { dir, rel: join(dir, f.name), size: f.size || 0, duration: 0 }); }).filter(Boolean);
-          /* משך: פתיחת כל קובץ בכרטיס קר לוקחת כ-9 שניות ל-700 הקלטות (FAT מחפש כל שם בתיקייה מחדש). כל ההקלטות
-             של הטלפון באותו מבנה, ולכן קוראים כותרת של שלוש לדוגמה; אם הן זהות — המשך של השאר לפי הגודל
-             (המדויק מתעדכן בהשמעה). אם הן שונות — קוראים את כולן. */
-          const withData = recs.filter(r => r.size), probes = [...new Set([withData[0], withData[withData.length >> 1], withData[withData.length - 1]].filter(Boolean))];
-          const probeHeads = await readHeads(adapter, dir, probes.map(r => r.fileName));
-          const infos = probes.map(r => probeHeads.has(r.fileName) ? Q.parseWavHeader(probeHeads.get(r.fileName), r.size) : null), first = infos[0];
-          const uniform = first && infos.every(w => w && ["format", "channels", "sampleRate", "blockAlign", "dataOffset"].every(k => w[k] === first[k]));
-          if (uniform) for (const r of withData) r.duration = Q.wavDurationFromSize(first, r.size);
-          else { const heads = await readHeads(adapter, dir, withData.map(r => r.fileName)); for (const r of withData) { const w = heads.has(r.fileName) ? Q.parseWavHeader(heads.get(r.fileName), r.size) : null; if (w) r.duration = w.duration; } }
-          items.push(...recs);
-        }
-        const list = Q.describeRecordings(items, await recordingContext(adapter, items)).sort((a, b) => b.time - a.time);
-        if (adapter !== qx.adapter) return null; // הכרטיס הוחלף באמצע הקריאה
-        const prev = qx.rec;
-        qx.rec = { dirs, items: [], q: prev ? prev.q : "", type: prev ? prev.type : "all", contact: prev ? prev.contact : null, shown: REC_PAGE, playing: prev && list.some(x => x.rel === prev.playing) ? prev.playing : null };
-        setRecItems(list);
-        return qx.rec;
-      } catch (error) { console.error(error); if (!quiet) A().toast("לא הצלחנו לקרוא את הקלטות השיחה: " + (error.message || error), "error"); return null; }
-      finally { if (!quiet) setBusy(""); qx.recLoading = null; }
-    })();
-    return qx.recLoading;
-  }
-  // ההקלטה של שיחה מהיומן: אותו רגע (עד 3 שניות) ואותו מספר, או — בהקלטה ששמורה לפי שם — אותו איש קשר
-  function recordingOfCall(number, time) {
-    if (!qx.rec) return null; const keys = Q.numberKeys(number);
-    for (let dt = 0; dt <= 3; dt++) for (const t of dt ? [time - dt, time + dt] : [time]) for (const r of qx.rec.byTime.get(t) || []) if (r.number ? Q.numberKeys(r.number).some(k => keys.includes(k)) : r.name === contactName(number)) return r;
-    return null;
-  }
-  /* פריט "הקלטות שיחה" בתפריט הראשי — מצויר ב-#qualix-root, כמו ניהול פתקים. recOpts מגיעים מכרטיס איש קשר
-     (contact: רק ההקלטות שלו) או מפרטי שיחה ביומן (play: ההקלטה של אותה שיחה). */
-  async function showRecordings() {
-    const opts = qx.recOpts; qx.recOpts = null;
-    if (!qx.adapter && window.electronAPI?.qualix) await detectCards(true);
-    if (!qx.adapter || qx.layout.mode !== "card") { qx.view = "versions"; render(); if (qx.adapter) A().toast("הקלטות השיחה נקראות רק כשנבחר הכרטיס עצמו (שיש בו תיקיית Audio)", "warning"); return; }
-    qx.view = "recordings"; render();
-    if (!qx.rec) await loadRecordings(false);
-    if (!qx.rec || qx.view !== "recordings") return render();
-    if (opts?.contact) Object.assign(qx.rec, { contact: opts.contact, q: "", type: "all", shown: REC_PAGE });
-    if (opts?.play) { Object.assign(qx.rec, { contact: null, q: "", type: "all" }); qx.rec.shown = Math.max(REC_PAGE, filteredRecordings().findIndex(x => x.rel === opts.play) + 1); }
-    render();
-    if (opts?.play) {
-      document.querySelector(`[data-qx="rec-play"][data-rec="${CSS.escape(opts.play)}"]`)?.scrollIntoView({ block: "center" });
-      // כבר טעונה בנגן? ממשיכים לנגן (לחיצה על שורה שמתנגנת עוצרת — כאן ביקשו להשמיע)
-      if (qx.rec.playing === opts.play && recUrl) recAudio.play().catch(() => { }); else await playRecording(opts.play);
-    }
-  }
-  function openRecordings(opts) { qx.recOpts = opts || null; if (document.getElementById("app-shell")?.dataset.activePage === "recordings") return showRecordings(); A().setPage("recordings"); }
-  async function playRecording(rel) {
-    const x = qx.rec?.items.find(r => r.rel === rel); if (!x || !recAudio) return;
-    if (qx.rec.playing === rel && recUrl) { if (recAudio.paused) recAudio.play().catch(() => { }); else recAudio.pause(); return; }
-    if (!x.size) return A().toast("הקובץ ריק — ההקלטה לא נוצרה", "warning");
-    setBusy("מכין את ההקלטה…");
-    try {
-      const bytes = await qx.adapter.read(x.rel), wav = Q.playableWav(bytes);
-      if (recUrl) URL.revokeObjectURL(recUrl);
-      recUrl = URL.createObjectURL(new Blob([wav ? wav.bytes : bytes], { type: "audio/wav" })); if (wav) x.duration = wav.duration;
-      qx.rec.playing = rel; recAudio.src = recUrl; render(); setBusy("");
-      await recAudio.play().catch(() => { });
-    } catch (error) { console.error(error); A().toast("לא הצלחנו להשמיע את ההקלטה: " + (error.message || error), "error"); }
-    finally { setBusy(""); }
-  }
-  async function saveRecording(x) {
-    setBusy("מכין את הקובץ…");
-    try { const bytes = await qx.adapter.read(x.rel), wav = Q.playableWav(bytes); A().downloadBlob(new Blob([wav ? wav.bytes : bytes], { type: "audio/wav" }), "audio/wav", x.fileName); }
-    catch (error) { console.error(error); A().toast("השמירה נכשלה: " + (error.message || error), "error"); }
-    finally { setBusy(""); }
-  }
-  // כל ההקלטות עם אותו אדם: אותו שם בקובץ, או אותו מספר (גם עם שלוחה)
-  function personFiles(x) {
-    const keys = new Set(Q.numberKeys(x.number)), out = new Set();
-    for (const r of qx.rec.items) if (r.size && ((x.name && r.name === x.name) || Q.numberKeys(r.number).some(k => keys.has(k)))) out.add(r.rel);
-    return out;
-  }
-  async function deleteRecordings(list, question) {
-    if (!list.length || !(await A().confirmBox("מחיקה מהכרטיס", question, "מחיקה"))) return 0;
-    const gone = new Set();
-    try {
-      for (const x of list) { setBusy(`מוחק מהכרטיס… ${gone.size + 1}/${list.length}`); try { if (qx.rec.playing === x.rel) stopRecording(); await qx.adapter.remove(x.rel); gone.add(x.rel); } catch (error) { console.error(error); } }
-    } finally { setBusy(""); }
-    dropRecordings(gone); render();
-    A().toast(`נמחקו ${gone.size} קבצים מהכרטיס${gone.size < list.length ? ` · ${list.length - gone.size} לא נמחקו` : ""}`, gone.size < list.length ? "warning" : undefined);
-    return gone.size;
-  }
-  const recDate = x => x.iso.slice(0, 10).split("-").reverse().join(".");
-  const recLen = s => { s = Math.round(s || 0); const mm = String(Math.floor(s % 3600 / 60)), ss = String(s % 60).padStart(2, "0"); return s >= 3600 ? `${Math.floor(s / 3600)}:${mm.padStart(2, "0")}:${ss}` : `${mm}:${ss}`; };
-  async function recordingMenu(rel) {
-    const x = qx.rec?.items.find(r => r.rel === rel); if (!x) return;
-    const who = x.name || x.number || "לא ידוע", person = personFiles(x);
-    const row = (k, v) => `<div class="modal-list-row"><span>${k}</span><b dir="auto">${esc(v)}</b></div>`;
-    const html = `<div class="modal-list">${row("שם", x.name || "לא באנשי הקשר")}${row("מספר", x.number || "לא ידוע")}${row("תאריך", recDate(x) + " · " + hebDay(new Date(x.iso)))}${row("שעה", x.iso.slice(11, 19))}${row("משך", recLen(x.duration))}${row("סוג", x.type ? Q.CALL_TYPE_HE[x.type] : "לא ידוע — השיחה כבר לא ביומני הגיבויים")}${row("קובץ", x.rel + " · " + fmtSize(x.size))}</div>`;
-    const choice = await A().modal({ kicker: "הקלטת שיחה", title: who, html, buttons: [{ id: "play", label: qx.rec.playing === rel ? "▶ המשך / עצירה" : "▶ השמעה", primary: true }, { id: "save", label: "⬇ שמירה במחשב" }, ...(person.size > 1 ? [{ id: "person", label: `כל ההקלטות עם ${who} (${person.size})` }] : []), { id: "delete", label: "מחיקה מהכרטיס" }, { id: "cancel", label: "סגירה" }] });
-    if (choice === "play") return playRecording(rel);
-    if (choice === "save") return saveRecording(x);
-    if (choice === "person") { Object.assign(qx.rec, { contact: { label: who, files: person }, q: "", type: "all", shown: REC_PAGE }); return render(); }
-    if (choice === "delete") return deleteRecordings([x], `למחוק מהכרטיס את ההקלטה עם ${who} מ-${recDate(x)} ${x.iso.slice(11, 16)}? אי אפשר לשחזר מחיקה.`);
-  }
-  async function cleanRecordings() {
-    const r = qx.rec; if (!r) return;
-    const empty = r.items.filter(x => !x.size), shortOf = s => r.items.filter(x => x.size && x.duration < s);
-    const html = `<p>מה למחוק מהכרטיס?</p>
-      <label class="check-line"><input type="checkbox" id="qx-clean-empty" ${empty.length ? "checked" : "disabled"}> קבצים ריקים (0 בתים): <b>${empty.length}</b></label>
-      <p class="qx-note">הטלפון יוצר קובץ ריק כשההקלטה לא התחילה. בכל המקרים שנבדקו, ההקלטה האמיתית של אותה שיחה נמצאת לידו — שנייה אחריו.</p>
-      <label class="check-line"><input type="checkbox" id="qx-clean-short"> הקלטות קצרות מ-<select id="qx-clean-sec">${[2, 3, 5, 10].map(s => `<option value="${s}" ${s === 3 ? "selected" : ""}>${s} שניות (${shortOf(s).length})</option>`).join("")}</select></label>
-      <p class="qx-note">הקלטה של שנייה-שתיים היא בדרך כלל שיחה שנותקה מיד או צינתוק. לא מסומן מראש — כדאי להציץ ברשימה קודם.</p>`;
-    const choice = await A().modal({ kicker: "הקלטות שיחה", title: "ניקוי הכרטיס", html, buttons: [{ id: "go", label: "המשך", primary: true }, { id: "cancel", label: "ביטול" }] });
-    if (choice !== "go") return;
-    const list = [...(document.getElementById("qx-clean-empty")?.checked ? empty : []), ...(document.getElementById("qx-clean-short")?.checked ? shortOf(Number(document.getElementById("qx-clean-sec")?.value) || 3) : [])];
-    if (!list.length) return A().toast("לא נבחר שום דבר למחיקה", "warning");
-    const shorts = list.filter(x => x.size).length;
-    await deleteRecordings(list, `למחוק מהכרטיס ${list.length} קבצים${shorts ? ` (מתוכם ${shorts} הקלטות קצרות)` : " ריקים"}? אי אפשר לשחזר מחיקה.`);
-  }
-  /* העברה למחשב: תיקייה שהמשתמש בוחר, תת-תיקייה לכל חודש (2026-10), ושם הקובץ כמו בטלפון. קובץ נמחק מהכרטיס
-     רק אחרי שנמצא במחשב באותו גודל. בתוכנה למחשב זמן הקובץ = זמן השיחה, כדי שמיון לפי תאריך ב-Windows יעבוד. */
-  async function pickDestination() {
-    try {
-      if (window.electronAPI?.qualix) {
-        const picked = await window.electronAPI.qualix.chooseFolder("בחירת תיקייה במחשב להקלטות השיחה"); if (!picked) return null;
-        const card = String(qx.adapter.root || "").toLowerCase(), target = String(picked.root).toLowerCase();
-        if (card && (target === card || target.startsWith(card.endsWith("\\") ? card : card + "\\"))) { A().toast("זו תיקייה בתוך הכרטיס עצמו — בחרו תיקייה במחשב", "warning"); return null; }
-        return electronAdapter(picked.root, picked.label);
-      }
-      if (!window.showDirectoryPicker) { A().toast("הדפדפן הזה לא תומך בשמירה לתיקייה. השתמשו ב-Chrome או Edge, או בתוכנה למחשב.", "error"); return null; }
-      const handle = await window.showDirectoryPicker({ mode: "readwrite", id: "ankal-recordings" });
-      if (qx.adapter.handle && (await qx.adapter.handle.resolve(handle)) !== null) { A().toast("זו תיקייה בתוך הכרטיס עצמו — בחרו תיקייה במחשב", "warning"); return null; }
-      return fsaAdapter(handle, handle.name);
-    } catch (error) { if (error?.name !== "AbortError") { console.error(error); A().toast("לא הצלחנו לפתוח את התיקייה", "error"); } return null; }
-  }
-  async function exportRecordings() {
-    const r = qx.rec; if (!r) return;
-    const real = r.items.filter(x => x.size), shown = filteredRecordings();
-    const before = days => { const cut = localIso(new Date(Date.now() - days * 86400000)); return real.filter(x => x.iso.slice(0, 10) < cut); };
-    const scopes = [["all", "כל ההקלטות", real], ["7", "ישנות משבוע", before(7)], ["30", "ישנות מחודש", before(30)], ["90", "ישנות משלושה חודשים", before(90)], ...(shown.length !== real.length ? [["shown", "רק מה שמוצג עכשיו ברשימה", shown]] : [])];
-    const html = `<label class="modal-field">אילו הקלטות<select id="qx-exp-scope">${scopes.map(([k, label, list]) => `<option value="${k}">${label} — ${list.length} (${fmtSize(list.reduce((n, x) => n + x.size, 0)) || "0"})</option>`).join("")}</select></label>
-      <label class="modal-field">בפורמט<select id="qx-exp-format"><option value="orig">כמו בטלפון — הקובץ הקטן</option><option value="pcm">WAV רגיל — נפתח בכל נגן, גדול פי 4</option></select></label>
-      <label class="check-line"><input type="checkbox" id="qx-exp-remove" checked> למחוק מהכרטיס אחרי שההעתקה נבדקה (מפנה מקום)</label>
-      <p class="qx-note">בשלב הבא בוחרים תיקייה במחשב. כל חודש נכנס לתת-תיקייה משלו (למשל 2026-10), ושם הקובץ נשאר כמו בטלפון. קובץ נמחק מהכרטיס רק אחרי שנמצא במחשב באותו גודל.</p>`;
-    const choice = await A().modal({ kicker: "הקלטות שיחה", title: "העברה למחשב", html, buttons: [{ id: "go", label: "בחירת תיקייה והעברה", primary: true }, { id: "cancel", label: "ביטול" }] });
-    if (choice !== "go") return;
-    const scope = document.getElementById("qx-exp-scope")?.value || "all", plain = document.getElementById("qx-exp-format")?.value === "pcm", removeAfter = !!document.getElementById("qx-exp-remove")?.checked;
-    const todo = (scopes.find(s => s[0] === scope) || scopes[0])[2].slice();
-    if (!todo.length) return A().toast("אין הקלטות בטווח שנבחר", "warning");
-    const dest = await pickDestination(); if (!dest) return;
-    const byMonth = new Map(); for (const x of todo) { const m = x.iso.slice(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m).push(x); }
-    let copied = 0, failed = 0, bytesOut = 0, k = 0; const gone = new Set();
-    try {
-      for (const [month, list] of byMonth) {
-        const written = new Map();
-        for (const x of list) {
-          setBusy(`מעתיק למחשב… ${++k}/${todo.length}`);
-          try {
-            const bytes = await qx.adapter.read(x.rel), out = plain ? ((Q.playableWav(bytes) || {}).bytes || bytes) : bytes, rel = join(month, x.fileName);
-            await dest.write(rel, out); written.set(x.fileName, { x, size: out.length });
-            if (dest.utimes) { try { await dest.utimes(rel, new Date(x.iso).getTime()); } catch (_) { } }
-          } catch (error) { console.error(error); failed++; }
-        }
-        // בדיקה: כל קובץ נמצא במחשב באותו גודל — רק אז מותר למחוק אותו מהכרטיס
-        const there = new Map((await dest.list(month)).filter(e => e.kind === "file").map(e => [e.name, e.size]));
-        for (const [name, { x, size }] of written) {
-          if (there.get(name) !== size) { failed++; continue; }
-          copied++; bytesOut += size;
-          if (removeAfter) { setBusy(`מוחק מהכרטיס את מה שהועתק… ${gone.size + 1}`); try { if (qx.rec.playing === x.rel) stopRecording(); await qx.adapter.remove(x.rel); gone.add(x.rel); } catch (error) { console.error(error); } }
-        }
-      }
-    } catch (error) { console.error(error); A().toast("ההעברה נעצרה: " + (error.message || error), "error"); }
-    finally { setBusy(""); }
-    if (gone.size) dropRecordings(gone);
-    render();
-    await A().modal({ kicker: "הקלטות שיחה", title: failed ? "ההעברה הסתיימה — חלק לא הועבר" : "ההעברה הסתיימה", html: `<p>הועתקו <b>${copied}</b> הקלטות (${fmtSize(bytesOut) || "0"}) לתיקייה <b>${esc(dest.label)}</b>, בתת-תיקייה לכל חודש.</p>${removeAfter ? `<p>נמחקו מהכרטיס: <b>${gone.size}</b>.</p>` : `<p class="qx-note">בכרטיס לא נמחק כלום.</p>`}${failed ? `<div class="qx-warn">${failed} קבצים לא הועתקו או לא נמצאו במחשב באותו גודל — הם נשארו בכרטיס.</div>` : ""}`, buttons: [{ id: "ok", label: "סגירה", primary: true }] });
-  }
-  const REC_TYPES = [["all", "הכל"], ["incoming", "↙ נכנסות"], ["outgoing", "↗ יוצאות"], ["unknown", "כיוון לא ידוע"]];
-  const recTypeOk = (x, type) => type === "all" || (type === "unknown" ? !x.type : x.type === type);
-  function recordingsBase() {
-    const r = qx.rec, q = r.q.trim().toLowerCase(), digits = q.replace(/\D/g, "");
-    return r.items.filter(x => x.size && (!r.contact || r.contact.files.has(x.rel)) && (!q || [x.name, x.contactName].some(v => String(v || "").toLowerCase().includes(q)) || (digits.length >= 3 && Q.localNumber(x.number).includes(digits))));
-  }
-  function filteredRecordings() { return recordingsBase().filter(x => recTypeOk(x, qx.rec.type)); }
-  function recChipsHtml() {
-    const base = recordingsBase();
-    return REC_TYPES.map(([k, label]) => `<button class="qx-filter ${qx.rec.type === k ? "active" : ""} ${k}" data-qx="rec-filter" data-filter="${k}">${label} <span class="qx-n">${base.filter(x => recTypeOk(x, k)).length}</span></button>`).join("");
-  }
-  function recordingRowsHtml() {
-    const rows = filteredRecordings(), shown = rows.slice(0, qx.rec.shown);
-    const todayIso = localIso(new Date()), yIso = localIso(new Date(Date.now() - 86400000));
-    const dayLabel = iso => { const dt = new Date(iso + "T12:00:00"); return [iso === todayIso ? "היום" : iso === yIso ? "אתמול" : dt.toLocaleDateString("he-IL", { weekday: "long" }), iso.split("-").reverse().join("."), hebDay(dt)].filter(Boolean).join(" · "); };
-    let html = "", last = "";
-    for (const x of shown) {
-      const day = x.iso.slice(0, 10), playing = qx.rec.playing === x.rel;
-      if (day !== last) { html += `<div class="qx-call-day">${esc(dayLabel(day))}</div>`; last = day; }
-      const sub = [x.name && x.number ? `<span dir="ltr">${esc(x.number)}</span>` : "", x.type ? esc(Q.CALL_TYPE_HE[x.type] || x.type) : "", recLen(x.duration)].filter(Boolean).join(" · ");
-      html += `<div class="qx-call qx-rec ${x.type || "unknown"} ${playing ? "playing" : ""}" data-qx="rec-play" data-rec="${esc(x.rel)}" role="button" tabindex="0"><i class="qx-call-ico">${playing ? "▶" : CALL_ICON[x.type] || "🎙"}</i><div class="qx-call-main"><b dir="auto">${esc(x.name || x.number || "לא ידוע")}</b><small>${sub}</small></div><span class="qx-call-time">${x.iso.slice(11, 16)}</span><button class="icon-btn" data-qx="rec-menu" data-rec="${esc(x.rel)}" aria-label="אפשרויות">⋮</button></div>`;
-    }
-    if (rows.length > shown.length) html += `<div class="qx-rec-more"><button class="btn btn-quiet btn-sm" data-qx="rec-more">הצג עוד ${Math.min(REC_PAGE, rows.length - shown.length)} (נשארו ${rows.length - shown.length})</button></div>`;
-    return html || `<p class="qx-note" style="padding:20px;text-align:center">${qx.rec.items.some(x => x.size) ? "אין הקלטות שמתאימות לסינון" : "אין הקלטות שיחה בכרטיס"}</p>`;
-  }
-  function recordingsView() {
-    const r = qx.rec, real = r ? r.items.filter(x => x.size) : [], empty = r ? r.items.length - real.length : 0;
-    const secs = real.reduce((n, x) => n + (x.duration || 0), 0), hours = secs >= 3600 ? `${(secs / 3600).toFixed(1)} שעות` : secs >= 60 ? `${Math.round(secs / 60)} דקות` : `${Math.round(secs)} שניות`;
-    const sub = !r ? "קורא את ההקלטות מהכרטיס…" : `${r.dirs.join(", ") || "Audio"} בכרטיס · ${real.length} הקלטות · ${hours} · ${fmtSize(real.reduce((n, x) => n + x.size, 0)) || "0"}${empty ? ` · ${empty} קבצים ריקים` : ""}`;
-    const head = `<div class="qx-head"><div><h2>🎙 הקלטות שיחה</h2><div class="qx-sub">${esc(sub)}</div></div><div class="spacer"></div>${r ? `<button class="btn btn-quiet btn-sm" data-qx="rec-clean">🧹 ניקוי${empty ? ` (${empty})` : ""}</button><button class="btn btn-quiet btn-sm" data-qx="rec-export">⇩ העברה למחשב</button>` : ""}<button class="btn btn-quiet btn-sm" data-qx="rec-reload">↻ קריאה מחדש</button><button class="btn btn-quiet btn-sm" data-qx="rec-to-backup">← גיבוי קיוליקס</button></div>`;
-    if (!r) return head;
-    const info = `<div class="qx-help">הטלפון מקליט כל שיחה לקובץ בתיקיית Audio שבכרטיס. בשם הקובץ יש רק שם או רק מספר — את החסר אנק״ל משלים מאנשי הקשר, ואת הכיוון (נכנסת/יוצאת) מיומני השיחות שבגיבויים. כל יומן זוכר רק 100 מספרים, ולכן בשיחות ישנות הכיוון לפעמים לא ידוע. בכרטיס לא משתנה כלום עד שמוחקים או מעבירים.</div>`;
-    const playing = r.playing ? r.items.find(x => x.rel === r.playing) : null;
-    const player = `<div class="qx-rec-player ${playing ? "" : "hidden"}"><div class="qx-rec-now">${playing ? `▶ <b dir="auto">${esc(playing.name || playing.number || "לא ידוע")}</b> <small>${esc(recDate(playing) + " " + playing.iso.slice(11, 16))}</small>` : ""}</div><div id="qx-rec-slot" class="qx-rec-slot"></div></div>`;
-    const contactChip = r.contact ? `<span class="qx-rec-filter">רק עם <b>${esc(r.contact.label)}</b> (${r.contact.files.size})<button class="icon-btn" data-qx="rec-contact-clear" aria-label="ביטול הסינון">✕</button></span>` : "";
-    const toolbar = `<div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="qx-rec-search" type="search" value="${esc(r.q)}" placeholder="חיפוש לפי שם או מספר…"></label>${contactChip}</div>`;
-    return head + info + toolbar + player + `<div class="qx-phone-panel"><div class="qx-filters" id="qx-rec-chips">${recChipsHtml()}</div><div class="qx-calls" id="qx-rec-list">${recordingRowsHtml()}</div></div>`;
-  }
+  /* ---------- הקלטות שיחה ----------
+     העמוד עצמו (ארכיון, תצוגות, נגן, AI) ב-recordings.js. כאן רק הגשר: הכרטיס שחובר עובר לשם, ו-🎙 בכרטיסי
+     אנשי הקשר וביומן השיחות מגיע משם. */
+  const REC = () => window.ANKAL_RECORDINGS;
+  function cardProvider() { return qx.adapter && qx.layout?.mode === "card" ? { adapter: qx.adapter, label: qx.adapter.label, backups: () => qx.backups, openContacts: () => qx.open ? qx.open.data.contacts : null } : null; }
+  const recordingOfCall = (number, time) => REC()?.ofCall(number, time) || null;
+  const recordingsOf = c => REC()?.forContact(c) || [];
+  // אחרי סנכרון ההקלטות: לצייר מחדש את 🎙 כשרואים עכשיו אנשי קשר או יומן
+  function recordingsChanged() { if (qx.open && qx.view === "editor" && ["contacts", "calls"].includes(qx.tab) && document.getElementById("app-shell")?.dataset.activePage === "qualix") render(); }
 
   /* ---------- הגיבויים בשרת ----------
      כל גיבוי שבכרטיס מועלה לדרייב של המשתמש דרך השרת, כך שהוא שמור גם אם הכרטיס נפגע או אובד. ההעלאה
@@ -1071,15 +826,12 @@
     const root = document.getElementById("qualix-root"); if (!root) return;
     const navCount = document.getElementById("nav-qualix-count"); if (navCount) navCount.textContent = qx.backups.length || "";
     const memoCount = document.getElementById("nav-memos-count"); if (memoCount) memoCount.textContent = qx.direct ? qx.direct.memos.length + (qx.direct.dirty ? " ●" : "") : "";
-    renderRecCount();
-    const editing = qx.open && qx.view === "editor", direct = qx.view === "memos-direct" && !!qx.direct, recordings = qx.view === "recordings" && !!qx.adapter;
+    const editing = qx.open && qx.view === "editor", direct = qx.view === "memos-direct" && !!qx.direct;
     // שורת המקור (כרטיס, בחירת תיקייה) שייכת לעמוד הגרסאות בלבד; בתוך קטגוריה היא רק רעש
-    root.innerHTML = (editing || direct || recordings ? "" : sourceBar()) + (recordings ? recordingsView() : direct ? directView() : editing ? openView() : (qx.adapter ? versionsView() : introView())) + `<div id="qx-busy" class="qx-warn ${qx.busy ? "" : "hidden"}" style="position:fixed;bottom:18px;right:50%;transform:translateX(50%);z-index:60">${esc(qx.busy)}</div>`;
-    const slot = document.getElementById("qx-rec-slot"); if (slot && recAudio) slot.appendChild(recAudio); // באותו ציור, ולכן ההשמעה ממשיכה
-    if (!editing && !direct && !recordings && document.getElementById("app-shell")?.dataset.activePage === "qualix") { const kicker = document.getElementById("page-kicker"), title = document.getElementById("page-title"); if (kicker && title) { kicker.textContent = "הטלפון הכשר"; title.textContent = "גיבוי קיוליקס"; } }
+    root.innerHTML = (editing || direct ? "" : sourceBar()) + (direct ? directView() : editing ? openView() : (qx.adapter ? versionsView() : introView())) + `<div id="qx-busy" class="qx-warn ${qx.busy ? "" : "hidden"}" style="position:fixed;bottom:18px;right:50%;transform:translateX(50%);z-index:60">${esc(qx.busy)}</div>`;
+    if (!editing && !direct && document.getElementById("app-shell")?.dataset.activePage === "qualix") { const kicker = document.getElementById("page-kicker"), title = document.getElementById("page-title"); if (kicker && title) { kicker.textContent = "הטלפון הכשר"; title.textContent = "גיבוי קיוליקס"; } }
     renderSubnav(); qx.rendered = true; memoCounter();
   }
-  function renderRecCount() { const el = document.getElementById("nav-recordings-count"); if (el) el.textContent = qx.rec ? qx.rec.items.filter(x => x.size).length || "" : ""; }
   const DIRTY_KEY = { contacts: "phonebook", calls: "callog", memos: "memo", calendar: "schedule", playlists: "playlist", dictionary: "udb", settings: "settings" };
   function tabCounts(d) { return { contacts: d.contacts.length, calls: d.callog.entries.reduce((n, e) => n + e.calls.length, 0), memos: d.memos.length, calendar: d.events.length, playlists: d.playlists.length, dictionary: d.dictionaryWords.length, settings: d.settings ? 1 : 0 }; }
   /* הקטגוריות של הגרסה הפתוחה יושבות בתפריט הצד, מתחת לכותרת "גיבוי קיוליקס"; בלי גרסה פתוחה הן מוסתרות. */
@@ -1088,7 +840,7 @@
     const nav = document.getElementById("qualix-subnav"); if (!nav) return;
     const page = document.getElementById("app-shell")?.dataset.activePage, onPage = page === "qualix";
     // הקטגוריות מוצגות רק באזור הגיבוי (גיבוי קיוליקס / ניהול פתקים) — בשאר העמודים הן רק מעמיסות על התפריט
-    if (!qx.open || !["qualix", "memos", "recordings"].includes(page)) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
+    if (!qx.open || (page !== "qualix" && page !== "memos")) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
     const counts = tabCounts(qx.open.data), editing = onPage && qx.view === "editor";
     nav.innerHTML = TABS.map(([k, label, icon]) => `<button class="nav-sub-item ${editing && qx.tab === k ? "active" : ""} ${qx.open.dirty.has(DIRTY_KEY[k]) ? "dirty" : ""}" data-qx="tab" data-tab="${k}"><span class="nav-icon">${icon}</span><span class="nav-label">${label}</span><span class="nav-count">${counts[k]}</span></button>`).join("");
     nav.classList.remove("hidden");
@@ -1137,14 +889,14 @@
     const name = c.name || "ללא שם";
     const phones = Q.SLOT_FIELDS.filter(f => c[f]).map(f => `<div class="contact-line ${f}"><b>${FIELD_HE[f]}</b><span dir="ltr">${esc(c[f])}</span></div>`).join("");
     const ring = c.ringtone === Q.RINGTONE_FILE ? "♪ " + ((c.ringtonePath || "").split("\\").pop() || "קובץ מהכרטיס") : c.ringtone ? "♪ צלצול מובנה " + c.ringtone : "";
-    const recs = qx.rec ? qx.rec.forContact(c).length : 0; // הקלטות שיחה בכרטיס עם איש הקשר הזה (לפי שם או מספר)
+    const recs = recordingsOf(c).length; // הקלטות שיחה בארכיון עם איש הקשר הזה (לפי שם או מספר)
     return `<article class="contact-card ${selectable && qx.selected.has(i) ? "selected" : ""}" style="--tint:${A().avatarHue(name)}" data-qx="edit-contact" data-i="${i}" role="button" tabindex="0" ${selectable ? `draggable="true" data-drag-i="${i}"` : ""}>`
       + (selectable ? `<input type="checkbox" class="contact-select" data-qx-select="${i}" ${qx.selected.has(i) ? "checked" : ""} aria-label="סימון ${esc(name)}">` : "")
       + `<div class="contact-head"><span class="contact-avatar">${esc(A().initialOf(name))}</span><h3>${esc(name)}</h3></div>` + phones
       + (c.email ? `<div class="contact-line email-line"><b>מייל</b><span dir="auto">${esc(c.email)}</span></div>` : "")
       + (c.note ? `<div class="contact-line note-line"><b>הערה</b><span class="contact-note">${esc(c.note)}</span></div>` : "")
       + (c.group || ring ? `<div class="contact-line note-line"><b>קיוליקס</b><span class="contact-note">${esc([c.group, ring].filter(Boolean).join(" · "))}</span></div>` : "")
-      + (recs ? `<button type="button" class="qx-rec-link" data-qx="contact-recs" data-i="${i}" title="ההקלטות עם ${esc(name)} בכרטיס">🎙 ${recs === 1 ? "הקלטת שיחה אחת" : `${recs} הקלטות שיחה`}</button>` : "")
+      + (recs ? `<button type="button" class="qx-rec-link" data-qx="contact-recs" data-i="${i}" title="ההקלטות עם ${esc(name)}">🎙 ${recs === 1 ? "הקלטת שיחה אחת" : `${recs} הקלטות שיחה`}</button>` : "")
       + `<div class="card-actions"><button class="icon-btn" aria-label="עריכה">✎</button></div></article>`;
   }
   function contactsListHtml() {
@@ -1240,7 +992,7 @@
   const dur = s => s ? Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") : "";
   const simLabel = e => e.extra === 2 ? "סים 2" : "סים 1";
   function callGroups(rows) { const groups = new Map(); for (const r of rows) { const name = contactName(r.e.number); const key = name || r.e.number; if (!groups.has(key)) groups.set(key, { key, name, number: r.e.number, calls: [] }); groups.get(key).calls.push(r); } return [...groups.values()]; }
-  const REC_MARK = ` <span class="qx-rec-mark" title="יש הקלטה של השיחה בכרטיס">🎙</span>`;
+  const REC_MARK = ` <span class="qx-rec-mark" title="יש הקלטה של השיחה">🎙</span>`;
   function callsTab() {
     const rows = flatCalls(); const filter = qx.callFilter || "all";
     const counts = { all: rows.length }; for (const r of rows) counts[r.e.type] = (counts[r.e.type] || 0) + 1;
@@ -1272,8 +1024,8 @@
     const e = qx.open.data.callog.entries[ei], call = e && e.calls[ci]; if (!call) return;
     const iso = Q.phoneTimeToIso(call.time); const name = contactName(e.number), rec = recordingOfCall(e.number, call.time);
     const row = (k, v) => `<div class="modal-list-row"><span>${k}</span><b dir="auto">${esc(v)}</b></div>`;
-    const choice = await A().modal({ kicker: "פרטי שיחה", title: name || e.number, html: `<div class="modal-list">${row("שם", name || "לא באנשי הקשר")}${row("מספר", e.number)}${row("תאריך", iso.slice(0, 10).split("-").reverse().join("."))}${row("שעה", iso.slice(11, 19))}${row("משך", call.duration ? dur(call.duration) + " (" + call.duration + " שניות)" : "לא נענתה")}${row("סוג", Q.CALL_TYPE_HE[e.type] || e.type)}${row("סים", simLabel(e))}${rec ? row("הקלטה", rec.rel) : ""}</div>`, buttons: [...(rec ? [{ id: "recording", label: "🎙 השמעת ההקלטה", primary: true }] : []), { id: "delete", label: "מחיקת השיחה" }, { id: "ok", label: "סגירה", primary: !rec }] });
-    if (choice === "recording") return openRecordings({ play: rec.rel });
+    const choice = await A().modal({ kicker: "פרטי שיחה", title: name || e.number, html: `<div class="modal-list">${row("שם", name || "לא באנשי הקשר")}${row("מספר", e.number)}${row("תאריך", iso.slice(0, 10).split("-").reverse().join("."))}${row("שעה", iso.slice(11, 19))}${row("משך", call.duration ? dur(call.duration) + " (" + call.duration + " שניות)" : "לא נענתה")}${row("סוג", Q.CALL_TYPE_HE[e.type] || e.type)}${row("סים", simLabel(e))}${rec ? row("הקלטה", rec.fileName) : ""}</div>`, buttons: [...(rec ? [{ id: "recording", label: "🎙 השמעת ההקלטה", primary: true }] : []), { id: "delete", label: "מחיקת השיחה" }, { id: "ok", label: "סגירה", primary: !rec }] });
+    if (choice === "recording") return REC().open({ play: rec.id });
     if (choice === "delete") deleteCall(ei, ci);
   }
   async function deleteGroup(key) {
@@ -1400,16 +1152,7 @@
         case "to-versions": qx.keepView = !!qx.open; return A().setPage("qualix");
         case "direct-reload": qx.direct = null; return openDirectMemos();
         case "direct-save": return saveDirectMemos();
-        case "rec-play": return playRecording(el.dataset.rec);
-        case "rec-menu": return recordingMenu(el.dataset.rec);
-        case "rec-filter": qx.rec.type = el.dataset.filter; qx.rec.shown = REC_PAGE; return render();
-        case "rec-more": qx.rec.shown += REC_PAGE; return render();
-        case "rec-contact-clear": qx.rec.contact = null; qx.rec.shown = REC_PAGE; return render();
-        case "rec-reload": stopRecording(); await loadRecordings(false); return render();
-        case "rec-clean": return cleanRecordings();
-        case "rec-export": return exportRecordings();
-        case "rec-to-backup": qx.view = "versions"; return A().setPage("qualix");
-        case "contact-recs": { const c = qx.open?.data.contacts[i]; if (!c || !qx.rec) return; return openRecordings({ contact: { label: c.name || "איש קשר", files: new Set(qx.rec.forContact(c).map(x => x.rel)) } }); }
+        case "contact-recs": { const c = qx.open?.data.contacts[i]; if (!c) return; return REC()?.open({ ids: new Set(recordingsOf(c).map(r => r.id)), label: c.name || "איש קשר" }); }
         case "cloud-login": await A().login(); return syncCloud(true);
         case "cloud-refresh": return syncCloud(true);
         case "cloud-upload-all": return uploadPending(true);
@@ -1500,18 +1243,15 @@
   document.addEventListener("input", event => {
     if (event.target.id === "qx-search") { qx.search = event.target.value; clearTimeout(qx.searchTimer); qx.searchTimer = setTimeout(() => { const list = document.getElementById("qx-contacts-list"); if (list) list.innerHTML = contactsBodyHtml(); }, 160); }
     if (event.target.id === "qx-settings-find") settingsFind(event.target.value);
-    if (event.target.id === "qx-rec-search" && qx.rec) { qx.rec.q = event.target.value; qx.rec.shown = REC_PAGE; clearTimeout(qx.searchTimer); qx.searchTimer = setTimeout(() => { const list = document.getElementById("qx-rec-list"), chips = document.getElementById("qx-rec-chips"); if (list) list.innerHTML = recordingRowsHtml(); if (chips) chips.innerHTML = recChipsHtml(); }, 160); }
     if (event.target.id === "qx-memo-text") { const st = memoStore(); const m = st.memos[st.idx]; if (m) { m.text = event.target.value; m._dirty = true; st.mark(); memoCounter(); markUnsaved(); } }  });
   document.addEventListener("change", event => {
     if (event.target.id === "qx-memo-limit") { qx.memoLimit = Number(event.target.value) || 3000; localStorage.setItem(LIMIT_KEY, String(qx.memoLimit)); memoCounter(); }  });
-  document.addEventListener("keydown", event => {
-    if (event.key === "Enter" && event.target.id === "qx-word") { event.preventDefault(); addWord(); }
-    // שורת הקלטה היא "כפתור" לכל דבר: Enter או רווח משמיעים / עוצרים
-    if ((event.key === "Enter" || event.key === " ") && event.target.matches?.('[data-qx="rec-play"]')) { event.preventDefault(); playRecording(event.target.dataset.rec); }
-  });
+  document.addEventListener("keydown", event => { if (event.key === "Enter" && event.target.id === "qx-word") { event.preventDefault(); addWord(); } });
   window.addEventListener("beforeunload", event => { if (qx.open?.dirty.size || qx.direct?.dirty) { event.preventDefault(); event.returnValue = ""; } });
 
   // connect מאפשר לבדיקות דפדפן להזרים מתאם בזיכרון במקום כרטיס אמיתי
   // לחיצה על "גיבוי קיוליקס" בתפריט מציגה את הגרסאות (כמו "הרשימות שלי"); מעבר מקטגוריה בתפריט שומר על העורך.
-  window.ANKAL_QUALIX_UI = { show: () => { if (!qx.keepView) qx.view = "versions"; qx.keepView = false; render(); if (!qx.adapter && window.electronAPI?.qualix) detectCards(true); if (qx.adapter && cloudUser() && !qx.cloud.loaded && !qx.cloud.uploading) syncCloud(); }, showMemos, showRecordings, pageChanged: renderSubnav, state: qx, connect, render, importList };
+  window.ANKAL_QUALIX_UI = { show: () => { if (!qx.keepView) qx.view = "versions"; qx.keepView = false; render(); if (!qx.adapter && window.electronAPI?.qualix) detectCards(true); if (qx.adapter && cloudUser() && !qx.cloud.loaded && !qx.cloud.uploading) syncCloud(); }, showMemos, pageChanged: renderSubnav, state: qx, connect, render, importList,
+    // לעמוד הקלטות השיחה: חיבור הכרטיס, גישה לתיקיות במחשב, וציור מחדש של 🎙 אחרי סנכרון
+    detectCards, chooseFolder, electronAdapter, fsaAdapter, recordingsChanged };
 })();

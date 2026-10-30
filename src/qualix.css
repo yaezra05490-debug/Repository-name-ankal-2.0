@@ -219,18 +219,7 @@ html[data-theme="dark"] .qx-memo-note-foot,:root:not([data-theme]) .qx-memo-note
 .nav-sub-sep{font-size:10px;color:#8fa0b8;padding:6px 10px 2px;font-weight:700;direction:ltr;text-align:right}
 html[data-theme="light"] .nav-sub-sep{color:#5f6d84}
 .sidebar.collapsed .nav-sub-sep{display:none}
-/* הקלטות שיחה: גוון משלו לעמוד, נגן מעל הרשימה, השורה שמתנגנת מודגשת */
-.app-shell[data-active-page="recordings"],.nav-item[data-page="recordings"]{--page:14}
-.qx-rec-player{display:flex;align-items:center;gap:12px;flex-wrap:wrap;max-width:620px;width:100%;margin:0 auto;padding:10px 14px;background:var(--card);border:1px solid hsl(var(--page) 60% 55% / .45);border-radius:16px;box-shadow:0 6px 18px rgba(2,8,23,.08)}
-.qx-rec-now{font-size:13px;display:flex;align-items:baseline;gap:6px;min-width:0}
-.qx-rec-now small{color:var(--muted);font-size:11px}
-.qx-rec-slot{flex:1;min-width:240px}.qx-rec-slot audio{width:100%;height:36px;display:block}
-.qx-call.unknown .qx-call-ico{font-size:14px}
-.qx-call.playing{background:hsl(var(--page) 60% 55% / .13)}
-.qx-call.playing .qx-call-ico{color:#fff;background:hsl(var(--page) 60% 50%)}
-.qx-rec-more{padding:12px;text-align:center}
+/* הקלטות שיחה בגיבוי: 🎙 ביומן ובכרטיס איש קשר (העמוד עצמו — recordings.css) */
 .qx-rec-mark{font-size:12px;margin-inline-start:4px;font-weight:400}
-.qx-rec-filter{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 12px;border-radius:999px;background:hsl(var(--page) 60% 55% / .12);font-size:13px}
-.qx-rec-filter .icon-btn{width:24px;height:24px;font-size:11px}
 .qx-rec-link{display:inline-flex;align-items:center;gap:5px;margin-top:6px;border:0;border-radius:999px;padding:4px 11px;background:hsl(14 70% 55% / .13);color:inherit;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .qx-rec-link:hover{background:hsl(14 70% 55% / .24)}
