@@ -29,6 +29,7 @@ button.rx-src{cursor:pointer}button.rx-src:hover{background:var(--paper)}
 /* כיוון השיחה — לשוניות גלויות מעל השיחות, כמו ביומן השיחות של הטלפון */
 .rx-dirs{display:flex;gap:4px;padding:6px;margin-bottom:8px;background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow-x:auto;max-width:1000px}
 .rx-dirs .qx-filter{cursor:pointer;font-family:inherit}
+.rx-hint{max-width:1000px;margin:-2px 0 8px;padding:8px 12px;border-radius:10px;background:hsl(var(--page) 60% 55% / .07);border:1px solid hsl(var(--page) 60% 55% / .2);font-size:12.5px;line-height:1.6;color:var(--text)}
 .rx-dirs .qx-filter.incoming.active{color:#087455}.rx-dirs .qx-filter.outgoing.active{color:#0b5fa8}
 .rx-seg button.on{background:hsl(var(--page) 60% 55% / .16);color:var(--text)}
 .rx-in,.rx-range input{height:32px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--text);font:inherit;font-size:13px}

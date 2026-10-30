@@ -139,6 +139,8 @@
         if (bk.categories.includes("phonebook") && books < 6 && (!books || missing.size)) { try { const pb = Q.parsePhonebook(await p.adapter.read(join(bk.rel, "phonebook.ib"))); contacts.push(...pb.contacts); for (const c of pb.contacts) missing.delete(c.name); books++; } catch (_) { } }
       }
     }
+    // עד איזה רגע היומנים שבכרטיס מכסים — לפי השיחה האחרונה בהם (גרסה שנשמרה מאנק״ל מעתיקה יומן ישן, ולכן לא לפי תאריך התיקייה)
+    if (p) p.logEnd = calls.length ? Q.phoneTimeToIso(Math.max(...calls.map(c => c.time))) : "";
     if (R.settings.useLists) { try { for (const l of A().getLists()) for (const c of l.contacts) contacts.push({ name: c.name, mobile: c.mobile, home: c.home, work: c.work, fax: c.fax }); } catch (_) { } }
     return { contacts, calls };
   }
@@ -236,9 +238,18 @@
       <button class="btn btn-quiet btn-sm" data-rx="more">${R.moreOpen ? "− פחות מסננים" : "＋ עוד מסננים"}${more ? ` <span class="rx-dot">${more}</span>` : ""}</button>${C.isFiltered(f) ? `<button class="btn btn-quiet btn-sm" data-rx="clear">ניקוי הסינון</button>` : ""}</div>
       ${R.moreOpen ? `<div class="rx-fbar"><select id="rx-tod" class="rx-in">${opts(C.TOD, f.tod)}</select><select id="rx-kind" class="rx-in">${opts(C.KIND, f.kind)}</select><select id="rx-tag" class="rx-in"><option value="">כל התגיות</option>${R.tagsAll.map(t => `<option ${t === f.tag ? "selected" : ""}>${esc(t)}</option>`).join("")}</select><span class="rx-wd">ימים: ${wdS.map((d, i) => `<button class="${f.wd.includes(i) ? "on" : ""}" data-rx="wd" data-i="${i}" title="יום ${C.HE_WD[i]}">${d}</button>`).join("")}</span></div>` : ""}
       ${f.contacts.length || f.ids ? `<div class="rx-chips">${f.contacts.map(c => `<span class="rx-chip">${esc(c)}<button data-rx="rm-contact" data-c="${esc(c)}" aria-label="הסרה">✕</button></span>`).join("")}${f.ids ? `<span class="rx-chip">רק עם ${esc(f.idsLabel)} (${f.ids.size})<button data-rx="rm-ids" aria-label="הסרה">✕</button></span>` : ""}</div>` : ""}
-      <div class="rx-dirs" id="rx-dirs" role="tablist" aria-label="כיוון השיחה">${dirTabsHtml()}</div>
+      <div class="rx-dirs" id="rx-dirs" role="tablist" aria-label="כיוון השיחה">${dirTabsHtml()}</div>${dirHintHtml()}
       <div class="rx-res" id="rx-res"></div>`;
     renderResbar();
+  }
+  /* למה "כיוון לא ידוע": הטלפון מתחיל להקליט רק כשהשיחה מתחברת (נבדק על 100 הקלטות — אין צלצול בהקלטה), ובכרטיס
+     אין יומן שיחות חי — רק בתוך גיבוי של הטלפון. לכן הכיוון מגיע מגיבויים, וכל הקלטה מאחרי הגיבוי האחרון מחכה לגיבוי חדש. */
+  function dirHintHtml() {
+    const unknown = R.recs.filter(r => !r.type && r.loc.length); if (!unknown.length || !cardAdapter()) return "";
+    const last = R.card.logEnd || "", after = last ? unknown.filter(r => r.iso > last).length : unknown.length;
+    const when = last ? `${last.slice(8, 10)}.${last.slice(5, 7)}.${last.slice(0, 4)} בשעה ${last.slice(11, 16)}` : "";
+    const recsN = n => n === 1 ? "הקלטה אחת" : `${nf(n)} הקלטות`;
+    return `<div class="rx-hint" id="rx-hint"><b>${recsN(unknown.length)} בלי כיוון.</b> הטלפון לא שומר בהקלטה אם השיחה נכנסת או יוצאת; אנק״ל לוקח את זה מיומן השיחות שבתוך גיבוי של הטלפון. ${last ? `היומנים שבכרטיס מגיעים עד ${when}${after ? ` — ${recsN(after)} אחרי זה.` : "."}` : "אין בכרטיס גיבוי עם יומן שיחות."} ${after ? `<b>בטלפון: גיבוי ושחזור ← גיבוי</b> (עם יומן השיחות), חברו את הכרטיס — והכיוון יושלם לשיחות שעדיין ביומן של הטלפון (הוא זוכר כ-100 מספרים, בערך יומיים-שלושה). גיבוי כל יומיים שומר על הכול; מה שנלמד נשמר בארכיון לתמיד.` : ""}</div>`;
   }
   /* הכל / נכנסות / יוצאות / כיוון לא ידוע — עם מונה לפי כל שאר המסננים, כמו הלשוניות ביומן של הטלפון */
   function dirTabsHtml() {

@@ -391,6 +391,7 @@ server.listen(PORT, async () => {
   await step("מונה בתפריט הצד", `document.getElementById("nav-recordings-count").textContent`, "3");
   await step("הכרטיס מחובר, קובץ ריק אחד", `document.querySelector("#rx-top .rx-src.on")?.textContent || ""`, v => /3 הקלטות/.test(v) && /1 ריקים/.test(v));
   await step("הכיוון מהיומן: נכנסת", `document.querySelectorAll('#rx-list .rx-dirx.incoming').length`, 1);
+  await step("הסבר להקלטות בלי כיוון: עד מתי היומן, וכמה אחרי", `document.getElementById("rx-hint")?.textContent || "אין"`, v => /^2 הקלטות בלי כיוון\./.test(v) && /מגיעים עד 25\.09\.2026 בשעה 11:00 — הקלטה אחת אחרי זה/.test(v) && /גיבוי ושחזור ← גיבוי/.test(v));
   await step("ימים בכותרות: 2 (25.9.2026 ו-1.1.2025)", `document.querySelectorAll('#rx-list .rx-day').length`, 2);
   await step("השמעה מהשורה", `(() => { [...document.querySelectorAll('#rx-list .rx-row')].find(r => r.querySelector(".rx-dirx.incoming")).querySelector('[data-rx="play"]').click(); return "ok"; })()`);
   await wait(900);
