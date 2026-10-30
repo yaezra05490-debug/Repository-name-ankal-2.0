@@ -231,6 +231,105 @@ test("הרכבת גיבוי שלם וקריאתו חזרה", async () => {
   assert.equal(Q.parseManifest(map.get("memo.ib")).entries[0].dst, "E:\\ibphone\\2026-10-04_12-00-00\\MEMO_20261004_1200001234567890.txt");
 });
 
+/* ---------- הקלטות שיחה ----------
+   מקודד IMA-ADPCM קטן לבדיקה: מקודד אות ידוע לבלוקים כמו של הטלפון (256 בתים, fmt+fact+data) ועוקב אחרי
+   מה שמפענח אמור לשחזר. המפענח של אנק״ל נבדק גם מול מפענח ייחוס על 5 הקלטות אמיתיות (אוקטובר 2026). */
+const IMA_STEP = [7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767];
+function imaEncodeChannel(samples, per) {
+  const blocks = [], recon = []; let index = 0;
+  for (let s = 0; s < samples.length; s += per) {
+    let pred = samples[s]; const head = [pred, index], nibbles = []; recon.push(pred);
+    for (let k = 1; k < per; k++) {
+      const x = s + k < samples.length ? samples[s + k] : pred, step = IMA_STEP[index];
+      let diff = x - pred, n = 0; if (diff < 0) { n = 8; diff = -diff; }
+      if (diff >= step) { n |= 4; diff -= step; } if (diff >= step >> 1) { n |= 2; diff -= step >> 1; } if (diff >= step >> 2) n |= 1;
+      let d = step >> 3; if (n & 4) d += step; if (n & 2) d += step >> 1; if (n & 1) d += step >> 2;
+      pred = Math.max(-32768, Math.min(32767, pred + (n & 8 ? -d : d))); index = Math.max(0, Math.min(88, index + [-1, -1, -1, -1, 2, 4, 6, 8][n & 7]));
+      nibbles.push(n); if (s + k < samples.length) recon.push(pred);
+    }
+    const bytes = new Uint8Array(nibbles.length / 2); for (let b = 0; b < bytes.length; b++) bytes[b] = nibbles[2 * b] | (nibbles[2 * b + 1] << 4);
+    blocks.push({ head, bytes });
+  }
+  return { blocks, recon };
+}
+function imaWav(channels, align, sampleRate) {
+  const ch = channels.length, per = (align - 4 * ch) * 2 / ch + 1, enc = channels.map(s => imaEncodeChannel(s, per)), data = [];
+  for (let b = 0; b < enc[0].blocks.length; b++) {
+    for (const e of enc) { const [p, i] = e.blocks[b].head; data.push(p & 255, (p >> 8) & 255, i, 0); }
+    for (let o = 0; o < enc[0].blocks[b].bytes.length; o += 4) for (const e of enc) data.push(...e.blocks[b].bytes.subarray(o, o + 4));
+  }
+  const out = new Uint8Array(60 + data.length), view = new DataView(out.buffer), put = (o, s) => [...s].forEach((c, k) => { out[o + k] = c.charCodeAt(0); });
+  put(0, "RIFF"); view.setUint32(4, 52 + data.length, true); put(8, "WAVE"); put(12, "fmt "); view.setUint32(16, 20, true);
+  view.setUint16(20, 0x11, true); view.setUint16(22, ch, true); view.setUint32(24, sampleRate, true); view.setUint32(28, Math.round(sampleRate * align / per), true); view.setUint16(32, align, true); view.setUint16(34, 4, true); view.setUint16(36, 2, true); view.setUint16(38, per, true);
+  put(40, "fact"); view.setUint32(44, 4, true); view.setUint32(48, channels[0].length, true); put(52, "data"); view.setUint32(56, data.length, true); out.set(data, 60);
+  return { bytes: out, recon: enc.map(e => e.recon) };
+}
+const tone = (n, freq, amp, rate = 8000) => Array.from({ length: n }, (_, i) => Math.round(amp * Math.sin(2 * Math.PI * freq * i / rate) + amp / 4 * Math.sin(2 * Math.PI * 3.7 * freq * i / rate)));
+
+test("הקלטה: שם הקובץ — שם או מספר, ותחילת השיחה", () => {
+  const a = Q.parseRecordingName("סבתא עזרא-נייד_20261019141433.wav");
+  assert.deepEqual([a.name, a.number, a.iso], ["סבתא עזרא-נייד", "", "2026-10-19T14:14:33"]);
+  assert.equal(a.time, Q.isoToPhoneTime("2026-10-19T14:14:33"));
+  const b = Q.parseRecordingName("053316887904550_20261019210930.WAV"); assert.deepEqual([b.name, b.number], ["", "053316887904550"]);
+  assert.equal(Q.parseRecordingName("שם_20261319141433.wav"), null, "חודש 13");
+  assert.equal(Q.parseRecordingName("REC_0000002.mp3"), null); assert.equal(Q.parseRecordingName("שיר.wav"), null);
+});
+
+test("הקלטה: כותרת WAV, משך, ופענוח IMA-ADPCM כמו של הטלפון", () => {
+  const n = 8000 * 3 + 123, src = tone(n, 440, 9000), { bytes, recon } = imaWav([src], 256, 8000);
+  const info = Q.parseWavHeader(bytes.subarray(0, 512), bytes.length);
+  assert.deepEqual([info.format, info.channels, info.sampleRate, info.blockAlign, info.fact, info.dataOffset, info.samples], [0x11, 1, 8000, 256, n, 60, n]);
+  assert.ok(Math.abs(info.duration - n / 8000) < 1e-9);
+  const pcm = Q.decodeImaAdpcm(bytes, info); assert.equal(pcm.length, n);
+  assert.deepEqual([...pcm], recon[0], "הפענוח = מה שהמקודד שחזר, דגימה בדגימה");
+  let err = 0, sig = 0; for (let i = 0; i < n; i++) { err += (pcm[i] - src[i]) ** 2; sig += src[i] ** 2; } assert.ok(10 * Math.log10(sig / err) > 20, "קרוב לאות המקורי");
+  // הקלטה שנקטעה: אורך data = 0 בכותרת → לפי גודל הקובץ, ובלי fact לפי מספר הבלוקים
+  const cut = bytes.slice(); new DataView(cut.buffer).setUint32(56, 0, true); new DataView(cut.buffer).setUint32(48, 0, true);
+  assert.equal(Q.parseWavHeader(cut, cut.length).samples, Math.ceil(n / 505) * 505);
+  assert.equal(Q.parseWavHeader(new Uint8Array(0), 0), null); assert.equal(Q.parseWavHeader(new TextEncoder().encode("not a wav file at all"), 21), null);
+  // משך לפי גודל, מכותרת של קובץ אחר באותו מבנה: בלוקים שלמים מדויק, ובלוק חלקי בסוף בסטייה של פחות מבלוק
+  const other = imaWav([tone(8000 * 7, 200, 5000)], 256, 8000).bytes;
+  assert.ok(Math.abs(Q.wavDurationFromSize(info, other.length) - 7) < 505 / 8000);
+  assert.equal(Q.wavDurationFromSize(info, 60 + 256 * 10), 5050 / 8000);
+  assert.equal(Q.wavDurationFromSize(info, 0), 0);
+});
+
+test("הקלטה: WAV רגיל לדפדפן, וגם שני ערוצים", () => {
+  const src = tone(4000, 300, 6000), { bytes } = imaWav([src], 256, 8000);
+  const play = Q.playableWav(bytes), pcm = Q.parseWavHeader(play.bytes, play.bytes.length);
+  assert.deepEqual([pcm.format, pcm.channels, pcm.sampleRate, pcm.bits, pcm.samples], [1, 1, 8000, 16, 4000]);
+  assert.equal(new DataView(play.bytes.buffer).getInt16(44 + 2 * 100, true), Q.decodeImaAdpcm(bytes, Q.parseWavHeader(bytes))[100]);
+  assert.equal(Q.playableWav(play.bytes).bytes, play.bytes, "PCM עובר כמו שהוא");
+  const right = tone(4000, 500, 3000), stereo = imaWav([src, right], 512, 8000), mixed = Q.decodeImaAdpcm(stereo.bytes, Q.parseWavHeader(stereo.bytes));
+  assert.equal(mixed.length, 4000);
+  for (const i of [0, 1, 7, 8, 9, 250, 3999]) assert.equal(mixed[i], Math.round((stereo.recon[0][i] + stereo.recon[1][i]) / 2), "דגימה " + i);
+});
+
+test("הקלטה: מספרים מקומיים ושלוחות", () => {
+  assert.equal(Q.localNumber("+972-50-123-4567"), "0501234567");
+  assert.deepEqual(Q.numberKeys("0331317741"), ["0331317741", "033131774"]);
+  assert.deepEqual(Q.numberKeys("053316887904550"), ["053316887904550", "0533168879"]);
+  assert.deepEqual(Q.numberKeys("0527109590"), ["0527109590"], "נייד בלי שלוחה לא מתקצר");
+  assert.deepEqual(Q.numberKeys("123"), []);
+});
+
+test("הקלטה: מי ומה — שם מאנשי הקשר, מספר וכיוון מהיומן", () => {
+  const t = iso => Q.isoToPhoneTime(iso);
+  const contacts = [{ name: "אבא", mobile: "0501234567", home: "", work: "", fax: "" }, { name: "המשרד", mobile: "", home: "03-3131774", work: "", fax: "" }, { name: "אבא", mobile: "0599999999", home: "", work: "", fax: "" }];
+  const calls = [{ number: "0501234567", type: "incoming", time: t("2026-10-30T08:29:22"), duration: 40 }, { number: "0331317741", type: "outgoing", time: t("2026-10-30T08:48:28"), duration: 90 }, { number: "0777777777", type: "outgoing", time: t("2026-10-30T09:00:00"), duration: 5 }, { number: "0588888888", type: "missed", time: t("2026-10-30T10:00:00"), duration: 0 }];
+  const recs = ["אבא_20261030082922.wav", "0331317741_20261030084830.wav", "0777777777_20261030090010.wav", "אבא_20261001100000.wav", "0588888888_20261030100001.wav"].map(Q.parseRecordingName);
+  const [a, b, c, d, e] = Q.describeRecordings(recs, { contacts, calls });
+  assert.deepEqual([e.type, e.inLog], ["", false], "שיחה שלא נענתה לא הוקלטה — לא מצמידים אליה");
+  assert.deepEqual([a.name, a.number, a.type, a.contactName], ["אבא", "0501234567", "incoming", "אבא"], "שם בקובץ → מספר וכיוון מהיומן");
+  assert.deepEqual([b.name, b.type, b.contactName], ["המשרד", "outgoing", "המשרד"], "מספר עם שלוחה, שיחה 2 שניות לפני");
+  assert.deepEqual([c.name, c.type, c.inLog], ["", "", false], "10 שניות הפרש = לא אותה שיחה");
+  assert.deepEqual([d.number, d.type], ["0501234567", ""], "בלי יומן: המספר מאיש הקשר הראשון בשם הזה");
+  const forContact = Q.recordingIndex([a, b, c, d, e]);
+  assert.deepEqual(forContact(contacts[0]).map(r => r.fileName), [a.fileName, d.fileName]);
+  assert.deepEqual(forContact(contacts[1]).map(r => r.fileName), [b.fileName], "איש קשר עם 03-3131774 מקבל גם את השלוחה");
+  assert.deepEqual(forContact({ name: "אחר", mobile: "0777777777" }).map(r => r.fileName), [c.fileName]);
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of tests) {

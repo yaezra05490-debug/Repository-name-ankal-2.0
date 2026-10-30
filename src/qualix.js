@@ -470,6 +470,123 @@
     return out;
   }
 
+  /* ---------- הקלטות שיחה: <כרטיס>\Audio\<שם או מספר>_YYYYMMDDHHMMSS.wav ----------
+     נבדק על 710 הקלטות (אוקטובר 2026): החותמת בשם = תחילת השיחה בשעון הקיר של הטלפון (זהה ליומן לשנייה),
+     והשם הוא איש הקשר כמו שהיה שמור בטלפון באותו רגע, או המספר — כולל ספרות שחויגו אחרי החיבור (שלוחה).
+     זמן הקובץ ב-Windows זז בשעה בקבצים מלפני מעבר השעון, ולכן סומכים רק על השם. */
+  function parseRecordingName(fileName) {
+    const m = /^(.*)_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.wav$/i.exec(String(fileName || "")); if (!m) return null;
+    const p = { year: +m[2], month: +m[3], day: +m[4], hour: +m[5], minute: +m[6], second: +m[7] };
+    if (p.month < 1 || p.month > 12 || p.day < 1 || p.day > 31 || p.hour > 23 || p.minute > 59 || p.second > 59) return null;
+    const who = m[1].trim(), isNumber = /^\+?\d+$/.test(who), time = partsToPhoneTime(p);
+    return { fileName, who, name: isNumber ? "" : who, number: isNumber ? who : "", time, iso: phoneTimeToIso(time) };
+  }
+  /* כותרת WAV: fmt (קידוד, ערוצים, קצב, גודל בלוק), fact (מספר הדגימות, בקידוד דחוס) ו-data. מספיקים הבתים
+     הראשונים של הקובץ; fileSize משלים את אורך הנתונים כשהכותרת לא נסגרה (הקלטה שנקטעה). */
+  const WAV_PCM = 1, WAV_IMA_ADPCM = 0x11;
+  const imaSamplesPerBlock = (bytes, channels) => (bytes - 4 * channels) * 2 / channels + 1;
+  function wavSamples(fmt, dataLength, fact) {
+    if (fmt.format !== WAV_IMA_ADPCM || fmt.blockAlign <= 4 * fmt.channels) return Math.floor(dataLength / fmt.blockAlign);
+    const rest = dataLength % fmt.blockAlign, samples = Math.floor(dataLength / fmt.blockAlign) * imaSamplesPerBlock(fmt.blockAlign, fmt.channels) + (rest > 4 * fmt.channels ? imaSamplesPerBlock(rest, fmt.channels) : 0);
+    return fact ? Math.min(samples, fact) : samples;
+  }
+  /* משך לפי גודל הקובץ בלבד, לפי כותרת של קובץ אחר באותו מבנה. כל ההקלטות של הטלפון כותבות אותה כותרת
+     (60 בתים; נבדק על 691) והסטייה מהמשך המדויק קטנה מ-0.07 שנייה — ובלי זה צריך לפתוח כל קובץ בכרטיס. */
+  function wavDurationFromSize(info, fileSize) { return wavSamples(info, Math.max(0, fileSize - info.dataOffset), 0) / info.sampleRate; }
+  function parseWavHeader(bytes, fileSize) {
+    if (!bytes || bytes.length < 12) return null;
+    const tag = o => String.fromCharCode(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
+    if (tag(0) !== "RIFF" || tag(8) !== "WAVE") return null;
+    const view = dv(bytes), total = fileSize || bytes.length; let p = 12, fmt = null, fact = 0;
+    while (p + 8 <= bytes.length) {
+      const id = tag(p), len = view.getUint32(p + 4, true);
+      if (id === "fmt " && p + 24 <= bytes.length) fmt = { format: view.getUint16(p + 8, true), channels: view.getUint16(p + 10, true) || 1, sampleRate: view.getUint32(p + 12, true), byteRate: view.getUint32(p + 16, true), blockAlign: view.getUint16(p + 20, true), bits: view.getUint16(p + 22, true) };
+      else if (id === "fact" && p + 12 <= bytes.length) fact = view.getUint32(p + 8, true);
+      else if (id === "data") {
+        if (!fmt || !fmt.sampleRate || !fmt.blockAlign) return null;
+        const dataOffset = p + 8, avail = Math.max(0, total - dataOffset), dataLength = !len || len > avail ? avail : len, samples = wavSamples(fmt, dataLength, fact);
+        return Object.assign(fmt, { fact, dataOffset, dataLength, samples, duration: samples / fmt.sampleRate });
+      }
+      p += 8 + len + (len & 1);
+    }
+    return null;
+  }
+  /* פענוח IMA-ADPCM לפי התקן של IMA: כל בלוק נפתח, לכל ערוץ, בדגימה מלאה ובמדד צעד; אחריהם ניבלים של 4 סיביות
+     (הנמוך קודם), וכל ניבל הוא הפרש מהדגימה הקודמת בגודל שנגזר מהצעד הנוכחי. בשני ערוצים הנתונים מתחלפים
+     כל 4 בתים, והפלט ממוזג למונו. הטלפון כותב מונו 8000Hz בבלוקים של 256 בתים — כרום לא מנגן את זה בעצמו. */
+  const IMA_STEP = [7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767];
+  const IMA_INDEX = [-1, -1, -1, -1, 2, 4, 6, 8];
+  function decodeImaAdpcm(bytes, info) {
+    const ch = info.channels || 1, align = info.blockAlign, per = imaSamplesPerBlock(align, ch), end = Math.min(bytes.length, info.dataOffset + info.dataLength);
+    const out = new Int16Array(info.samples), pred = new Int32Array(ch), index = new Int32Array(ch), filled = new Int32Array(ch), block = new Int32Array(per * ch);
+    const nibble = (c, n) => {
+      const step = IMA_STEP[index[c]]; let diff = step >> 3;
+      if (n & 4) diff += step; if (n & 2) diff += step >> 1; if (n & 1) diff += step >> 2;
+      let v = pred[c] + (n & 8 ? -diff : diff); v = v > 32767 ? 32767 : v < -32768 ? -32768 : v; pred[c] = v;
+      const i = index[c] + IMA_INDEX[n & 7]; index[c] = i < 0 ? 0 : i > 88 ? 88 : i;
+      if (filled[c] < per) block[filled[c]++ * ch + c] = v;
+    };
+    let o = 0;
+    for (let b = info.dataOffset; b + 4 * ch <= end && o < out.length; b += align) {
+      const blockEnd = Math.min(b + align, end);
+      for (let c = 0; c < ch; c++) { const h = b + 4 * c; pred[c] = (bytes[h] | (bytes[h + 1] << 8)) << 16 >> 16; index[c] = Math.min(88, bytes[h + 2]); block[c] = pred[c]; filled[c] = 1; }
+      for (let p = b + 4 * ch; p < blockEnd;) for (let c = 0; c < ch && p < blockEnd; c++) for (let k = 0; k < 4 && p < blockEnd; k++, p++) { nibble(c, bytes[p] & 15); nibble(c, bytes[p] >> 4); }
+      const n = Math.min(...filled);
+      for (let s = 0; s < n && o < out.length; s++) { let sum = 0; for (let c = 0; c < ch; c++) sum += block[s * ch + c]; out[o++] = Math.round(sum / ch); }
+    }
+    return o < out.length ? out.subarray(0, o) : out;
+  }
+  // WAV רגיל: PCM 16 סיביות מונו — מתנגן בכל דפדפן ובכל נגן
+  function pcmToWav(samples, sampleRate) {
+    const out = new Uint8Array(44 + samples.length * 2), view = dv(out), put = (o, s) => { for (let i = 0; i < 4; i++) out[o + i] = s.charCodeAt(i); };
+    put(0, "RIFF"); view.setUint32(4, 36 + samples.length * 2, true); put(8, "WAVE"); put(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, WAV_PCM, true); view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); put(36, "data"); view.setUint32(40, samples.length * 2, true);
+    new Int16Array(out.buffer, 44, samples.length).set(samples); // העתקה אחת (סדר הבתים במחשבים ובטלפונים הוא little-endian, כמו ב-WAV)
+    return out;
+  }
+  /* הקלטה מהטלפון → קובץ שהדפדפן מנגן. IMA-ADPCM מפוענח; PCM כבר מתנגן כמו שהוא; כל השאר — null. */
+  function playableWav(bytes) {
+    const info = parseWavHeader(bytes, bytes && bytes.length); if (!info) return null;
+    if (info.format === WAV_IMA_ADPCM) return { bytes: pcmToWav(decodeImaAdpcm(bytes, info), info.sampleRate), duration: info.duration, info };
+    if (info.format === WAV_PCM) return { bytes, duration: info.duration, info };
+    return null;
+  }
+  /* מספרים: בפורמט המקומי (972 → 0). מספר מהיומן או מהקלטה יכול לכלול ספרות שחויגו אחרי החיבור (שלוחה):
+     0331317741 = 03-3131774 ושלוחה 1. לכן לכל מספר כזה גם התחלות: 10 ספרות, ו-9 לקווים נייחים (02/03/04/08/09). */
+  function localNumber(n) { let d = String(n || "").replace(/\D/g, ""); if (d.startsWith("972")) d = "0" + d.slice(3); return d; }
+  function numberKeys(n) { const d = localNumber(n); if (d.length < 7) return []; const keys = [d]; if (d.length > 10) keys.push(d.slice(0, 10)); if (d.length > 9 && /^0[23489]/.test(d)) keys.push(d.slice(0, 9)); return keys; }
+  /* מי ומה בהקלטה. בשם הקובץ יש רק שם או רק מספר: את החסר משלימים מאנשי הקשר, ואת הכיוון (נכנסת/יוצאת)
+     מהיומן — שיחה שהתחילה באותה שנייה (עד 3 שניות הפרש) מאותו מספר, או מאיש הקשר ששמו בקובץ.
+     contacts: [{ name, mobile, home, work, fax }] — הראשון גובר (חדש לפני ישן). calls: [{ number, type, time, duration }] */
+  function describeRecordings(recordings, { contacts = [], calls = [] } = {}) {
+    const byNumber = new Map(), byName = new Map(), byTime = new Map();
+    for (const c of contacts) { if (c.name && !byName.has(c.name)) byName.set(c.name, c); for (const f of SLOT_FIELDS) { const d = localNumber(c[f]); if (d.length >= 7 && !byNumber.has(d)) byNumber.set(d, c); } }
+    for (const call of calls) { if (!byTime.has(call.time)) byTime.set(call.time, []); byTime.get(call.time).push(call); }
+    const contactOf = number => { for (const k of numberKeys(number)) if (byNumber.has(k)) return byNumber.get(k); return null; };
+    const sameNumber = (a, b) => { const x = localNumber(a), y = localNumber(b); return x.length >= 7 && y.length >= 7 && (x === y || x.startsWith(y) || y.startsWith(x)); };
+    // רק שיחה שהתחברה (נכנסת/יוצאת) מוקלטת; שיחה שלא נענתה מאותו מספר באותו רגע היא לא ההקלטה הזו
+    function callOf(r) {
+      for (let dt = 0; dt <= 3; dt++) for (const t of dt ? [r.time - dt, r.time + dt] : [r.time]) for (const call of byTime.get(t) || []) {
+        if (call.type !== "incoming" && call.type !== "outgoing") continue;
+        if (r.number ? sameNumber(call.number, r.number) : (contactOf(call.number)?.name || r.name) === r.name) return call;
+      }
+      return null;
+    }
+    return recordings.map(r => {
+      const call = callOf(r), named = r.name ? byName.get(r.name) : null;
+      const number = r.number || (call ? call.number : "") || (named ? SLOT_FIELDS.map(f => named[f]).find(Boolean) || "" : "");
+      const contact = contactOf(number) || named || null;
+      return Object.assign({}, r, { number, name: r.name || (contact ? contact.name : ""), contactName: contact ? contact.name : "", type: call ? call.type : "", inLog: !!call });
+    });
+  }
+  /* איזה הקלטות שייכות לאיש קשר: לפי השם שבקובץ או לפי אחד המספרים שלו (גם עם שלוחה). מחזיר פונקציה,
+     כדי שכרטיסי אנשי הקשר (אלף ומעלה) לא יעברו כל אחד על כל ההקלטות. */
+  function recordingIndex(recordings) {
+    const byName = new Map(), byNumber = new Map(), add = (map, key, r) => { if (!key) return; const list = map.get(key); if (!list) map.set(key, [r]); else if (!list.includes(r)) list.push(r); };
+    for (const r of recordings) { add(byName, r.name, r); add(byName, r.contactName, r); for (const k of numberKeys(r.number)) add(byNumber, k, r); }
+    return contact => { const out = new Set(byName.get(contact.name) || []); for (const f of SLOT_FIELDS) { const d = localNumber(contact[f]); if (d.length >= 7) for (const r of byNumber.get(d) || []) out.add(r); } return [...out].sort((a, b) => b.time - a.time); };
+  }
+
   /* ---------- הרכבת תיקיית גיבוי שלמה ----------
      source: תוצאת readBackup (או null). changes: { contacts, callog, events, memos:[{fileName,text,bytes?}], playlists:[{name,paths,bytes?}] }
      מחזיר רשימת קבצים { name, bytes } לכתיבה בתיקייה E:\ibphone\<folder>. */
@@ -517,7 +634,7 @@
     return out;
   }
 
-  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, groupNames, groupMaskBits, groupNumberOf, splitMemoText, PHONE_GROUPS, FIRST_USER_GROUP, GROUP_SEP, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, parseSoundPaths, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
+  const api = { crc16arc, encodeBcd, decodeBcd, parseIb, buildIb, parsePhonebook, buildPhonebook, buildPhonebookRecord, groupBits, groupNames, groupMaskBits, groupNumberOf, splitMemoText, PHONE_GROUPS, FIRST_USER_GROUP, GROUP_SEP, nameSortKey, compareNames, ringFileName, ringIdFromFileName, parseRingIni, buildRingIni, RINGTONE_FILE, parseCallog, buildCallog, parseSchedule, buildSchedule, parseLst, buildLst, parseManifest, buildManifest, parseHead, buildHead, backupFolderName, parseMemo, buildMemo, memoFileName, memoDateFromName, phoneTimeToIso, isoToPhoneTime, phoneTimeToParts, partsToPhoneTime, textWidth, charWidth, wrapParagraph, wrapLines, balancedWrap, centerLine, centerText, uncenterText, FILLS, calibrateFromMemo, WIDTHS, LINE_UNITS, parseUdb, updateUdbWords, settingsStrings, findValue, parseSoundPaths, parseRecordingName, parseWavHeader, wavDurationFromSize, decodeImaAdpcm, pcmToWav, playableWav, localNumber, numberKeys, describeRecordings, recordingIndex, assembleBackup, readBackup, CATEGORIES, TYPES, CALL_TYPES, CALL_TYPE_HE, SLOT_FIELDS, u16le, same };
   root.ANKAL_QUALIX = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

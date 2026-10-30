@@ -45,14 +45,26 @@ ipcMain.handle("qualix:list-cards", () => {
   }
   return cards;
 });
-ipcMain.handle("qualix:choose-folder", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, { title: "בחירת תיקיית הגיבוי או כרטיס הזיכרון", properties: ["openDirectory"] });
+// title: גם לבחירת תיקייה במחשב שאליה מעבירים הקלטות שיחה מהכרטיס (ולכן אפשר ליצור בה תיקייה חדשה)
+ipcMain.handle("qualix:choose-folder", async (_, title) => {
+  const result = await dialog.showOpenDialog(mainWindow, { title: typeof title === "string" && title ? title : "בחירת תיקיית הגיבוי או כרטיס הזיכרון", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || !result.filePaths.length) return null;
   const root = result.filePaths[0]; qualixRoots.add(root); return { root, label: root };
 });
 ipcMain.handle("qualix:list", (_, root, rel) => {
   const dir = qualixResolve(root, rel);
   return fs.readdirSync(dir, { withFileTypes: true }).map(e => { let size = 0, mtime = 0; if (e.isFile()) { try { const st = fs.statSync(path.join(dir, e.name)); size = st.size; mtime = st.mtimeMs; } catch (_) { } } return { name: e.name, kind: e.isDirectory() ? "directory" : "file", size, mtime }; });
+});
+/* רק תחילת כל קובץ, לכל הקבצים בבקשה אחת: לרשימת הקלטות השיחה מספיקה כותרת ה-WAV (שם המשך), ובלי זה
+   היו עוברים מאות מגה-בייט של הקלטות דרך IPC רק כדי לדעת כמה זמן כל אחת. */
+ipcMain.handle("qualix:read-heads", (_, root, rel, names, bytes) => {
+  const size = Math.max(12, Math.min(Number(bytes) || 512, 65536));
+  return (Array.isArray(names) ? names : []).map(name => {
+    let fd = null;
+    try { fd = fs.openSync(qualixResolve(root, path.join(rel || "", String(name))), "r"); const buf = Buffer.alloc(size); const n = fs.readSync(fd, buf, 0, size, 0); return buf.buffer.slice(buf.byteOffset, buf.byteOffset + n); }
+    catch (_) { return null; }
+    finally { if (fd !== null) fs.closeSync(fd); }
+  });
 });
 ipcMain.handle("qualix:read", (_, root, rel) => { const buf = fs.readFileSync(qualixResolve(root, rel)); return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength); });
 ipcMain.handle("qualix:write", (_, root, rel, data) => { const target = qualixResolve(root, rel); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, Buffer.from(data)); return true; });

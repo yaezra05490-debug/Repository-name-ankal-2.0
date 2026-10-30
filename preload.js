@@ -6,9 +6,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // גיבוי קיוליקס: קריאה וכתיבה בכרטיס הזיכרון (או בתיקייה שנבחרה) דרך התהליך הראשי
   qualix: {
     listCards: () => ipcRenderer.invoke("qualix:list-cards"),
-    chooseFolder: () => ipcRenderer.invoke("qualix:choose-folder"),
+    chooseFolder: title => ipcRenderer.invoke("qualix:choose-folder", title),
     list: (root, rel) => ipcRenderer.invoke("qualix:list", root, rel),
     read: (root, rel) => ipcRenderer.invoke("qualix:read", root, rel),
+    readHeads: (root, rel, names, bytes) => ipcRenderer.invoke("qualix:read-heads", root, rel, names, bytes),
     write: (root, rel, data) => ipcRenderer.invoke("qualix:write", root, rel, data),
     mkdir: (root, rel) => ipcRenderer.invoke("qualix:mkdir", root, rel),
     remove: (root, rel) => ipcRenderer.invoke("qualix:remove", root, rel),

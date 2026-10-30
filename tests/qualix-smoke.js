@@ -356,6 +356,92 @@ server.listen(PORT, async () => {
   await step("ארבעה אנשי קשר ברשימה", `document.getElementById("nav-contact-count").textContent`, "4");
   await step("הקבוצה נשמרה ברשימה (3 עם קבוצה)", `JSON.stringify(JSON.parse(localStorage.getItem("ankal.v2.workspace") || "{}").lists?.map(l => l.contacts.filter(c => c.group).length))`, v => /3/.test(v));
   await step("עריכת איש קשר מציגה שדה קבוצה", `(() => { document.querySelector("[data-open-contact]").click(); return document.getElementById("contact-group") ? document.getElementById("contact-group").value : "אין שדה"; })()`, v => v !== "אין שדה");
+  await step("סגירת החלון", `(() => { document.querySelector('[data-modal-choice]:not([data-modal-choice="save"])')?.click(); return "ok"; })()`);
+  await wait(300);
+
+  /* ---------- הקלטות שיחה: תיקיות Audio בכרטיס, בקידוד של הטלפון (IMA-ADPCM, בלוקים של 256) ---------- */
+  await step("הקלטות בכרטיס", `(() => {
+    // בלוק IMA תקין: דגימה ומדד בכותרת, ואחריהם כל רצף ניבלים שהוא
+    const ima = blocks => { const data = new Uint8Array(blocks * 256); for (let b = 0; b < blocks; b++) for (let i = 4; i < 256; i++) data[b * 256 + i] = (i * 37 + b) & 255;
+      const out = new Uint8Array(60 + data.length), v = new DataView(out.buffer), put = (o, s) => [...s].forEach((c, k) => { out[o + k] = c.charCodeAt(0); });
+      put(0, "RIFF"); v.setUint32(4, 52 + data.length, true); put(8, "WAVE"); put(12, "fmt "); v.setUint32(16, 20, true); v.setUint16(20, 0x11, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 4055, true); v.setUint16(32, 256, true); v.setUint16(34, 4, true); v.setUint16(36, 2, true); v.setUint16(38, 505, true);
+      put(40, "fact"); v.setUint32(44, 4, true); v.setUint32(48, blocks * 505, true); put(52, "data"); v.setUint32(56, data.length, true); out.set(data, 60); return out; };
+    const mem = window.__mem;
+    mem.set("Audio/דוד כהן_20260925100000.wav", ima(32));          // שיחה נכנסת ביומן, באותה שנייה
+    mem.set("Audio/0527654321_20260925110005.wav", ima(8));        // שרה לוי; ביומן רק שיחה שלא נענתה 5 שניות קודם — לא אותה שיחה
+    mem.set("Audio/0527654321_20260925110004.wav", new Uint8Array(0)); // קובץ ריק שהטלפון משאיר
+    mem.set("Audio 1/0501234567_20250101120000.wav", ima(4));      // תיקייה נוספת, מספר של דוד כהן
+    return mem.size;
+  })()`);
+  await step("עמוד הקלטות שיחה", click('[data-page="recordings"]'));
+  await wait(600);
+  await step("כותרת העמוד", `document.getElementById("page-title").textContent`, "הקלטות שיחה");
+  await step("קריאה מחדש מהכרטיס", click('[data-qx="rec-reload"]'));
+  await wait(800);
+  await step("שלוש הקלטות, מהחדשה לישנה, עם שמות מאנשי הקשר", `[...document.querySelectorAll('#qx-rec-list [data-qx="rec-play"]')].map(r => r.querySelector("b").textContent).join(",")`, "שרה לוי,דוד כהן,דוד כהן");
+  await step("מונה בתפריט הצד", `document.getElementById("nav-recordings-count").textContent`, "3");
+  await step("הכותרת מציינת את הקובץ הריק ואת שתי התיקיות", `document.querySelector("#qualix-root .qx-head .qx-sub").textContent`, v => /1 קבצים ריקים/.test(v) && /Audio, Audio 1/.test(v));
+  await step("הכיוון מהיומן: נכנסת", `document.querySelectorAll('#qx-rec-list .qx-rec.incoming').length`, 1);
+  await step("משך מהכותרת (32 בלוקים = 0:02)", `document.querySelectorAll('#qx-rec-list .qx-rec')[1].querySelector("small").textContent`, v => /0501234567/.test(v) && /נכנסת/.test(v) && /0:02/.test(v));
+  await step("השמעה", click('#qx-rec-list .qx-rec.incoming'));
+  await wait(700);
+  await step("הנגן מקבל WAV רגיל (PCM) מפוענח", `(async () => { const a = document.querySelector("#qx-rec-slot audio"); if (!a || !a.src.startsWith("blob:")) return "אין נגן"; const h = window.ANKAL_QUALIX.parseWavHeader(new Uint8Array(await (await fetch(a.src)).arrayBuffer())); return [h.format, h.sampleRate, h.samples].join("/"); })()`, "1/8000/16160");
+  await step("השורה שמתנגנת מודגשת והנגן גלוי", `(document.querySelector("#qx-rec-list .qx-rec.playing b")?.textContent || "") + "|" + (document.querySelector(".qx-rec-player").classList.contains("hidden") ? "מוסתר" : "גלוי")`, "דוד כהן|גלוי");
+  await step("הנגן נשאר אותו נגן אחרי ציור מחדש", `(() => { const a = document.querySelector("#qx-rec-slot audio"); window.ANKAL_QUALIX_UI.render(); return document.querySelector("#qx-rec-slot audio") === a && a.src.startsWith("blob:") ? "אותו" : "אחר"; })()`, "אותו");
+  await step("חיפוש לפי שם", fill("qx-rec-search", "שרה"), "ok");
+  await wait(400);
+  await step("נשארה הקלטה אחת", `document.querySelectorAll('#qx-rec-list [data-qx="rec-play"]').length`, 1);
+  await step("ניקוי החיפוש", fill("qx-rec-search", ""), "ok");
+  await wait(400);
+  await step("סינון: כיוון לא ידוע", click('[data-qx="rec-filter"][data-filter="unknown"]'));
+  await step("שתיים בלי כיוון", `document.querySelectorAll('#qx-rec-list [data-qx="rec-play"]').length`, 2);
+  await step("חזרה להכל", click('[data-qx="rec-filter"][data-filter="all"]'));
+
+  // כרטיס איש קשר ויומן השיחות: 🎙 ומעבר ישיר להקלטות
+  await step("לגיבוי ופתיחת הגרסה", `(() => { document.querySelector('[data-page="qualix"]').click(); document.querySelector('#qualix-root [data-qx="open"]').click(); return "ok"; })()`);
+  await wait(600);
+  await step("לשונית אנשי קשר", click('#qualix-subnav [data-tab="contacts"]'));
+  await wait(300);
+  await step("בכרטיס של דוד כהן: 2 הקלטות", `[...document.querySelectorAll('#qualix-root .contact-card')].find(c => c.querySelector("h3")?.textContent === "דוד כהן")?.querySelector(".qx-rec-link")?.textContent || "אין"`, v => /2 הקלטות/.test(v));
+  await step("לחיצה עוברת להקלטות שלו בלבד", `(() => { [...document.querySelectorAll('#qualix-root .contact-card')].find(c => c.querySelector("h3")?.textContent === "דוד כהן").querySelector(".qx-rec-link").click(); return "ok"; })()`);
+  await wait(700);
+  await step("עמוד ההקלטות מסונן לדוד כהן", `document.getElementById("page-title").textContent + "|" + document.querySelectorAll('#qx-rec-list [data-qx="rec-play"]').length + "|" + (document.querySelector(".qx-rec-filter b")?.textContent || "")`, "הקלטות שיחה|2|דוד כהן");
+  await step("ביטול הסינון", click('[data-qx="rec-contact-clear"]'));
+  await step("לגיבוי, לשונית יומן שיחות", `(() => { document.querySelector('[data-page="qualix"]').click(); document.querySelector('#qualix-root [data-qx="open"]').click(); return "ok"; })()`);
+  await wait(600);
+  await step("לשונית יומן", click('#qualix-subnav [data-tab="calls"]'));
+  await wait(300);
+  await step("ביומן: 🎙 רק ליד השיחה שהוקלטה", `document.querySelectorAll('#qualix-root .qx-call .qx-rec-mark').length`, 1);
+  await step("פתיחת השיחה של דוד כהן", `(() => { document.querySelector('#qualix-root .qx-call .qx-rec-mark').closest(".qx-call").click(); return "ok"; })()`);
+  await wait(300);
+  await step("פתיחת השיחה עצמה", click('[data-qx="call-info"]'));
+  await wait(300);
+  await step("בפרטי השיחה: השמעת ההקלטה", click('[data-modal-choice="recording"]'));
+  await wait(900);
+  await step("עברנו להקלטות והשיחה מתנגנת", `document.getElementById("page-title").textContent + "|" + (document.querySelector("#qx-rec-list .qx-rec.playing b")?.textContent || "אין")`, "הקלטות שיחה|דוד כהן");
+
+  // ניקוי: הקובץ הריק נמחק מהכרטיס, ההקלטות נשארות
+  await step("ניקוי", click('[data-qx="rec-clean"]'));
+  await wait(300);
+  await step("הקבצים הריקים מסומנים מראש, הקצרות לא", `document.getElementById("qx-clean-empty").checked + "|" + document.getElementById("qx-clean-short").checked`, "true|false");
+  await step("המשך", click('[data-modal-choice="go"]'));
+  await wait(300);
+  await step("אישור המחיקה", click('[data-modal-choice="yes"]'));
+  await wait(600);
+  await step("הקובץ הריק נמחק, ההקלטות נשארו", `[...window.__mem.keys()].filter(k => /^Audio/.test(k)).length + "|" + window.__mem.has("Audio/0527654321_20260925110004.wav")`, "3|false");
+  await step("הכותרת בלי קבצים ריקים", `document.querySelector("#qualix-root .qx-head .qx-sub").textContent`, v => !/ריקים/.test(v));
+
+  // העברה למחשב: תיקייה אמיתית (OPFS של הדפדפן) במקום בורר התיקיות, תת-תיקייה לכל חודש, ומחיקה מהכרטיס רק אחרי בדיקה
+  await step("בורר תיקיות מדומה (OPFS)", `(async () => { const root = await navigator.storage.getDirectory(); window.showDirectoryPicker = async () => root.getDirectoryHandle("export", { create: true }); return "ok"; })()`, "ok");
+  await step("העברה למחשב", click('[data-qx="rec-export"]'));
+  await wait(300);
+  await step("ברירת המחדל: הכל, כמו בטלפון, ולמחוק אחרי בדיקה", `document.getElementById("qx-exp-scope").value + "|" + document.getElementById("qx-exp-format").value + "|" + document.getElementById("qx-exp-remove").checked`, "all|orig|true");
+  await step("בחירת תיקייה והעברה", click('[data-modal-choice="go"]'));
+  await wait(1500);
+  await step("סיכום ההעברה", `document.getElementById("modal-body")?.textContent || ""`, v => /הועתקו 3 הקלטות/.test(v) && /נמחקו מהכרטיס: 3/.test(v));
+  await step("סגירה", click('[data-modal-choice="ok"]'));
+  await step("בתיקייה במחשב: חודש לכל תת-תיקייה, אותם גדלים", `(async () => { const root = await (await navigator.storage.getDirectory()).getDirectoryHandle("export"); const out = []; for await (const [month, dir] of root.entries()) for await (const [name, fh] of dir.entries()) out.push(month + "/" + name + ":" + (await fh.getFile()).size); return out.sort().join(" "); })()`, "2025-01/0501234567_20250101120000.wav:1084 2026-09/0527654321_20260925110005.wav:2108 2026-09/דוד כהן_20260925100000.wav:8252");
+  await step("בכרטיס לא נשארו הקלטות", `[...window.__mem.keys()].filter(k => /^Audio/.test(k)).length + "|" + document.querySelectorAll('#qx-rec-list [data-qx="rec-play"]').length`, "0|0");
 
   console.log("\n=== בדיקת עשן: גיבוי קיוליקס ===");
   for (const s of steps) console.log(`  ${s.ok ? "✓" : "✗"} ${s.label}: ${JSON.stringify(s.value)}`);
