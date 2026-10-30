@@ -124,8 +124,8 @@
       default: return ["", ""];
     }
   }
-  // כמה מסננים "נסתרים" (בשורה השנייה) פעילים — למונה ליד "עוד מסננים"
-  function hiddenCount(f) { return (f.tod !== "any") + (f.kind !== "any") + (f.dir !== "any") + !!f.tag + (f.wd.length ? 1 : 0); }
+  // כמה מסננים "נסתרים" (בשורה השנייה) פעילים — למונה ליד "עוד מסננים". הכיוון גלוי תמיד (לשוניות), ולכן לא נספר
+  function hiddenCount(f) { return (f.tod !== "any") + (f.kind !== "any") + !!f.tag + (f.wd.length ? 1 : 0); }
   function isFiltered(f) { const d = defaultFilter(); return ["q", "date", "dur", "tod", "status", "kind", "dir", "tag"].some(k => f[k] !== d[k]) || f.contacts.length || f.wd.length || !!f.ids; }
   function filterRecs(recs, f, { hideShort = 0, now } = {}) {
     const terms = norm(f.q).split(" ").filter(Boolean).map(t => /^[\d\-+]+$/.test(t) ? t.replace(/[\-+]/g, "") : t).filter(Boolean);

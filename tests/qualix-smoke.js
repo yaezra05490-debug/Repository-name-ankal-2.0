@@ -409,7 +409,7 @@ server.listen(PORT, async () => {
   await step("תמלול וסיכום (Gemini מדומה)", click('#rx-aside [data-rx="ai"]'));
   await wait(2500);
   await step("נשלחו תמלול ואז סיכום", `window.__ai.join(",")`, "stt,sum");
-  await step("הסיכום והתמלול בחלונית", `document.querySelector("#rx-aside .rx-sum-t")?.textContent + "|" + document.querySelectorAll("#rx-aside .rx-seg").length + "|" + [...document.querySelectorAll("#rx-aside .rx-sp")].map(s => s.textContent).join("/")`, "משכנתא ופגישה|2|דובר 1/דובר 2");
+  await step("הסיכום והתמלול בחלונית", `document.querySelector("#rx-aside .rx-sum-t")?.textContent + "|" + document.querySelectorAll("#rx-aside .rx-tseg").length + "|" + [...document.querySelectorAll("#rx-aside .rx-sp")].map(s => s.textContent).join("/")`, "משכנתא ופגישה|2|דובר 1/דובר 2");
   await step("בשורה: סימני ת ו-ס", `[...document.querySelectorAll('#rx-list .rx-row .rx-fl')].map(f => f.textContent).join("")`, "תס");
   await step("הערה", fill("rx-note", "לחזור אליו עד חמישי"), "ok");
   await step("תגית ו-Enter", `(() => { const i = document.getElementById("rx-tag-in"); i.value = "חשוב"; i.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); return "ok"; })()`, "ok");
@@ -425,10 +425,14 @@ server.listen(PORT, async () => {
   await step("נמצאה הקלטה אחת, עם הדגשה", `document.querySelectorAll('#rx-list .rx-row').length + "|" + (document.querySelector('#rx-list .rx-row mark') ? "מודגש" : "")`, "1|מודגש");
   await step("ניקוי החיפוש", `(() => { const q = document.getElementById("rx-q"); q.value = ""; q.dispatchEvent(new Event("input", { bubbles: true })); return "ok"; })()`, "ok");
   await wait(600);
-  await step("מסנן כיוון: יוצאות/נכנסות בשורה השנייה", `(() => { document.querySelector('[data-rx="more"]').click(); const s = document.getElementById("rx-dir"); s.value = "incoming"; s.dispatchEvent(new Event("change", { bubbles: true })); return document.querySelectorAll('#rx-list .rx-row').length; })()`, 1);
+  await step("לשוניות כיוון גלויות מעל השיחות, עם מונים", `[...document.querySelectorAll('#rx-dirs [data-rx="dir"]')].map(b => b.textContent.replace(/\\s+/g, " ").trim()).join(" | ")`, "הכל 3 | ↙ נכנסות 1 | ↗ יוצאות 0 | כיוון לא ידוע 2");
+  await step("לשונית נכנסות מסננת", `(() => { document.querySelector('#rx-dirs [data-v="incoming"]').click(); return document.querySelectorAll('#rx-list .rx-row').length + "|" + document.querySelector('#rx-dirs .active')?.dataset.v; })()`, "1|incoming");
+  await step("שורת התאריכים בשורה אחת (לא נשברת)", `(() => { const s = document.querySelector(".rx-seg"), b = [...s.querySelectorAll("button")]; return s.getBoundingClientRect().height < 46 && b.every(x => x.getBoundingClientRect().height < 36) ? "שורה אחת" : "נשברת: " + Math.round(s.getBoundingClientRect().height); })()`, "שורה אחת");
   await step("ניקוי הסינון", click('[data-rx="clear"]'));
   await wait(300);
   await step("לוח שנה: מפת חום וחודש", `(() => { document.querySelector('[data-rx="view"][data-view="calendar"]').click(); return document.querySelectorAll(".rx-ym .rx-c.h1").length + "|" + document.querySelector(".rx-mon-h h3")?.textContent; })()`, v => /^\d+\|/.test(v) && +v.split("|")[0] >= 2);
+  // מפת השנה (מ-2025) רחבה מהמסך: היא נגללת בתוך עצמה, והעמוד והלוח החודשי לא נמתחים ולא נחתכים
+  await step("העמוד לא רחב מהחלון בלוח השנה", `(() => { const r = document.getElementById("recordings-root"), rb = r.getBoundingClientRect(), mg = document.querySelector(".rx-mg").getBoundingClientRect(), ym = document.querySelector(".rx-ym-scroll"); return [r.scrollWidth <= r.clientWidth + 1 ? "לא גולש" : "גולש " + (r.scrollWidth - r.clientWidth), mg.left >= rb.left - 1 && mg.right <= rb.right + 1 ? "חודש שלם" : "חודש חתוך", ym.scrollWidth > ym.clientWidth ? "מפה נגללת" : "מפה צרה"].join("|"); })()`, "לא גולש|חודש שלם|מפה נגללת");
   await step("לחיצה על יום: ציר השיחות", `(() => { document.querySelector('.rx-ym [data-day="2026-09-25"]').click(); return document.querySelectorAll(".rx-tl-b").length + "|" + document.querySelector(".rx-dayp h3")?.textContent; })()`, "2|יום שישי, 25 בספטמבר 2026");
   await step("אנשים: טבלה עם שני אנשי קשר", `(() => { document.querySelector('[data-rx="view"][data-view="people"]').click(); return [...document.querySelectorAll(".rx-ptable tbody tr")].map(r => r.querySelector("b").textContent).join(","); })()`, v => v.split(",").sort().join(",") === "דוד כהן,שרה לוי");
   await step("נתונים: 6 אריחים ותרשימים", `(() => { document.querySelector('[data-rx="view"][data-view="stats"]').click(); return document.querySelectorAll(".rx-kpi").length + "|" + document.querySelectorAll(".rx-bc").length + "|" + document.querySelectorAll(".rx-hb-r").length; })()`, "6|4|2");

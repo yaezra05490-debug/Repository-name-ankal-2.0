@@ -74,7 +74,7 @@ test("שם לתצוגה, כינוי וסינון", () => {
   assert.deepEqual(F({ tod: "evening" }), [kal.fileName]); assert.deepEqual(F({ wd: [2] }), [kal.fileName], "15.9.2026 = יום שלישי");
   assert.deepEqual(F({ sort: "long" })[0], kal.fileName); assert.deepEqual(F({ ids: new Set([abba.id]) }), [abba.fileName]);
   assert.equal(C.filterRecs(recs, C.defaultFilter(), { hideShort: 5, now }).length, 3, "הסתרת קצרות");
-  assert.equal(C.hiddenCount(Object.assign(C.defaultFilter(), { dir: "incoming", wd: [1] })), 2); assert.equal(C.isFiltered(C.defaultFilter()), false);
+  assert.equal(C.hiddenCount(Object.assign(C.defaultFilter(), { dir: "incoming", wd: [1] })), 1, "הכיוון גלוי בלשוניות — לא נספר בנסתרים"); assert.equal(C.isFiltered(C.defaultFilter()), false);
 });
 
 test("סיכומים: לפי יום, אדם, חודש ושעה", () => {

@@ -2,7 +2,11 @@
    תרשימים: סדרה אחת בכל תרשים בגוון אחד (כחול), עמודות דקות עם קצה מעוגל ורווח ביניהן, קו בסיס דק;
    מפת חום וחודש: סולם של גוון אחד מבהיר לכהה; דוברים בתמלול: 4 גוונים שנבדקו לעיוורון צבעים. */
 .app-shell[data-active-page="recordings"],.nav-item[data-page="recordings"]{--page:14}
-.rx-root{--rx-blue:#2a78d6;--rx-h0:#eef1f6;--rx-h1:#cde2fb;--rx-h2:#9ec5f4;--rx-h3:#6da7ec;--rx-h4:#2a78d6;--rx-h5:#184f95;display:grid;gap:12px}
+/* רוחב: העמוד לא מתרחב לפי התוכן (מפת השנה רחבה ונגללת בתוך עצמה), ובמסך רחב מאוד הוא לא נמתח לכל הרוחב */
+.rx-root{--rx-blue:#2a78d6;--rx-h0:#eef1f6;--rx-h1:#cde2fb;--rx-h2:#9ec5f4;--rx-h3:#6da7ec;--rx-h4:#2a78d6;--rx-h5:#184f95;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;max-width:1440px;min-width:0}
+.rx-root *,.rx-root{box-sizing:border-box}
+.rx-body>*,.rx-view,.rx-cal>*,.rx-cal-main>*,.rx-panel,.rx-dayp{min-width:0}
+.rx-list{max-width:1000px}
 body.rx-has-player .content,body.rx-has-player main{padding-bottom:96px}
 .rx-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:14px}
 .rx-bar .spacer,.rx-res .spacer,.rx-sec-h .spacer,.rx-j-h .spacer{flex:1}
@@ -18,8 +22,14 @@ button.rx-src{cursor:pointer}button.rx-src:hover{background:var(--paper)}
 .rx-views .qx-n{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--paper);color:var(--muted)}
 /* מסננים */
 .rx-fbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
-.rx-seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
-.rx-seg button{border:0;background:none;padding:6px 10px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit}
+.rx-seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px;flex:none;flex-wrap:nowrap;max-width:100%;overflow-x:auto}
+.rx-seg button{border:0;background:none;padding:6px 10px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit;white-space:nowrap}
+.rx-fbar .rx-in{flex:none;max-width:100%}
+.rx-fbar .btn{white-space:nowrap}
+/* כיוון השיחה — לשוניות גלויות מעל השיחות, כמו ביומן השיחות של הטלפון */
+.rx-dirs{display:flex;gap:4px;padding:6px;margin-bottom:8px;background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow-x:auto;max-width:1000px}
+.rx-dirs .qx-filter{cursor:pointer;font-family:inherit}
+.rx-dirs .qx-filter.incoming.active{color:#087455}.rx-dirs .qx-filter.outgoing.active{color:#0b5fa8}
 .rx-seg button.on{background:hsl(var(--page) 60% 55% / .16);color:var(--text)}
 .rx-in,.rx-range input{height:32px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--text);font:inherit;font-size:13px}
 .rx-range{display:inline-flex;gap:6px;align-items:center;font-size:13px}
@@ -50,7 +60,7 @@ button.rx-src{cursor:pointer}button.rx-src:hover{background:var(--paper)}
 .rx-time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 .rx-av{width:32px;height:32px;font-size:13px;flex:none}
 .rx-who{display:grid;min-width:0}.rx-who b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rx-who small{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rx-who mark,.rx-sum-p mark,.rx-seg mark,.rx-sum-t mark,.rx-sum-l mark{background:#fff0b3;color:inherit;border-radius:3px}
+.rx-who mark,.rx-sum-p mark,.rx-tseg mark,.rx-sum-t mark,.rx-sum-l mark{background:#fff0b3;color:inherit;border-radius:3px}
 .rx-dirx{font-weight:800;text-align:center}.rx-dirx.incoming{color:#087455}.rx-dirx.outgoing{color:#0b5fa8}
 .rx-tape{height:6px;border-radius:3px;background:var(--paper);overflow:hidden;display:block}.rx-tape i{display:block;height:100%;background:var(--rx-blue,#2a78d6);border-radius:3px}
 .rx-dur{font-size:12.5px;font-variant-numeric:tabular-nums;text-align:left;direction:ltr}
@@ -68,7 +78,7 @@ button.rx-src{cursor:pointer}button.rx-src:hover{background:var(--paper)}
 .rx-panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
 .rx-panel h3{margin:0 0 8px;font-size:15px}
 .rx-ph{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.rx-cal{display:grid;gap:14px}
+.rx-cal{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 .rx-ym-scroll{overflow-x:auto;padding-bottom:4px}
 .rx-ym{display:grid;grid-template-rows:14px repeat(7,13px);grid-auto-columns:13px;gap:3px;width:max-content}
 .rx-ym-m{font-size:10px;color:var(--muted);grid-row:1;white-space:nowrap}
@@ -135,8 +145,8 @@ button.rx-src{cursor:pointer}button.rx-src:hover{background:var(--paper)}
 .rx-tags .rx-in{height:28px;width:120px;font-size:12px}
 .rx-ai-empty{font-size:13px;color:var(--muted);line-height:1.6}
 .rx-tr{display:grid;gap:2px;max-height:420px;overflow:auto;padding-inline-end:4px}
-.rx-seg{display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px;padding:4px 4px;border-radius:8px;font-size:13.5px;line-height:1.55}
-.rx-seg.on{background:#fff6d6}
+.rx-tseg{display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px;padding:4px 4px;border-radius:8px;font-size:13.5px;line-height:1.55}
+.rx-tseg.on{background:#fff6d6}
 .rx-ts{border:0;background:none;color:#0b5fa8;font-size:11.5px;font-variant-numeric:tabular-nums;cursor:pointer;padding:2px 0;font-family:inherit;direction:ltr}.rx-ts:disabled{color:var(--muted);cursor:default}
 .rx-sp{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#52514e;margin-inline-end:6px}.rx-sp i{width:8px;height:8px;border-radius:50%;display:inline-block}
 .rx-sec-h .rx-in{height:28px;width:130px;font-size:12px}

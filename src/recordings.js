@@ -233,11 +233,17 @@
       ${f.date === "custom" ? `<span class="rx-range"><input type="date" id="rx-from" value="${esc(f.from)}"> עד <input type="date" id="rx-to" value="${esc(f.to)}"></span>` : ""}
       <input id="rx-contact" class="rx-in" list="rx-contacts" placeholder="+ איש קשר" autocomplete="off"><datalist id="rx-contacts">${R.contacts.slice(0, 1500).map(c => `<option value="${esc(c.who)}">${C.nCalls(c.n)}</option>`).join("")}</datalist>
       <select id="rx-dur" class="rx-in" title="משך">${opts(C.DUR, f.dur)}</select><select id="rx-status" class="rx-in" title="מצב">${opts(C.STATUS, f.status)}</select><select id="rx-sort" class="rx-in" title="מיון">${opts(C.SORT, f.sort)}</select>
-      <button class="btn btn-quiet btn-sm" data-rx="more">⚲ עוד מסננים${more ? ` <span class="rx-dot">${more}</span>` : ""}</button>${C.isFiltered(f) ? `<button class="btn btn-quiet btn-sm" data-rx="clear">ניקוי הסינון</button>` : ""}</div>
-      ${R.moreOpen ? `<div class="rx-fbar"><select id="rx-dir" class="rx-in">${opts(C.DIR, f.dir)}</select><select id="rx-tod" class="rx-in">${opts(C.TOD, f.tod)}</select><select id="rx-kind" class="rx-in">${opts(C.KIND, f.kind)}</select><select id="rx-tag" class="rx-in"><option value="">כל התגיות</option>${R.tagsAll.map(t => `<option ${t === f.tag ? "selected" : ""}>${esc(t)}</option>`).join("")}</select><span class="rx-wd">ימים: ${wdS.map((d, i) => `<button class="${f.wd.includes(i) ? "on" : ""}" data-rx="wd" data-i="${i}" title="יום ${C.HE_WD[i]}">${d}</button>`).join("")}</span></div>` : ""}
+      <button class="btn btn-quiet btn-sm" data-rx="more">${R.moreOpen ? "− פחות מסננים" : "＋ עוד מסננים"}${more ? ` <span class="rx-dot">${more}</span>` : ""}</button>${C.isFiltered(f) ? `<button class="btn btn-quiet btn-sm" data-rx="clear">ניקוי הסינון</button>` : ""}</div>
+      ${R.moreOpen ? `<div class="rx-fbar"><select id="rx-tod" class="rx-in">${opts(C.TOD, f.tod)}</select><select id="rx-kind" class="rx-in">${opts(C.KIND, f.kind)}</select><select id="rx-tag" class="rx-in"><option value="">כל התגיות</option>${R.tagsAll.map(t => `<option ${t === f.tag ? "selected" : ""}>${esc(t)}</option>`).join("")}</select><span class="rx-wd">ימים: ${wdS.map((d, i) => `<button class="${f.wd.includes(i) ? "on" : ""}" data-rx="wd" data-i="${i}" title="יום ${C.HE_WD[i]}">${d}</button>`).join("")}</span></div>` : ""}
       ${f.contacts.length || f.ids ? `<div class="rx-chips">${f.contacts.map(c => `<span class="rx-chip">${esc(c)}<button data-rx="rm-contact" data-c="${esc(c)}" aria-label="הסרה">✕</button></span>`).join("")}${f.ids ? `<span class="rx-chip">רק עם ${esc(f.idsLabel)} (${f.ids.size})<button data-rx="rm-ids" aria-label="הסרה">✕</button></span>` : ""}</div>` : ""}
+      <div class="rx-dirs" id="rx-dirs" role="tablist" aria-label="כיוון השיחה">${dirTabsHtml()}</div>
       <div class="rx-res" id="rx-res"></div>`;
     renderResbar();
+  }
+  /* הכל / נכנסות / יוצאות / כיוון לא ידוע — עם מונה לפי כל שאר המסננים, כמו הלשוניות ביומן של הטלפון */
+  function dirTabsHtml() {
+    const base = C.filterRecs(R.recs, Object.assign({}, R.f, { dir: "any" }), { hideShort: +R.settings.hideShort || 0 }), n = k => k === "any" ? base.length : base.filter(r => k === "unknown" ? !r.type : r.type === k).length;
+    return [["any", "הכל"], ["incoming", "↙ נכנסות"], ["outgoing", "↗ יוצאות"], ["unknown", "כיוון לא ידוע"]].map(([k, l]) => `<button class="qx-filter ${R.f.dir === k ? "active" : ""} ${k}" role="tab" aria-selected="${R.f.dir === k}" data-rx="dir" data-v="${k}">${l} <span class="qx-n">${nf(n(k))}</span></button>`).join("");
   }
   function renderResbar() {
     const el = $("rx-res"); if (!el) return;
@@ -247,7 +253,7 @@
   function renderView() {
     const el = $("rx-view"); if (!el) return;
     if (!R.recs.length) { el.innerHTML = welcomeHtml(); return; }
-    if (R.view === "calendar") el.innerHTML = calendarHtml(); else if (R.view === "people") { el.innerHTML = peopleHtml(); renderPeopleTable(); } else if (R.view === "stats") el.innerHTML = statsHtml(); else renderList(el);
+    if (R.view === "calendar") { el.innerHTML = calendarHtml(); scrollYearMap(); } else if (R.view === "people") { el.innerHTML = peopleHtml(); renderPeopleTable(); } else if (R.view === "stats") el.innerHTML = statsHtml(); else renderList(el);
     $("rx-body")?.classList.toggle("has-aside", !!R.aside);
   }
   function welcomeHtml() {
@@ -327,6 +333,14 @@
         <div class="rx-mg">${C.HE_WD.map(d => `<div class="rx-wdh">${d}</div>`).join("")}${mcells.join("")}</div></div>${dayHtml}</div></div>`;
   }
 
+  // מפת השנה נגללת בתוך עצמה אל היום שנבחר (או אל הימים האחרונים) — בלי לגלול את העמוד
+  function scrollYearMap() {
+    requestAnimationFrame(() => {
+      const sc = document.querySelector(".rx-ym-scroll"); if (!sc) return;
+      const cells = sc.querySelectorAll(".rx-c:not(.x)"), on = sc.querySelector(".rx-c.on") || cells[cells.length - 1]; if (!on) return;
+      const sb = sc.getBoundingClientRect(), ob = on.getBoundingClientRect(); sc.scrollLeft += (ob.left + ob.width / 2) - (sb.left + sb.width / 2);
+    });
+  }
   /* ---------- אנשים ---------- */
   function peopleHtml() { return `<div class="rx-panel"><div class="qx-toolbar"><label class="search-field"><span>⌕</span><input id="rx-ppl-q" type="search" value="${esc(R.peopleQ)}" placeholder="סינון לפי שם או מספר"></label><span class="qx-note">לחיצה על שורה פותחת את כל הפרטים; ✎ בחלונית משנה שם</span><div class="spacer"></div><button class="btn btn-quiet btn-sm" data-rx="names">👥 שמות למספרים לא שמורים</button></div><div id="rx-ppl-t"></div></div>`; }
   function renderPeopleTable() {
@@ -397,7 +411,7 @@
         <div class="rx-tags">${sm.sentiment ? `<span class="rx-senti">אווירה: ${esc(sm.sentiment)}</span>` : ""}${(sm.tags || []).map(t => `<button class="rx-tag ai" data-rx="tag-filter" data-tag="${esc(t)}" title="שיחות עם התגית">${esc(t)}</button>`).join("")}</div>`
         : `<div class="rx-ai-empty">${r.tr ? "יש תמלול. אפשר ליצור ממנו סיכום עם נקודות עיקריות ומשימות." : "עוד אין תמלול. בלחיצה אחת ה-AI יתמלל את השיחה ויכין סיכום, נקודות עיקריות ומשימות."}</div>`}</section>
       <section class="rx-sec"><div class="rx-sec-h"><h3>תמלול</h3><div class="spacer"></div>${r.tr ? `<input id="rx-trq" class="rx-in" placeholder="חיפוש בתמלול" value="${esc(R.trq || "")}"><button class="rx-ib" data-rx="copy-tr" data-id="${esc(r.id)}" title="העתקת התמלול">⧉</button>` : ""}</div>
-        ${r.tr ? (r.tr.segs.length ? `<div class="rx-tr" id="rx-tr">${r.tr.segs.map((s, i) => trq && !C.norm(s.t).includes(trq) ? "" : `<div class="rx-seg" data-i="${i}"><button class="rx-ts" data-rx="seek" data-id="${esc(r.id)}" data-s="${s.s ?? ""}" ${s.s == null || !r.loc.length ? "disabled" : ""}>${s.s == null ? "" : C.fmtDur(s.s)}</button><div>${s.sp ? `<span class="rx-sp"><i style="background:${spk.get(s.sp) < 4 ? SPK[spk.get(s.sp)] : "#898781"}"></i>${esc(s.sp)}</span>` : ""}${hl(s.t)}</div></div>`).join("")}</div>` : `<p class="qx-note">לא זוהה דיבור בהקלטה.</p>`)
+        ${r.tr ? (r.tr.segs.length ? `<div class="rx-tr" id="rx-tr">${r.tr.segs.map((s, i) => trq && !C.norm(s.t).includes(trq) ? "" : `<div class="rx-tseg" data-i="${i}"><button class="rx-ts" data-rx="seek" data-id="${esc(r.id)}" data-s="${s.s ?? ""}" ${s.s == null || !r.loc.length ? "disabled" : ""}>${s.s == null ? "" : C.fmtDur(s.s)}</button><div>${s.sp ? `<span class="rx-sp"><i style="background:${spk.get(s.sp) < 4 ? SPK[spk.get(s.sp)] : "#898781"}"></i>${esc(s.sp)}</span>` : ""}${hl(s.t)}</div></div>`).join("")}</div>` : `<p class="qx-note">לא זוהה דיבור בהקלטה.</p>`)
           + `<div class="qx-note">תומלל ב-${esc(STT[r.tr.provider]?.label || r.tr.provider)} (${esc(r.tr.model)}), ${new Date(r.tr.at).toLocaleDateString("he-IL")}. <button class="rx-link" data-rx="ai" data-id="${esc(r.id)}" data-mode="tr" ${busy || !r.loc.length ? "disabled" : ""}>תמלול מחדש</button></div>`
           : `<div class="rx-ai-empty">אין תמלול עדיין. ${busy || !r.loc.length ? "" : `<button class="rx-link" data-rx="ai" data-id="${esc(r.id)}" data-mode="tr">תמלול בלבד</button>`}</div>`}</section>
       <section class="rx-sec"><div class="rx-sec-h"><h3>הערות ותגיות</h3></div><div class="rx-tags">${(r.tags || []).map(t => `<span class="rx-tag">${esc(t)}<button data-rx="rm-tag" data-id="${esc(r.id)}" data-tag="${esc(t)}" aria-label="הסרה">✕</button></span>`).join("")}<input id="rx-tag-in" class="rx-in" list="rx-tags-dl" placeholder="+ תגית ו-Enter"><datalist id="rx-tags-dl">${R.tagsAll.slice(0, 200).map(t => `<option value="${esc(t)}">`).join("")}</datalist></div>
@@ -517,8 +531,8 @@
     const list = $("rx-tr"); if (!list || !P.rec || R.aside?.id !== P.rec.id) { lastSeg = -1; return; }
     const t = P.audio.currentTime; let idx = -1; P.rec.tr?.segs.forEach((s, i) => { if (s.s != null && s.s <= t + 0.25) idx = i; });
     if (idx === lastSeg && !force) return; lastSeg = idx;
-    list.querySelectorAll(".rx-seg.on").forEach(e => e.classList.remove("on"));
-    const el = list.querySelector(`.rx-seg[data-i="${idx}"]`);
+    list.querySelectorAll(".rx-tseg.on").forEach(e => e.classList.remove("on"));
+    const el = list.querySelector(`.rx-tseg[data-i="${idx}"]`);
     if (el) { el.classList.add("on"); if (R.settings.followTr && !P.audio.paused && !force) { const ar = $("rx-aside").getBoundingClientRect(), er = el.getBoundingClientRect(); if (er.top < ar.top + 90 || er.bottom > ar.bottom - 20) el.scrollIntoView({ block: "center", behavior: "smooth" }); } }
   }
   P.audio.addEventListener("play", () => { setPlayIcon(); cancelAnimationFrame(P.raf); P.raf = requestAnimationFrame(tick); });
@@ -853,6 +867,7 @@
         case "close": return closeAside();
         case "view": R.view = el.dataset.view; ls.set("ankal.recordings.view", R.view); renderTop(); return renderView();
         case "date": R.f.date = el.dataset.v; if (R.f.date === "custom" && !R.f.from) { R.f.from = R.recs[R.recs.length - 1]?._.day || ""; R.f.to = C.localDay(Date.now()); } return refresh(true);
+        case "dir": R.f.dir = el.dataset.v; return refresh(true);
         case "wd": { const i = +el.dataset.i; R.f.wd = R.f.wd.includes(i) ? R.f.wd.filter(x => x !== i) : [...R.f.wd, i]; return refresh(true); }
         case "more": R.moreOpen = !R.moreOpen; return renderFilters();
         case "clear": R.f = C.defaultFilter(); return refresh(true);
@@ -870,7 +885,7 @@
         case "ask-results": return openAsk(R.filtered, R.f.contacts.length === 1 ? `השיחות עם ${R.f.contacts[0]}` : "השיחות שמוצגות כרגע");
         case "batch": return startBatch(R.filtered);
         case "excel": return excel(R.filtered);
-        case "cal-day": R.calDay = el.dataset.day; R.calMonth = R.calDay.slice(0, 7); return renderView();
+        case "cal-day": { const sc = document.querySelector(".rx-ym-scroll"), keep = sc ? sc.scrollLeft : 0; R.calDay = el.dataset.day; R.calMonth = R.calDay.slice(0, 7); renderView(); const sc2 = document.querySelector(".rx-ym-scroll"); if (sc2 && el.closest(".rx-ym")) requestAnimationFrame(() => { sc2.scrollLeft = keep; }); return; }
         case "cal-goto": R.calDay = el.dataset.day; R.calMonth = R.calDay.slice(0, 7); R.view = "calendar"; renderTop(); return renderView();
         case "mon": { const [y, m] = R.calMonth.split("-").map(Number), d = new Date(y, m - 1 + +el.dataset.d, 1); R.calMonth = C.localDay(d.getTime()).slice(0, 7); R.calDay = ""; return renderView(); }
         case "day-list": Object.assign(R.f, { date: "custom", from: R.calDay, to: R.calDay }); R.view = "list"; return refresh(true);
@@ -904,7 +919,7 @@
     if (t.id === "rx-trq") { R.trq = t.value; renderAside(); }
   });
   document.addEventListener("change", e => {
-    const t = e.target, f = R.f, map = { "rx-from": "from", "rx-to": "to", "rx-dur": "dur", "rx-status": "status", "rx-sort": "sort", "rx-tod": "tod", "rx-kind": "kind", "rx-tag": "tag", "rx-dir": "dir" };
+    const t = e.target, f = R.f, map = { "rx-from": "from", "rx-to": "to", "rx-dur": "dur", "rx-status": "status", "rx-sort": "sort", "rx-tod": "tod", "rx-kind": "kind", "rx-tag": "tag" };
     if (map[t.id]) { f[map[t.id]] = t.value; return refresh(true); }
     if (t.id === "rx-contact") { const v = t.value.trim(); if (!v) return; const c = R.contacts.find(x => x.who === v) || R.contacts.find(x => C.norm(x.who).includes(C.norm(v))); if (!c) return A().toast("לא נמצא איש קשר בשם הזה", "warning"); if (!f.contacts.includes(c.who)) f.contacts.push(c.who); return refresh(true); }
     if (t.id === "rxs-stt" || t.id === "rxs-llm") { const kind = t.id === "rxs-stt" ? "stt" : "llm", m = $(t.id + "m"), cur = R.settings[kind + "Model"][t.value] || DEFAULTS[kind + "Model"][t.value]; if (m) { const sug = SUGGEST[kind + "-" + t.value] || [], live = ls.get(MODELS_KEY, {})[kind + "-" + t.value] || []; m.innerHTML = [...sug.map(s => s[0]), ...live.filter(id => !sug.some(s => s[0] === id))].map(id => `<option ${id === cur ? "selected" : ""}>${esc(id)}</option>`).join(""); } }
