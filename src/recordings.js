@@ -325,7 +325,7 @@
       const sec = r => +r.iso.slice(11, 13) * 3600 + +r.iso.slice(14, 16) * 60 + +r.iso.slice(17, 19);
       dayHtml = `<div class="rx-dayp"><h3>${esc(C.fmtDay(R.calDay, true))}</h3><div class="rx-big">${C.fmtTotal(sel?.s || 0)}</div><div class="qx-note">${sel ? `${C.nCalls(sel.n)} עם ${ppl === 1 ? "אדם אחד" : ppl + " אנשים"}, הארוכה ${C.fmtDur(Math.max(...recs.map(r => r.duration || 0)))}` : "אין שיחות ביום הזה"}</div>
         ${sel ? `<div class="rx-tl"><div class="rx-tl-track">${recs.map(r => `<button class="rx-tl-b" data-rx="open" data-id="${esc(r.id)}" style="inset-inline-start:${(sec(r) / 864).toFixed(3)}%;inline-size:${Math.max(0.25, (r.duration || 0) / 864).toFixed(3)}%" data-tip="${esc(r.iso.slice(11, 16) + " " + r._.who)}\n${C.fmtDur(r.duration)}"></button>`).join("")}</div><div class="rx-tl-ax">${[0, 6, 12, 18].map(h => `<span style="inset-inline-start:${h / 24 * 100}%">${String(h).padStart(2, "0")}:00</span>`).join("")}</div></div>
-        <div class="rx-mini">${recs.map(r => rowHtml(r, false)).join("")}</div><button class="btn btn-quiet btn-sm" data-rx="day-list">הצג את היום ברשימה</button>` : ""}</div>`;
+        ${dayCallsHtml(recs)}<button class="btn btn-quiet btn-sm" data-rx="day-list">הצג את היום ברשימה</button>` : ""}</div>`;
     }
     return `<div class="rx-cal"><div class="rx-panel"><div class="rx-ph"><h3>כל התקופה</h3><span class="qx-note">כל ריבוע הוא יום. כהה יותר = יותר זמן שיחה.</span></div><div class="rx-ym-scroll"><div class="rx-ym">${cells.join("")}</div></div>
       <div class="rx-legend"><span>פחות</span>${[0, 1, 2, 3, 4, 5].map(i => `<i class="h${i}" data-tip="${HEAT_TIP[i]}"></i>`).join("")}<span>יותר</span></div></div>
@@ -333,6 +333,19 @@
         <div class="rx-mg">${C.HE_WD.map(d => `<div class="rx-wdh">${d}</div>`).join("")}${mcells.join("")}</div></div>${dayHtml}</div></div>`;
   }
 
+  /* השיחות של היום שנבחר — כמו "שיחות אחרונות" בטלפון: לשוניות כיוון עם מונה ליום, סמל כיוון צבעוני, שם, מספר
+     ושעה, החדשה למעלה. הלשונית נשמרת במעבר בין ימים, כמו בטלפון. */
+  const DAY_TABS = [["all", "הכל"], ["incoming", "↙ נכנסות"], ["outgoing", "↗ יוצאות"], ["unknown", "כיוון לא ידוע"]];
+  const dirMatch = (r, k) => k === "all" || (k === "unknown" ? !r.type : r.type === k);
+  function dayCallsHtml(recs) {
+    const k = R.dayDir || "all", shown = recs.filter(r => dirMatch(r, k)).sort((a, b) => b.time - a.time);
+    return `<div class="qx-phone-panel rx-day-phone"><div class="qx-filters" role="tablist" aria-label="כיוון השיחה ביום">${DAY_TABS.map(([t, l]) => `<button class="qx-filter ${k === t ? "active" : ""} ${t}" role="tab" aria-selected="${k === t}" data-rx="day-dir" data-v="${t}">${l} <span class="qx-n">${recs.filter(r => dirMatch(r, t)).length}</span></button>`).join("")}</div>
+      <div class="qx-calls">${shown.map(callRowHtml).join("") || `<p class="qx-note" style="padding:16px;text-align:center">אין שיחות כאלה ביום הזה</p>`}</div></div>`;
+  }
+  function callRowHtml(r) {
+    const playing = P.rec?.id === r.id, sub = [r._.saved && r.number ? `<span dir="ltr">${esc(C.formatPhone(r.number))}</span>` : "", r.type ? Q.CALL_TYPE_HE[r.type] : "", C.fmtDur(r.duration)].filter(Boolean).join(" · ");
+    return `<div class="qx-call rx-callrow ${r.type || "unknown"} ${playing ? "playing" : ""} ${R.aside?.id === r.id ? "sel" : ""}" data-rx="open" data-id="${esc(r.id)}" role="button" tabindex="0"><i class="qx-call-ico" title="${r.type ? Q.CALL_TYPE_HE[r.type] : "כיוון לא ידוע"}">${DIR_ICON[r.type] || "🎙"}</i><div class="qx-call-main"><b>${esc(r._.who)}</b><small>${sub}</small></div><span class="qx-call-time">${r.iso.slice(11, 16)}</span><button class="rx-ib rx-playb" data-rx="play" data-id="${esc(r.id)}" title="ניגון" aria-label="ניגון" ${r.loc.length ? "" : "disabled"}>${playing && !P.audio.paused ? "❚❚" : "▶"}</button></div>`;
+  }
   // מפת השנה נגללת בתוך עצמה אל היום שנבחר (או אל הימים האחרונים) — בלי לגלול את העמוד
   function scrollYearMap() {
     requestAnimationFrame(() => {
@@ -383,7 +396,7 @@
 
   /* ---------- חלונית הפרטים: הקלטה או איש קשר ---------- */
   const SPK = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]; // 4 גוונים שנבדקו לעיוורון צבעים; דובר חמישי ומעלה — אפור
-  function openRec(id) { if (R.aside?.id !== id) R.trq = ""; R.aside = { type: "rec", id }; renderAside(); document.querySelectorAll(".rx-row.sel").forEach(el => el.classList.remove("sel")); document.querySelectorAll(`.rx-row[data-id="${CSS.escape(id)}"]`).forEach(el => el.classList.add("sel")); }
+  function openRec(id) { if (R.aside?.id !== id) R.trq = ""; R.aside = { type: "rec", id }; renderAside(); document.querySelectorAll(".rx-row.sel, .rx-callrow.sel").forEach(el => el.classList.remove("sel")); document.querySelectorAll(`.rx-row[data-id="${CSS.escape(id)}"], .rx-callrow[data-id="${CSS.escape(id)}"]`).forEach(el => el.classList.add("sel")); }
   function openPerson(who) { R.aside = { type: "person", who }; renderAside(); }
   function closeAside() { R.aside = null; renderAside(); document.querySelectorAll(".rx-row.sel").forEach(el => el.classList.remove("sel")); }
   function renderAside() {
@@ -473,8 +486,8 @@
   function setSpeedLabel() { const b = $("rx-p-speed"); if (b) b.textContent = String(R.settings.speed || 1).replace(/^0/, "") + "×"; }
   function setPlayIcon() {
     const playing = P.rec && !P.audio.paused, b = $("rx-p-play"); if (b) { b.innerHTML = P.loading ? `<span class="rx-spin"></span>` : playing ? "❚❚" : "▶"; b.setAttribute("aria-label", playing ? "השהיה" : "ניגון"); }
-    document.querySelectorAll(".rx-row.playing").forEach(el => { if (el.dataset.id !== P.rec?.id) { el.classList.remove("playing"); const pb = el.querySelector(".rx-playb"); if (pb) pb.textContent = "▶"; } });
-    if (P.rec) document.querySelectorAll(`.rx-row[data-id="${CSS.escape(P.rec.id)}"]`).forEach(el => { el.classList.add("playing"); const pb = el.querySelector(".rx-playb"); if (pb) pb.textContent = playing ? "❚❚" : "▶"; });
+    document.querySelectorAll(".rx-row.playing, .rx-callrow.playing").forEach(el => { if (el.dataset.id !== P.rec?.id) { el.classList.remove("playing"); const pb = el.querySelector(".rx-playb"); if (pb) pb.textContent = "▶"; } });
+    if (P.rec) document.querySelectorAll(`.rx-row[data-id="${CSS.escape(P.rec.id)}"], .rx-callrow[data-id="${CSS.escape(P.rec.id)}"]`).forEach(el => { el.classList.add("playing"); const pb = el.querySelector(".rx-playb"); if (pb) pb.textContent = playing ? "❚❚" : "▶"; });
     const ab = document.querySelector(`#rx-aside [data-rx="play"]`); if (ab && R.aside?.id === P.rec?.id) ab.textContent = playing ? "❚❚ השהיה" : "▶ ניגון";
   }
   function setPlayerInfo() {
@@ -868,6 +881,7 @@
         case "view": R.view = el.dataset.view; ls.set("ankal.recordings.view", R.view); renderTop(); return renderView();
         case "date": R.f.date = el.dataset.v; if (R.f.date === "custom" && !R.f.from) { R.f.from = R.recs[R.recs.length - 1]?._.day || ""; R.f.to = C.localDay(Date.now()); } return refresh(true);
         case "dir": R.f.dir = el.dataset.v; return refresh(true);
+        case "day-dir": R.dayDir = el.dataset.v; return renderView();
         case "wd": { const i = +el.dataset.i; R.f.wd = R.f.wd.includes(i) ? R.f.wd.filter(x => x !== i) : [...R.f.wd, i]; return refresh(true); }
         case "more": R.moreOpen = !R.moreOpen; return renderFilters();
         case "clear": R.f = C.defaultFilter(); return refresh(true);
@@ -929,7 +943,7 @@
     const t = e.target, typing = /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable;
     if (t.id === "rx-tag-in" && e.key === "Enter") { e.preventDefault(); const r = R.byId.get(R.aside?.id), v = t.value.trim().replace(/^#/, ""); if (!r || !v) return; r.tags = [...new Set([...(r.tags || []), v])]; await saveRec(r); rebuild(); renderAside(); $("rx-tag-in")?.focus(); return; }
     if (t.id === "rx-ask-in" && e.key === "Enter") { e.preventDefault(); return askOne(R.byId.get(R.aside?.id)); }
-    if (t.matches?.(".rx-row[data-id]") && e.key === "Enter") { e.preventDefault(); return openRec(t.dataset.id); }
+    if (t.matches?.(".rx-row[data-id], .rx-callrow[data-id]") && e.key === "Enter") { e.preventDefault(); return openRec(t.dataset.id); }
     if (modalOpen()) return;
     if (e.key === "Escape") { if (typing) return t.blur(); if (R.aside) return closeAside(); return; }
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;

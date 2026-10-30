@@ -101,6 +101,12 @@ button.rx-src{cursor:pointer}button.rx-src:hover{background:var(--paper)}
 .rx-tl-b{position:absolute;top:3px;bottom:3px;min-width:4px;border:0;border-radius:3px;background:var(--rx-blue,#2a78d6);cursor:pointer;padding:0}
 .rx-tl-ax{position:relative;height:14px}.rx-tl-ax span{position:absolute;font-size:10px;color:var(--muted);transform:translateX(50%)}
 .rx-mini{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+/* שיחות היום בלוח השנה — כמו "שיחות אחרונות" בטלפון (אותו מראה כמו יומן השיחות בגיבוי) */
+.rx-day-phone{max-width:none;margin:0;border-radius:16px}
+.rx-day-phone .qx-calls{max-height:56vh}
+.rx-callrow{cursor:pointer}.rx-callrow.sel{background:hsl(var(--page) 60% 55% / .10)}.rx-callrow.playing{box-shadow:inset 3px 0 0 hsl(var(--page) 65% 50%)}
+.rx-callrow:focus-visible{outline:2px solid hsl(var(--page) 60% 50%);outline-offset:-2px}
+.rx-day-phone .qx-filter{cursor:pointer;font-family:inherit}
 .rx-mini .rx-row{grid-template-columns:auto auto minmax(0,1fr) 20px 56px 30px}.rx-mini .rx-tape,.rx-mini .rx-flags,.rx-mini .rx-star{display:none}
 /* אנשים */
 .rx-ptable th button{border:0;background:none;font:inherit;font-weight:700;color:var(--muted);cursor:pointer;padding:0}.rx-ptable th button.on{color:var(--text)}
